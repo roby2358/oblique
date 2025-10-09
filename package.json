@@ -7,11 +7,14 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/index.ts",
-    "start": "node dist/index.js",
+    "build:cli": "tsc --module NodeNext --moduleResolution NodeNext src/cli.ts --outDir dist-cli",
+    "dev": "vite",
+    "dev:cli": "tsx src/cli.ts",
+    "start": "vite preview",
+    "start:cli": "node dist-cli/cli.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist dist-cli"
   },
   "keywords": ["bot", "bluesky", "llm", "agent"],
   "author": "",
@@ -27,7 +30,8 @@
     "rimraf": "^5.0.5",
     "ts-jest": "^29.1.1",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vite": "^5.0.0"
   }
 }
 

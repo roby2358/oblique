@@ -1,7 +1,9 @@
 /.idea/
 .env
+config.json
 node_modules/
 dist/
+dist-cli/
 *.log
 .DS_Store
 *.swp

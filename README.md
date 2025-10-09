@@ -1,54 +1,72 @@
-Oblique is a project to create an online bot which answers only obliquely. It is characterized as an agent-like process that combines a queue, a stack, and a pending map. It has 
+# Oblique
 
-For now, oblique lives in memory, but there will be hooks to save its artifacts in persistent storage.
+A bot that answers only obliquely using LLM APIs. Built in TypeScript as an agent combining a queue, pending map, and user action stacks.
 
-It will be written in Typescript to run from the command line initially. Later it will be deployed in the net.
+**Core Components:**
+- LLM hooks (OpenAI, Anthropic)
+- Bluesky integration
+- Task queue for sequential processing
+- Pending map for async operations
+- User action stacks for conversation context
 
-Oblique will consist of:
-- A hook to send requests to various LLM APIs
-- A hook to receive and send requests to Bluesky
-- a queue for processing sequential tasks
-- a map for storing pending tasks (like pending LLM API calls)
-- a map of stacks to track ongoing user actions
+**Status:** In-memory storage with hooks for persistence. CLI interface with web deployment planned.
 
-## Proposed Project Structure
+## Getting Started
 
+### Installation
+
+```cmd
+npm install
 ```
-oblique/
-├── src/
-│   ├── index.ts                 # Main entry point, CLI interface
-│   ├── core/
-│   │   ├── agent.ts             # Core agent orchestrator
-│   │   ├── queue.ts             # Sequential task queue implementation
-│   │   ├── pending-map.ts       # Pending tasks map (for async operations)
-│   │   └── user-stack-map.ts    # User action stacks tracker
-│   ├── hooks/
-│   │   ├── llm/
-│   │   │   ├── llm-client.ts    # Abstract LLM client interface
-│   │   │   ├── openai.ts        # OpenAI implementation
-│   │   │   ├── anthropic.ts     # Anthropic implementation
-│   │   │   └── index.ts         # LLM hook exports
-│   │   └── bluesky/
-│   │       ├── bluesky-client.ts # Bluesky API client
-│   │       └── index.ts         # Bluesky hook exports
-│   ├── prompts/
-│   │   └── oblique.ts           # Oblique response generation prompts
-│   ├── storage/
-│   │   ├── storage-interface.ts # Abstract storage interface
-│   │   └── memory-storage.ts    # In-memory implementation
-│   ├── types/
-│   │   └── index.ts             # Shared TypeScript types and interfaces
-│   └── utils/
-│       └── index.ts             # Utility functions
-├── test/
-│   ├── core/
-│   ├── hooks/
-│   └── integration/
-├── package.json
-├── tsconfig.json
-├── .gitignore
-├── .env.example                 # Template for API keys and config
-└── README.md
+
+### Configuration
+
+1. Copy `.env.example` to `.env` (create manually if needed)
+2. Add your API keys:
+   - For Anthropic: Set `ANTHROPIC_API_KEY`
+   - For OpenAI: Set `OPENAI_API_KEY`
+   - For Bluesky: Set `BLUESKY_HANDLE` and `BLUESKY_APP_PASSWORD`
+
+### Running
+
+Development mode (with hot reload):
+```cmd
+npm run dev
+```
+
+Build and run:
+```cmd
+npm run build
+npm start
+```
+
+### Testing
+
+Run all tests:
+```cmd
+npm test
+```
+
+Run tests in watch mode:
+```cmd
+npm run test:watch
+```
+
+### Usage
+
+Once running, you can interact with Oblique through the CLI:
+
+- Type messages to receive oblique responses
+- Type `/status` to see agent statistics
+- Type `/quit` to exit
+
+Example:
+```
+You: What is the meaning of life?
+Oblique: A river remembers the mountains it once climbed.
+
+You: /status
+Status: Queue=0, Pending=0, Users=1
 ```
 
 ### Key Design Principles
@@ -57,4 +75,3 @@ oblique/
 - **Type safety**: Full TypeScript types throughout
 - **Testability**: Unit tests for all core functionality
 - **Extensibility**: Storage layer can be swapped from memory to persistent storage
-

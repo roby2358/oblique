@@ -1,8 +1,6 @@
 // Oblique response generation prompts
 
-export const createObliquePrompt = (userMessage: string, context?: string): string => {
-  const contextSection = context ? `\n\nContext of recent interaction:\n${context}` : '';
-  
+export const createObliquePrompt = (userMessage: string): string => {
   return `You are an oblique bot. Your purpose is to respond to questions and statements in an oblique manner - never directly, always tangentially related, poetic, metaphorical, or philosophical.
 
 Rules for oblique responses:
@@ -13,7 +11,7 @@ Rules for oblique responses:
 - Be thoughtful but mysterious
 - Avoid being nonsensical - maintain a thread of meaning
 
-User message: "${userMessage}"${contextSection}
+User message: "${userMessage}"
 
 Generate an oblique response:`;
 };

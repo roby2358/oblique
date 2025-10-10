@@ -2,27 +2,32 @@
 
 export type TaskId = string;
 export type UserId = string;
+export type ConversationId = string;
 
 export interface Task {
   id: TaskId;
-  type: 'process_message' | 'send_llm_request' | 'send_bluesky_post';
+  conversationId?: ConversationId;
+  type: 'process_message' | 'send_llm_request' | 'send_bluesky_post' | 'return_response';
   payload: unknown;
   createdAt: Date;
+  onComplete?: (result: unknown) => void;
 }
 
 export interface PendingTask {
   id: TaskId;
+  conversationId?: ConversationId;
   taskType: Task['type'];
   createdAt: Date;
   timeoutAt?: Date;
 }
 
-export interface UserAction {
-  actionId: string;
+export interface Conversation {
+  id: ConversationId;
   userId: UserId;
-  action: string;
-  timestamp: Date;
-  metadata?: Record<string, unknown>;
+  tasks: TaskId[];
+  status: 'queued' | 'processing' | 'pending' | 'completed' | 'failed';
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface LLMRequest {
@@ -61,6 +66,5 @@ export interface BlueskyMessage {
 export interface StorageData {
   queue: Task[];
   pendingMap: Map<TaskId, PendingTask>;
-  userStacks: Map<UserId, UserAction[]>;
 }
 

@@ -11,20 +11,6 @@ describe('Oblique Prompts', () => {
       expect(prompt).toContain('never directly');
     });
 
-    it('should include context when provided', () => {
-      const context = 'Previous conversation about clouds';
-      const prompt = createObliquePrompt('Will it rain?', context);
-      
-      expect(prompt).toContain('Will it rain?');
-      expect(prompt).toContain(context);
-      expect(prompt).toContain('Context of recent interaction');
-    });
-
-    it('should not include context section when context is empty', () => {
-      const prompt = createObliquePrompt('Hello');
-      
-      expect(prompt).not.toContain('Context of recent interaction');
-    });
 
     it('should include instructions for oblique responses', () => {
       const prompt = createObliquePrompt('Test message');

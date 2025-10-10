@@ -1,5 +1,12 @@
 import { describe, it, expect, jest } from '@jest/globals';
-import { createAgent, processMessage, getAgentStatus, addTask } from '../../src/core/agent.js';
+import { 
+  createAgent, 
+  processMessage, 
+  processMessageAndWait,
+  processAllTasks,
+  getAgentStatus, 
+  addTask 
+} from '../../src/core/agent.js';
 import { createMemoryStorage } from '../../src/storage/memory-storage.js';
 import type { LLMClient } from '../../src/hooks/llm/llm-client.js';
 import type { Task } from '../../src/types/index.js';
@@ -28,7 +35,6 @@ describe('Agent', () => {
       expect(agent).toBeDefined();
       expect(agent.queue).toBeDefined();
       expect(agent.pendingMap).toBeDefined();
-      expect(agent.userStackMap).toBeDefined();
     });
 
     it('should load existing state from storage', async () => {
@@ -39,7 +45,6 @@ describe('Agent', () => {
       await storage.save({
         queue: agent1.queue,
         pendingMap: agent1.pendingMap,
-        userStackMap: agent1.userStackMap,
       });
 
       // Create new agent - should load saved state
@@ -47,39 +52,40 @@ describe('Agent', () => {
       
       expect(agent2.queue).toEqual(agent1.queue);
       expect(agent2.pendingMap).toEqual(agent1.pendingMap);
-      expect(agent2.userStackMap).toEqual(agent1.userStackMap);
     });
   });
 
   describe('processMessage', () => {
-    it('should process a message and return a response', async () => {
+    it('should create a task and add to queue', async () => {
       const storage = createMemoryStorage();
       const llmClient = createMockLLMClient();
       const agent = await createAgent({ storage, llmClient });
 
-      const [response, newAgent] = await processMessage(agent, 'user-1', 'Hello');
+      const [conversationId, newAgent] = processMessage(agent, 'user-1', 'Hello');
+
+      expect(conversationId).toBeTruthy();
+      expect(typeof conversationId).toBe('string');
+      const status = getAgentStatus(newAgent);
+      expect(status.queueSize).toBe(1);
+    });
+
+    it('should process message and return response when using processMessageAndWait', async () => {
+      const storage = createMemoryStorage();
+      const llmClient = createMockLLMClient();
+      const agent = await createAgent({ storage, llmClient });
+
+      const [response, newAgent] = await processMessageAndWait(agent, 'user-1', 'Hello');
 
       expect(response).toBeTruthy();
       expect(response).toContain('river');
       expect(newAgent).toBeDefined();
     });
 
-    it('should track user actions', async () => {
-      const storage = createMemoryStorage();
-      const llmClient = createMockLLMClient();
-      let agent = await createAgent({ storage, llmClient });
-
-      const [, newAgent] = await processMessage(agent, 'user-1', 'Hello');
-
-      const status = getAgentStatus(newAgent);
-      expect(status.activeUsers).toBe(1);
-    });
-
     it('should return error message when LLM not configured', async () => {
       const storage = createMemoryStorage();
       const agent = await createAgent({ storage });
 
-      const [response] = await processMessage(agent, 'user-1', 'Hello');
+      const [response] = await processMessageAndWait(agent, 'user-1', 'Hello');
 
       expect(response).toContain('LLM not configured');
     });
@@ -94,23 +100,10 @@ describe('Agent', () => {
       };
       
       const agent = await createAgent({ storage, llmClient: errorClient });
-      const [response] = await processMessage(agent, 'user-1', 'Hello');
+      const [response] = await processMessageAndWait(agent, 'user-1', 'Hello');
 
       expect(response).toContain('Error');
       expect(response).toContain('API Error');
-    });
-
-    it('should include context from previous messages', async () => {
-      const storage = createMemoryStorage();
-      const llmClient = createMockLLMClient();
-      let agent = await createAgent({ storage, llmClient });
-
-      // Send multiple messages
-      [, agent] = await processMessage(agent, 'user-1', 'First message');
-      [, agent] = await processMessage(agent, 'user-1', 'Second message');
-
-      const status = getAgentStatus(agent);
-      expect(status.activeUsers).toBe(1);
     });
   });
 
@@ -142,10 +135,8 @@ describe('Agent', () => {
 
       expect(status).toHaveProperty('queueSize');
       expect(status).toHaveProperty('pendingTasks');
-      expect(status).toHaveProperty('activeUsers');
       expect(status.queueSize).toBe(0);
       expect(status.pendingTasks).toBe(0);
-      expect(status.activeUsers).toBe(0);
     });
   });
 });

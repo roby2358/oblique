@@ -1,5 +1,5 @@
 // Browser entry point
-import { createAgent, processMessage, getAgentStatus } from './core/agent.js';
+import { createAgent, processMessageAndWait, getAgentStatus } from './core/agent.js';
 import { createMemoryStorage } from './storage/memory-storage.js';
 import { createOpenRouterClient } from './hooks/llm/index.js';
 import type { Agent } from './core/agent.js';
@@ -50,7 +50,7 @@ const updateStatus = () => {
     return;
   }
   const status = getAgentStatus(agent);
-  statusDisplay.textContent = `Queue: ${status.queueSize} | Pending: ${status.pendingTasks} | Users: ${status.activeUsers}`;
+  statusDisplay.textContent = `Queue: ${status.queueSize} | Pending: ${status.pendingTasks}`;
 };
 
 const loadConfig = async (): Promise<Config> => {
@@ -109,7 +109,7 @@ const handleSendMessage = async () => {
   addMessage(message, 'user');
 
   try {
-    const [response, newAgent] = await processMessage(agent, userId, message);
+    const [response, newAgent] = await processMessageAndWait(agent, userId, message);
     agent = newAgent;
     addMessage(response, 'oblique');
     updateStatus();

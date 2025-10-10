@@ -2,9 +2,41 @@
 
 ## Overview
 
-Oblique is an agent-based bot that responds to messages in an oblique, tangential manner using LLM APIs. The system is designed around three core data structures: a queue, a pending map, and user action stacks.
+Oblique is a conversation-based bot that responds to messages in an oblique, tangential manner using LLM APIs. The system operates as a task processing engine with two core data structures: a queue of tasks to process and a map of tasks pending asynchronous operations.
 
 ## Architecture
+
+### Conversation-Based Task Processing Model
+
+The system operates as a task processing engine with two primary data structures:
+
+1. **Queue**: A FIFO queue containing all tasks waiting to be processed
+2. **Pending Map**: A map of tasks currently waiting for asynchronous operations to complete
+
+**Core Principles:**
+- Each user message creates a new **conversation** with a unique random ID
+- Conversations are processed as a series of **tasks** that flow through the system
+- When a task requires an async operation (e.g., LLM API call), it moves from the Queue to the Pending Map
+- After the async operation completes, the task moves from the Pending Map back to the Queue
+- The system continuously processes tasks from the Queue in FIFO order
+
+**Task Flow:**
+```
+User Message → Generate Conversation ID → Create Task → [Queue]
+                                                           ↓
+                                                    Process Task
+                                                           ↓
+                                            Needs Async? ← Yes → [Pending Map]
+                                                   ↓                    ↓
+                                                   No              Wait for
+                                                   ↓              Completion
+                                            Complete Task              ↓
+                                                                Create Result Task
+                                                                       ↓
+                                                                   [Queue]
+```
+
+This architecture eliminates the concept of "agents" in favor of a simpler, more flexible task-based system where conversations are just sequences of tasks flowing through the queue and pending map.
 
 ### Core Components
 
@@ -39,42 +71,34 @@ Tracks asynchronous operations (like LLM API calls) that are in progress.
 - Task metadata storage
 - Immutable Map-based implementation
 
-#### 3. User Stack Map (`src/core/user-stack-map.ts`)
-Maintains LIFO stacks of actions for each user to provide conversation context.
+### System Orchestrator (`src/core/agent.ts`)
 
-**Key Functions:**
-- `createUserStackMap()` - Create empty map
-- `pushAction(map, userId, action)` - Add user action
-- `popAction(map, userId)` - Remove latest action
-- `peekAction(map, userId)` - View latest action
-- `getStack(map, userId)` - Get all user actions
-- `clearStack(map, userId)` - Remove all user actions
-
-**Use Cases:**
-- Track conversation history
-- Provide context to LLM
-- Monitor user interaction patterns
-
-### Agent Orchestrator (`src/core/agent.ts`)
-
-The central coordinator that manages all components.
+The central coordinator that manages conversations and task processing.
 
 **Main Functions:**
-- `createAgent(config)` - Initialize agent with storage and hooks
-- `processMessage(agent, userId, message)` - Handle user messages
-- `addTask(agent, task)` - Queue new task
-- `processNextTask(agent)` - Execute queued task
-- `getAgentStatus(agent)` - Get system metrics
+- `createAgent(config)` - Initialize system with storage and hooks
+- `processMessage(agent, userId, message, onComplete?)` - Create conversation task and add to queue, returns conversation ID
+- `processMessageAndWait(agent, userId, message)` - Process message and wait for response (convenience function)
+- `addTask(agent, task)` - Add task to queue
+- `processNextTask(agent)` - Process next queued task
+- `processAllTasks(agent)` - Process all tasks in queue until empty
+- `getAgentStatus(agent)` - Get system metrics (queue size, pending tasks)
 
-**Agent State:**
+**System State:**
 ```typescript
 {
-  queue: Queue,           // Task queue
-  pendingMap: PendingMap, // Async operations
-  userStackMap: UserStackMap, // User histories
+  queue: Queue,           // Tasks to process
+  pendingMap: PendingMap, // Tasks pending async operations
   config: AgentConfig     // Configuration
 }
 ```
+
+**Conversation Model:**
+- Each conversation has a unique random ID
+- Conversations are represented as tasks in the queue
+- When a conversation requires an async operation (e.g., LLM request), it moves to the pending map
+- After the async operation completes, the conversation returns to the queue
+- System operates as: Queue → Process → Pending Map → Complete → Queue (for next step)
 
 ### Storage Layer
 
@@ -133,7 +157,7 @@ Integration with Bluesky social network via `@atproto/api`.
 Prompt engineering for oblique responses.
 
 **Functions:**
-- `createObliquePrompt(message, context)` - Generate prompt with instructions
+- `createObliquePrompt(message)` - Generate prompt with instructions
 - `createSystemPrompt()` - System-level behavior definition
 
 **Oblique Response Rules:**
@@ -148,31 +172,79 @@ Prompt engineering for oblique responses.
 ### Message Processing Flow
 
 ```
-User Message
+User Message → processMessage()
     ↓
-1. Create UserAction
-2. Push to user's stack
-3. Get recent context (last 3 actions)
-4. Generate oblique prompt
-5. Call LLM API
-6. Return response
-7. Save state (if auto-save enabled)
+1. Generate unique conversation ID (UUID)
+2. Create 'process_message' task with userId, message
+3. Add task to queue
+4. Return [conversationId, newAgent]
+    ↓
+processNextTask() is called (manually or via processAllTasks())
+    ↓
+5. Dequeue 'process_message' task
+6. Generate oblique prompt from message
+7. Create 'send_llm_request' task with prompt
+8. Add to both queue AND pending map
+    ↓
+processNextTask() called again
+    ↓
+9. Dequeue 'send_llm_request' task
+10. Call LLM client (async)
+11. LLM response received
+12. Remove from pending map
+13. Create 'return_response' task with response
+14. Add to queue
+    ↓
+processNextTask() called again
+    ↓
+15. Dequeue 'return_response' task
+16. Call onComplete callback with response
+17. Save state (if auto-save enabled)
+18. Conversation complete
 ```
+
+**Helper Function:** `processMessageAndWait()` combines all these steps and waits for the final response.
 
 ### Task Processing Flow
 
 ```
-Task Added
+Task Added to Queue
     ↓
-1. Enqueue task
-2. Dequeue when ready
-3. Add to pending map
-4. Process based on type:
-   - send_llm_request → Call LLM
-   - send_bluesky_post → Post to Bluesky
-   - process_message → Handle message
-5. Remove from pending map
-6. Handle errors gracefully
+1. Wait in queue (FIFO order)
+2. Dequeue when ready to process
+3. Determine task type:
+   
+   If requires async operation:
+   a. Add to pending map with timeout
+   b. Initiate async operation:
+      - send_llm_request → Call LLM API
+      - send_bluesky_post → Post to Bluesky
+      - Other async operations
+   c. Wait for completion
+   d. Remove from pending map
+   e. Create follow-up task with result
+   f. Add follow-up task back to queue
+   
+   If synchronous operation:
+   a. Process immediately
+   b. Complete task
+   
+4. Handle errors and timeouts gracefully
+5. Update system state
+```
+
+### Conversation Lifecycle
+
+```
+New Conversation (ID: random-uuid)
+    ↓
+[Queue] → Process initial message
+    ↓
+[Pending Map] → Wait for LLM response
+    ↓
+[Queue] → Process LLM result
+    ↓
+Complete conversation
 ```
 
 ## Configuration
@@ -187,10 +259,10 @@ Task Added
 }
 ```
 
-### Agent Configuration
+### System Configuration
 
 ```typescript
-const agent = await createAgent({
+const system = await createAgent({
   storage: createMemoryStorage(),
   llmClient: createOpenRouterClient({
     apiKey: config.openRouterApiKey,
@@ -200,6 +272,8 @@ const agent = await createAgent({
 });
 ```
 
+**Note:** The function name `createAgent` MUST be updated to reflect the conversation-based model (e.g., `createSystem` or `createConversationManager`).
+
 ## Testing
 
 ### Test Coverage
@@ -207,17 +281,16 @@ const agent = await createAgent({
 - **Core Components**: 100% coverage
   - `queue.test.ts` - 15 tests
   - `pending-map.test.ts` - 13 tests
-  - `user-stack-map.test.ts` - 14 tests
   
 - **Storage**: Full coverage
   - `memory-storage.test.ts` - 6 tests
   
-- **Agent**: Integration tests
-  - `agent.test.ts` - 8 tests
+- **System Orchestrator**: Integration tests
+  - `agent.test.ts` - 8 tests covering task-based conversation flow
   
 - **Utils & Prompts**
   - `utils/index.test.ts` - 6 tests
-  - `prompts/oblique.test.ts` - 5 tests
+  - `prompts/oblique.test.ts` - 3 tests
 
 ### Running Tests
 
@@ -240,29 +313,39 @@ npm run test:watch      # Watch mode
 ```typescript
 type TaskId = string;
 type UserId = string;
+type ConversationId = string; // Unique random ID for each conversation
 
 interface Task {
   id: TaskId;
-  type: 'process_message' | 'send_llm_request' | 'send_bluesky_post';
+  conversationId?: ConversationId; // Optional link to conversation
+  type: 'process_message' | 'send_llm_request' | 'send_bluesky_post' | 'return_response';
   payload: unknown;
   createdAt: Date;
+  onComplete?: (result: unknown) => void; // Callback when task completes
 }
 
 interface PendingTask {
   id: TaskId;
+  conversationId?: ConversationId; // Track which conversation this belongs to
   taskType: Task['type'];
   createdAt: Date;
   timeoutAt?: Date;
 }
 
-interface UserAction {
-  actionId: string;
+interface Conversation {
+  id: ConversationId; // Unique random ID (e.g., UUID)
   userId: UserId;
-  action: string;
-  timestamp: Date;
-  metadata?: Record<string, unknown>;
+  tasks: TaskId[]; // Tasks associated with this conversation
+  status: 'queued' | 'processing' | 'pending' | 'completed' | 'failed';
+  createdAt: Date;
+  updatedAt: Date;
 }
 ```
+
+**Key Requirements:**
+- Conversation IDs MUST be unique random strings (e.g., UUID)
+- Tasks MAY be associated with a conversation via `conversationId`
+- Conversations track their tasks and current status
 
 ## Browser Interface
 
@@ -271,26 +354,36 @@ Web-based interface built with Vite for interacting with Oblique.
 **Key Features:**
 - Modern, responsive UI
 - Configuration via JSON file or UI
-- Real-time agent status display
+- Real-time system status display (queue size, pending tasks)
+- Conversation history view
 - LocalStorage persistence for user preferences
+
+**Status Display SHOULD Include:**
+- Number of tasks in queue
+- Number of pending tasks
+- Active conversations
+- Recent conversation history
 
 ## Future Enhancements
 
 ### Planned Features:
-1. **Persistent Storage** - Database integration
-2. **Bluesky Integration** - Monitor mentions, auto-reply
+1. **Persistent Storage** - Database integration for conversations and tasks
+2. **Bluesky Integration** - Monitor mentions, auto-reply with conversation tracking
 3. **Task Scheduling** - Cron-like task execution
-4. **Multiple LLM Strategies** - A/B test different models
+4. **Multiple LLM Strategies** - A/B test different models per conversation
 5. **Rate Limiting** - API quota management
-6. **Response Caching** - Reduce API calls
-7. **Metrics & Analytics** - Track usage patterns
+6. **Response Caching** - Reduce API calls for similar conversations
+7. **Metrics & Analytics** - Track conversation patterns, task completion rates
 8. **CLI Interface** - Command-line interaction option
+9. **Conversation Prioritization** - Priority queue for urgent conversations
+10. **Conversation Branching** - Support multi-turn conversations with context
 
 ### Extensibility Points:
 - New LLM providers via `LLMClient` interface
 - Alternative storage backends via `Storage` interface
 - Custom task types in queue processor
 - Plugin system for hooks
+- Conversation middleware for custom processing logic
 
 ## Development Workflow
 
@@ -326,4 +419,43 @@ Web-based interface built with Vite for interacting with Oblique.
 - Clear separation of concerns
 - Minimal dependencies
 - Straightforward data flow
+
+## Architectural Summary: Agent-Based → Conversation-Based
+
+### Key Changes:
+
+**Before (Agent-Based):**
+- System centered around "agents" that process messages
+- Agent as a stateful entity managing multiple concerns
+- Less clear separation between task orchestration and processing
+
+**After (Conversation-Based):**
+- System is a task processing engine
+- Conversations identified by unique random IDs
+- Clear separation: Queue (waiting tasks) + Pending Map (async operations)
+- Tasks flow through system: Queue → Process → Pending Map → Queue → Complete
+- No "agent" concept; just tasks and conversations
+
+### Implementation Status:
+
+**COMPLETED:**
+- ✅ Added `ConversationId` type (UUID v4 generation)
+- ✅ Added `conversationId` field to `Task` and `PendingTask` interfaces
+- ✅ Created `Conversation` interface to track conversation state
+- ✅ Generate unique conversation ID for each user message
+- ✅ Implemented task processing with Queue ↔ Pending Map transitions
+- ✅ Removed `UserStackMap` and `UserAction` - system processes queue only
+- ✅ Updated all tests to reflect conversation-based architecture
+- ✅ Added task types: `process_message`, `send_llm_request`, `return_response`
+- ✅ Implemented callback system for task completion
+
+**FUTURE ENHANCEMENTS:**
+- Add conversation history tracking with persistence
+- Implement conversation-aware context retrieval (multi-turn conversations)
+- Add conversation status display in UI (active/completed conversations)
+
+**MAY:**
+- Add conversation prioritization
+- Implement conversation branching for multi-turn dialogs
+- Add conversation middleware for extensibility
 

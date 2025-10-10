@@ -3,6 +3,10 @@
     "apiKey": "",
     "model": "anthropic/claude-3.5-haiku",
     "baseUrl": "https://openrouter.ai/api/v1/chat/completions"
+  },
+  "bluesky": {
+    "handle": "",
+    "password": ""
   }
 }
 

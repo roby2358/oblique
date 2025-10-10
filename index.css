@@ -134,6 +134,30 @@ h1 {
   text-decoration: underline;
 }
 
+.nav-bar {
+  display: flex;
+  gap: 2rem;
+  padding: 0.75rem 2rem;
+  background: var(--bg-light);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.nav-item {
+  cursor: pointer;
+}
+
+.nav-item a {
+  color: white;
+  text-decoration: underline;
+  font-weight: 400;
+  font-size: 0.9375rem;
+  transition: opacity 0.2s;
+}
+
+.nav-item a:hover {
+  opacity: 0.8;
+}
+
 main {
   flex: 1;
   display: flex;

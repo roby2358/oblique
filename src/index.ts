@@ -1,8 +1,7 @@
 // Browser entry point
-import { createAgent, processMessageAndWait, getAgentStatus } from './core/agent.js';
+import { AgentWorker } from './core/agent.js';
 import { createMemoryStorage } from './storage/memory-storage.js';
 import { createOpenRouterClient } from './hooks/llm/index.js';
-import type { Agent } from './core/agent.js';
 
 // jQuery is loaded via CDN in index.html
 // Note: Run 'npm install' to get jQuery type definitions from @types/jquery
@@ -16,7 +15,7 @@ interface Config {
   };
 }
 
-let agent: Agent;
+let agent: AgentWorker;
 let config: Config = {};
 const userId = 'browser-user';
 
@@ -59,7 +58,7 @@ const updateStatus = () => {
     $('#status').text('Not initialized');
     return;
   }
-  const status = getAgentStatus(agent);
+  const status = agent.getStatus();
   $('#status').text(`Queue: ${status.queueSize} | Pending: ${status.pendingTasks}`);
 };
 
@@ -93,7 +92,7 @@ const initializeAgent = async () => {
     baseUrl,
   }) : undefined;
 
-  agent = await createAgent({
+  agent = await AgentWorker.create({
     storage,
     llmClient,
     autoSave: true,
@@ -120,8 +119,7 @@ const handleSendMessage = async () => {
   addMessage(message, 'user');
 
   try {
-    const [response, newAgent] = await processMessageAndWait(agent, userId, message);
-    agent = newAgent;
+    const response = await agent.processMessageAndWait(userId, message);
     addMessage(response, 'oblique');
     updateStatus();
   } catch (error) {

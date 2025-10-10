@@ -18,257 +18,250 @@ export interface AgentConfig {
   autoSave?: boolean;
 }
 
-export interface Agent {
-  queue: Queue;
-  pendingMap: PendingMap;
-  config: AgentConfig;
-}
+/**
+ * Agent worker class that manages task processing and orchestration.
+ * Uses functional data structures internally for queue and pending map.
+ */
+export class AgentWorker {
+  private queue: Queue;
+  private pendingMap: PendingMap;
+  private config: AgentConfig;
 
-export const createAgent = async (config: AgentConfig): Promise<Agent> => {
-  // Try to load existing state
-  const savedState = await config.storage.load();
-  
-  if (savedState) {
-    return {
-      ...savedState,
-      config,
-    };
+  private constructor(queue: Queue, pendingMap: PendingMap, config: AgentConfig) {
+    this.queue = queue;
+    this.pendingMap = pendingMap;
+    this.config = config;
   }
 
-  return {
-    queue: QueueOps.createQueue(),
-    pendingMap: PendingOps.createPendingMap(),
-    config,
-  };
-};
+  /**
+   * Create a new AgentWorker instance
+   */
+  static async create(config: AgentConfig): Promise<AgentWorker> {
+    // Try to load existing state
+    const savedState = await config.storage.load();
+    
+    if (savedState) {
+      return new AgentWorker(savedState.queue, savedState.pendingMap, config);
+    }
 
-export const addTask = (agent: Agent, task: Task): Agent => {
-  return {
-    ...agent,
-    queue: QueueOps.enqueue(agent.queue, task),
-  };
-};
-
-export const processNextTask = async (agent: Agent): Promise<Agent> => {
-  const [task, newQueue] = QueueOps.dequeue(agent.queue);
-  
-  if (!task) {
-    return agent;
+    return new AgentWorker(
+      QueueOps.createQueue(),
+      PendingOps.createPendingMap(),
+      config
+    );
   }
 
-  let newAgent = { ...agent, queue: newQueue };
+  /**
+   * Add a task to the queue
+   */
+  addTask(task: Task): this {
+    this.queue = QueueOps.enqueue(this.queue, task);
+    return this;
+  }
 
-  try {
-    // Process task based on type
-    switch (task.type) {
-      case 'process_message': {
-        // Initial message processing
-        const { message } = task.payload as { userId: UserId; message: string };
-        
-        if (!newAgent.config.llmClient) {
-          // No LLM configured - create error response task
-          const responseTask: Task = {
+  /**
+   * Process the next task in the queue
+   */
+  async processNextTask(): Promise<this> {
+    const [task, newQueue] = QueueOps.dequeue(this.queue);
+    
+    if (!task) {
+      return this;
+    }
+
+    this.queue = newQueue;
+
+    try {
+      // Process task based on type
+      switch (task.type) {
+        case 'process_message': {
+          // Initial message processing
+          const { message } = task.payload as { userId: UserId; message: string };
+          
+          if (!this.config.llmClient) {
+            // No LLM configured - create error response task
+            const responseTask: Task = {
+              id: generateId(),
+              conversationId: task.conversationId,
+              type: 'return_response',
+              payload: { response: '[LLM not configured]' },
+              createdAt: new Date(),
+              onComplete: task.onComplete,
+            };
+            this.queue = QueueOps.enqueue(this.queue, responseTask);
+            break;
+          }
+          
+          // Generate prompt and create LLM request task
+          const prompt = createObliquePrompt(message);
+          const llmRequestTask: Task = {
             id: generateId(),
             conversationId: task.conversationId,
-            type: 'return_response',
-            payload: { response: '[LLM not configured]' },
+            type: 'send_llm_request',
+            payload: { prompt, temperature: 0.8 },
             createdAt: new Date(),
             onComplete: task.onComplete,
           };
-          newAgent = {
-            ...newAgent,
-            queue: QueueOps.enqueue(newAgent.queue, responseTask),
-          };
-          break;
-        }
-        
-        // Generate prompt and create LLM request task
-        const prompt = createObliquePrompt(message);
-        const llmRequestTask: Task = {
-          id: generateId(),
-          conversationId: task.conversationId,
-          type: 'send_llm_request',
-          payload: { prompt, temperature: 0.8 },
-          createdAt: new Date(),
-          onComplete: task.onComplete,
-        };
-        
-        // Add to pending map and initiate async LLM call
-        newAgent = {
-          ...newAgent,
-          queue: QueueOps.enqueue(newAgent.queue, llmRequestTask),
-          pendingMap: PendingOps.addPending(newAgent.pendingMap, {
+          
+          // Add to pending map and queue
+          this.queue = QueueOps.enqueue(this.queue, llmRequestTask);
+          this.pendingMap = PendingOps.addPending(this.pendingMap, {
             id: llmRequestTask.id,
             conversationId: llmRequestTask.conversationId,
             taskType: llmRequestTask.type,
             createdAt: llmRequestTask.createdAt,
             timeoutAt: new Date(Date.now() + 30000), // 30 second timeout
-          }),
-        };
-        break;
-      }
-      
-      case 'send_llm_request': {
-        // Execute LLM request
-        const { prompt, temperature } = task.payload as { prompt: string; temperature?: number };
-        
-        if (!newAgent.config.llmClient) {
-          // Remove from pending
-          newAgent = {
-            ...newAgent,
-            pendingMap: PendingOps.removePending(newAgent.pendingMap, task.id),
-          };
+          });
           break;
         }
         
-        const llmRequest: LLMRequest = { prompt, temperature };
-        
-        try {
-          const response = await newAgent.config.llmClient.generateResponse(llmRequest);
+        case 'send_llm_request': {
+          // Execute LLM request
+          const { prompt, temperature } = task.payload as { prompt: string; temperature?: number };
           
-          // Remove from pending map
-          newAgent = {
-            ...newAgent,
-            pendingMap: PendingOps.removePending(newAgent.pendingMap, task.id),
-          };
+          if (!this.config.llmClient) {
+            // Remove from pending
+            this.pendingMap = PendingOps.removePending(this.pendingMap, task.id);
+            break;
+          }
           
-          // Create response task
-          const responseTask: Task = {
-            id: generateId(),
-            conversationId: task.conversationId,
-            type: 'return_response',
-            payload: { response: response.content },
-            createdAt: new Date(),
-            onComplete: task.onComplete,
-          };
+          const llmRequest: LLMRequest = { prompt, temperature };
           
-          newAgent = {
-            ...newAgent,
-            queue: QueueOps.enqueue(newAgent.queue, responseTask),
-          };
-        } catch (error) {
-          // Remove from pending on error
-          newAgent = {
-            ...newAgent,
-            pendingMap: PendingOps.removePending(newAgent.pendingMap, task.id),
-          };
-          
-          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-          const errorTask: Task = {
-            id: generateId(),
-            conversationId: task.conversationId,
-            type: 'return_response',
-            payload: { response: `[Error: ${errorMsg}]` },
-            createdAt: new Date(),
-            onComplete: task.onComplete,
-          };
-          
-          newAgent = {
-            ...newAgent,
-            queue: QueueOps.enqueue(newAgent.queue, errorTask),
-          };
+          try {
+            const response = await this.config.llmClient.generateResponse(llmRequest);
+            
+            // Remove from pending map
+            this.pendingMap = PendingOps.removePending(this.pendingMap, task.id);
+            
+            // Create response task
+            const responseTask: Task = {
+              id: generateId(),
+              conversationId: task.conversationId,
+              type: 'return_response',
+              payload: { response: response.content },
+              createdAt: new Date(),
+              onComplete: task.onComplete,
+            };
+            
+            this.queue = QueueOps.enqueue(this.queue, responseTask);
+          } catch (error) {
+            // Remove from pending on error
+            this.pendingMap = PendingOps.removePending(this.pendingMap, task.id);
+            
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            const errorTask: Task = {
+              id: generateId(),
+              conversationId: task.conversationId,
+              type: 'return_response',
+              payload: { response: `[Error: ${errorMsg}]` },
+              createdAt: new Date(),
+              onComplete: task.onComplete,
+            };
+            
+            this.queue = QueueOps.enqueue(this.queue, errorTask);
+          }
+          break;
         }
-        break;
-      }
-      
-      case 'return_response': {
-        // Final step - call completion callback if provided
-        const { response } = task.payload as { response: string };
         
-        if (task.onComplete) {
-          task.onComplete(response);
+        case 'return_response': {
+          // Final step - call completion callback if provided
+          const { response } = task.payload as { response: string };
+          
+          if (task.onComplete) {
+            task.onComplete(response);
+          }
+          break;
         }
-        break;
+        
+        case 'send_bluesky_post': {
+          // Handle Bluesky posting (future implementation)
+          console.log('Bluesky post task:', task.payload);
+          break;
+        }
+        
+        default:
+          console.warn(`Unknown task type: ${task.type}`);
       }
-      
-      case 'send_bluesky_post': {
-        // Handle Bluesky posting (future implementation)
-        console.log('Bluesky post task:', task.payload);
-        break;
+
+      // Save state if auto-save is enabled
+      if (this.config.autoSave) {
+        await this.config.storage.save({
+          queue: this.queue,
+          pendingMap: this.pendingMap,
+        });
       }
-      
-      default:
-        console.warn(`Unknown task type: ${task.type}`);
+
+    } catch (error) {
+      console.error(`Error processing task ${task.id}:`, error);
     }
 
-    // Save state if auto-save is enabled
-    if (newAgent.config.autoSave) {
-      await newAgent.config.storage.save({
-        queue: newAgent.queue,
-        pendingMap: newAgent.pendingMap,
-      });
+    return this;
+  }
+
+  /**
+   * Process all tasks in the queue
+   */
+  async processAllTasks(): Promise<this> {
+    // Process all tasks currently in queue
+    while (!QueueOps.isEmpty(this.queue)) {
+      await this.processNextTask();
     }
-
-  } catch (error) {
-    console.error(`Error processing task ${task.id}:`, error);
-  }
-
-  return newAgent;
-};
-
-export const processAllTasks = async (agent: Agent): Promise<Agent> => {
-  let currentAgent = agent;
-  
-  // Process all tasks currently in queue
-  while (!QueueOps.isEmpty(currentAgent.queue)) {
-    currentAgent = await processNextTask(currentAgent);
-  }
-  
-  return currentAgent;
-};
-
-export const processMessage = (
-  agent: Agent,
-  userId: UserId,
-  message: string,
-  onComplete?: (result: unknown) => void
-): [ConversationId, Agent] => {
-  // Generate unique conversation ID
-  const conversationId = generateConversationId();
-  
-  // Create initial task for this conversation
-  const task: Task = {
-    id: generateId(),
-    conversationId,
-    type: 'process_message',
-    payload: { userId, message },
-    createdAt: new Date(),
-    onComplete,
-  };
-  
-  // Add task to queue
-  const newAgent = {
-    ...agent,
-    queue: QueueOps.enqueue(agent.queue, task),
-  };
-  
-  return [conversationId, newAgent];
-};
-
-export const processMessageAndWait = async (
-  agent: Agent,
-  userId: UserId,
-  message: string
-): Promise<[string, Agent]> => {
-  return new Promise((resolve) => {
-    // Create message with completion callback
-    const [, agentWithTask] = processMessage(agent, userId, message, (result) => {
-      resolve([result as string, agentWithTask]);
-    });
     
-    // Process all tasks asynchronously
-    processAllTasks(agentWithTask).then((finalAgent) => {
-      // If callback wasn't called, resolve with error
-      resolve(['[No response received]', finalAgent]);
+    return this;
+  }
+
+  /**
+   * Process a message and add it to the queue
+   */
+  processMessage(
+    userId: UserId,
+    message: string,
+    onComplete?: (result: unknown) => void
+  ): ConversationId {
+    // Generate unique conversation ID
+    const conversationId = generateConversationId();
+    
+    // Create initial task for this conversation
+    const task: Task = {
+      id: generateId(),
+      conversationId,
+      type: 'process_message',
+      payload: { userId, message },
+      createdAt: new Date(),
+      onComplete,
+    };
+    
+    // Add task to queue
+    this.queue = QueueOps.enqueue(this.queue, task);
+    
+    return conversationId;
+  }
+
+  /**
+   * Process a message and wait for the response
+   */
+  async processMessageAndWait(userId: UserId, message: string): Promise<string> {
+    return new Promise((resolve) => {
+      // Create message with completion callback
+      this.processMessage(userId, message, (result) => {
+        resolve(result as string);
+      });
+      
+      // Process all tasks asynchronously
+      this.processAllTasks().then(() => {
+        // If callback wasn't called, resolve with error
+        resolve('[No response received]');
+      });
     });
-  });
-};
+  }
 
-export const getAgentStatus = (agent: Agent): {
-  queueSize: number;
-  pendingTasks: number;
-} => ({
-  queueSize: QueueOps.size(agent.queue),
-  pendingTasks: PendingOps.size(agent.pendingMap),
-});
-
+  /**
+   * Get current agent status
+   */
+  getStatus(): { queueSize: number; pendingTasks: number } {
+    return {
+      queueSize: QueueOps.size(this.queue),
+      pendingTasks: PendingOps.size(this.pendingMap),
+    };
+  }
+}

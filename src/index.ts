@@ -4,6 +4,10 @@ import { createMemoryStorage } from './storage/memory-storage.js';
 import { createOpenRouterClient } from './hooks/llm/index.js';
 import type { Agent } from './core/agent.js';
 
+// jQuery is loaded via CDN in index.html
+// Note: Run 'npm install' to get jQuery type definitions from @types/jquery
+declare const $: any;
+
 interface Config {
   openrouter?: {
     apiKey?: string;
@@ -16,41 +20,35 @@ let agent: Agent;
 let config: Config = {};
 const userId = 'browser-user';
 
-// DOM elements
-const chatMessages = document.getElementById('chat-messages') as HTMLDivElement;
-const messageInput = document.getElementById('message-input') as HTMLInputElement;
-const sendButton = document.getElementById('send-button') as HTMLButtonElement;
-const statusDisplay = document.getElementById('status') as HTMLDivElement;
-const apiKeyInput = document.getElementById('api-key') as HTMLInputElement;
-const modelInput = document.getElementById('model') as HTMLInputElement;
-const configureButton = document.getElementById('configure-button') as HTMLButtonElement;
-const configPanel = document.getElementById('config-panel') as HTMLDivElement;
-
 const addMessage = (text: string, sender: 'user' | 'oblique' | 'system') => {
-  const messageDiv = document.createElement('div');
-  messageDiv.className = `message ${sender}-message`;
+  const senderLabel = sender === 'user' ? 'You' : sender === 'oblique' ? 'Oblique' : 'System';
   
-  const label = document.createElement('span');
-  label.className = 'message-label';
-  label.textContent = sender === 'user' ? 'You' : sender === 'oblique' ? 'Oblique' : 'System';
+  const $messageDiv = $('<div>')
+    .addClass('message')
+    .addClass(`${sender}-message`);
   
-  const content = document.createElement('span');
-  content.className = 'message-content';
-  content.textContent = text;
+  const $label = $('<span>')
+    .addClass('message-label')
+    .text(senderLabel);
   
-  messageDiv.appendChild(label);
-  messageDiv.appendChild(content);
-  chatMessages.appendChild(messageDiv);
+  const $content = $('<span>')
+    .addClass('message-content')
+    .text(text);
+  
+  $messageDiv.append($label).append($content);
+  $('#chat-messages').append($messageDiv);
+  
+  const chatMessages = $('#chat-messages')[0];
   chatMessages.scrollTop = chatMessages.scrollHeight;
 };
 
 const updateStatus = () => {
   if (!agent) {
-    statusDisplay.textContent = 'Not initialized';
+    $('#status').text('Not initialized');
     return;
   }
   const status = getAgentStatus(agent);
-  statusDisplay.textContent = `Queue: ${status.queueSize} | Pending: ${status.pendingTasks}`;
+  $('#status').text(`Queue: ${status.queueSize} | Pending: ${status.pendingTasks}`);
 };
 
 const loadConfig = async (): Promise<Config> => {
@@ -99,12 +97,13 @@ const initializeAgent = async () => {
 };
 
 const handleSendMessage = async () => {
-  const message = messageInput.value.trim();
+  const $messageInput = $('#message-input');
+  const message = ($messageInput.val() as string).trim();
   if (!message) return;
 
-  messageInput.value = '';
-  messageInput.disabled = true;
-  sendButton.disabled = true;
+  $messageInput.val('');
+  $messageInput.prop('disabled', true);
+  $('#send-button').prop('disabled', true);
 
   addMessage(message, 'user');
 
@@ -118,14 +117,14 @@ const handleSendMessage = async () => {
     addMessage(`Error: ${errorMsg}`, 'system');
   }
 
-  messageInput.disabled = false;
-  sendButton.disabled = false;
-  messageInput.focus();
+  $messageInput.prop('disabled', false);
+  $('#send-button').prop('disabled', false);
+  $messageInput.focus();
 };
 
 const handleConfigure = () => {
-  const apiKey = apiKeyInput.value.trim();
-  const model = modelInput.value.trim() || 'anthropic/claude-3.5-haiku';
+  const apiKey = ($('#api-key').val() as string).trim();
+  const model = ($('#model').val() as string).trim() || 'anthropic/claude-3.5-haiku';
 
   if (apiKey) {
     localStorage.setItem('openrouter_api_key', apiKey);
@@ -135,35 +134,44 @@ const handleConfigure = () => {
   }
 };
 
-// Event listeners
-sendButton.addEventListener('click', handleSendMessage);
-messageInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    handleSendMessage();
-  }
-});
-
-configureButton.addEventListener('click', () => {
-  configPanel.classList.toggle('hidden');
-});
-
-document.getElementById('save-config')?.addEventListener('click', handleConfigure);
-
 // Load configuration and initialize
 const startup = async () => {
   config = await loadConfig();
   
   // Load saved config into inputs (prioritize config.json over localStorage)
-  apiKeyInput.value = config.openrouter?.apiKey 
+  $('#api-key').val(
+    config.openrouter?.apiKey 
     || localStorage.getItem('openrouter_api_key') 
-    || '';
-  modelInput.value = config.openrouter?.model 
+    || ''
+  );
+  $('#model').val(
+    config.openrouter?.model 
     || localStorage.getItem('openrouter_model') 
-    || 'anthropic/claude-3.5-haiku';
+    || 'anthropic/claude-3.5-haiku'
+  );
   
   await initializeAgent();
 };
 
-startup();
+// jQuery document ready
+$(document).ready(() => {
+  // Event listeners
+  $('#send-button').on('click', handleSendMessage);
+  
+  $('#message-input').on('keypress', (e: any) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  });
+
+  $('#configure-button').on('click', () => {
+    $('#config-panel').toggleClass('hidden');
+  });
+
+  $('#save-config').on('click', handleConfigure);
+
+  // Initialize
+  startup();
+});
 

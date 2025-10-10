@@ -1,9 +1,9 @@
 // Abstract storage interface for persistence
-import type { Queue } from '../core/queue.js';
+import type { Task } from '../types/index.js';
 import type { PendingMap } from '../core/pending-map.js';
 
 export interface AgentState {
-  queue: Queue;
+  queue: ReadonlyArray<Task>;
   pendingMap: PendingMap;
 }
 

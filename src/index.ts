@@ -1,5 +1,5 @@
 // Browser entry point
-import { AgentWorker } from './core/agent.js';
+import { Agent } from './core/agent.js';
 import { createMemoryStorage } from './storage/memory-storage.js';
 import { createOpenRouterClient } from './hooks/llm/index.js';
 
@@ -15,7 +15,7 @@ interface Config {
   };
 }
 
-let agent: AgentWorker;
+let agent: Agent;
 let config: Config = {};
 const userId = 'browser-user';
 
@@ -92,7 +92,7 @@ const initializeAgent = async () => {
     baseUrl,
   }) : undefined;
 
-  agent = await AgentWorker.create({
+  agent = await Agent.create({
     storage,
     llmClient,
     autoSave: true,

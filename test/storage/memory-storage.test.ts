@@ -1,17 +1,14 @@
 import { describe, it, expect } from '@jest/globals';
 import { createMemoryStorage } from '../../src/storage/memory-storage.js';
-import { createQueue } from '../../src/core/queue.js';
 import { createPendingMap } from '../../src/core/pending-map.js';
-import { createUserStackMap } from '../../src/core/user-stack-map.js';
 
 describe('MemoryStorage', () => {
   describe('save and load', () => {
     it('should save and load state', async () => {
       const storage = createMemoryStorage();
       const state = {
-        queue: createQueue(),
+        queue: [],
         pendingMap: createPendingMap(),
-        userStackMap: createUserStackMap(),
       };
 
       await storage.save(state);
@@ -31,15 +28,13 @@ describe('MemoryStorage', () => {
       const storage = createMemoryStorage();
       
       const state1 = {
-        queue: createQueue(),
+        queue: [],
         pendingMap: createPendingMap(),
-        userStackMap: createUserStackMap(),
       };
 
       const state2 = {
-        queue: createQueue(),
+        queue: [],
         pendingMap: createPendingMap(),
-        userStackMap: createUserStackMap(),
       };
 
       await storage.save(state1);
@@ -54,9 +49,8 @@ describe('MemoryStorage', () => {
     it('should clear saved state', async () => {
       const storage = createMemoryStorage();
       const state = {
-        queue: createQueue(),
+        queue: [],
         pendingMap: createPendingMap(),
-        userStackMap: createUserStackMap(),
       };
 
       await storage.save(state);

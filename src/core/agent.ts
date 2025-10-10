@@ -1,12 +1,11 @@
 // Core agent orchestrator
 import type { Task, UserId, ConversationId, LLMRequest } from '../types/index.js';
-import type { Queue } from './queue.js';
 import type { PendingMap } from './pending-map.js';
 import type { Storage } from '../storage/storage-interface.js';
 import type { LLMClient } from '../hooks/llm/llm-client.js';
 import type { BlueskyClient } from '../hooks/bluesky/bluesky-client.js';
 
-import * as QueueOps from './queue.js';
+import { Queue } from './queue.js';
 import * as PendingOps from './pending-map.js';
 import { generateId, generateConversationId } from '../utils/index.js';
 import { createObliquePrompt } from '../prompts/oblique.js';
@@ -19,10 +18,10 @@ export interface AgentConfig {
 }
 
 /**
- * Agent worker class that manages task processing and orchestration.
+ * Agent class that manages task processing and orchestration.
  * Uses functional data structures internally for queue and pending map.
  */
-export class AgentWorker {
+export class Agent {
   private queue: Queue;
   private pendingMap: PendingMap;
   private config: AgentConfig;
@@ -34,18 +33,22 @@ export class AgentWorker {
   }
 
   /**
-   * Create a new AgentWorker instance
+   * Create a new Agent instance
    */
-  static async create(config: AgentConfig): Promise<AgentWorker> {
+  static async create(config: AgentConfig): Promise<Agent> {
     // Try to load existing state
     const savedState = await config.storage.load();
     
     if (savedState) {
-      return new AgentWorker(savedState.queue, savedState.pendingMap, config);
+      return new Agent(
+        Queue.create(savedState.queue),
+        savedState.pendingMap,
+        config
+      );
     }
 
-    return new AgentWorker(
-      QueueOps.createQueue(),
+    return new Agent(
+      Queue.create(),
       PendingOps.createPendingMap(),
       config
     );
@@ -55,7 +58,7 @@ export class AgentWorker {
    * Add a task to the queue
    */
   addTask(task: Task): this {
-    this.queue = QueueOps.enqueue(this.queue, task);
+    this.queue.enqueue(task);
     return this;
   }
 
@@ -63,13 +66,11 @@ export class AgentWorker {
    * Process the next task in the queue
    */
   async processNextTask(): Promise<this> {
-    const [task, newQueue] = QueueOps.dequeue(this.queue);
+    const task = this.queue.dequeue();
     
     if (!task) {
       return this;
     }
-
-    this.queue = newQueue;
 
     try {
       // Process task based on type
@@ -88,7 +89,7 @@ export class AgentWorker {
               createdAt: new Date(),
               onComplete: task.onComplete,
             };
-            this.queue = QueueOps.enqueue(this.queue, responseTask);
+            this.queue.enqueue(responseTask);
             break;
           }
           
@@ -104,7 +105,7 @@ export class AgentWorker {
           };
           
           // Add to pending map and queue
-          this.queue = QueueOps.enqueue(this.queue, llmRequestTask);
+          this.queue.enqueue(llmRequestTask);
           this.pendingMap = PendingOps.addPending(this.pendingMap, {
             id: llmRequestTask.id,
             conversationId: llmRequestTask.conversationId,
@@ -143,7 +144,7 @@ export class AgentWorker {
               onComplete: task.onComplete,
             };
             
-            this.queue = QueueOps.enqueue(this.queue, responseTask);
+            this.queue.enqueue(responseTask);
           } catch (error) {
             // Remove from pending on error
             this.pendingMap = PendingOps.removePending(this.pendingMap, task.id);
@@ -158,7 +159,7 @@ export class AgentWorker {
               onComplete: task.onComplete,
             };
             
-            this.queue = QueueOps.enqueue(this.queue, errorTask);
+            this.queue.enqueue(errorTask);
           }
           break;
         }
@@ -186,7 +187,7 @@ export class AgentWorker {
       // Save state if auto-save is enabled
       if (this.config.autoSave) {
         await this.config.storage.save({
-          queue: this.queue,
+          queue: this.queue.getTasks(),
           pendingMap: this.pendingMap,
         });
       }
@@ -203,7 +204,7 @@ export class AgentWorker {
    */
   async processAllTasks(): Promise<this> {
     // Process all tasks currently in queue
-    while (!QueueOps.isEmpty(this.queue)) {
+    while (!this.queue.isEmpty()) {
       await this.processNextTask();
     }
     
@@ -232,7 +233,7 @@ export class AgentWorker {
     };
     
     // Add task to queue
-    this.queue = QueueOps.enqueue(this.queue, task);
+    this.queue.enqueue(task);
     
     return conversationId;
   }
@@ -260,7 +261,7 @@ export class AgentWorker {
    */
   getStatus(): { queueSize: number; pendingTasks: number } {
     return {
-      queueSize: QueueOps.size(this.queue),
+      queueSize: this.queue.size(),
       pendingTasks: PendingOps.size(this.pendingMap),
     };
   }

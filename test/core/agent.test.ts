@@ -1,12 +1,12 @@
-import { describe, it, expect, jest } from '@jest/globals';
-import { AgentWorker } from '../../src/core/agent.js';
+import { describe, it, expect } from '@jest/globals';
+import { Agent } from '../../src/core/agent.js';
 import { createMemoryStorage } from '../../src/storage/memory-storage.js';
 import type { LLMClient } from '../../src/hooks/llm/llm-client.js';
 import type { Task } from '../../src/types/index.js';
 
-describe('AgentWorker', () => {
+describe('Agent', () => {
   const createMockLLMClient = (): LLMClient => ({
-    async generateResponse(request) {
+    async generateResponse(_request) {
       return {
         content: 'Oblique strategy: Use an old idea.',
         model: 'test-model',
@@ -22,9 +22,9 @@ describe('AgentWorker', () => {
 
   it('should create an agent using static create method', async () => {
     const storage = createMemoryStorage();
-    const agent = await AgentWorker.create({ storage });
+    const agent = await Agent.create({ storage });
 
-    expect(agent).toBeInstanceOf(AgentWorker);
+    expect(agent).toBeInstanceOf(Agent);
     expect(agent.getStatus().queueSize).toBe(0);
     expect(agent.getStatus().pendingTasks).toBe(0);
   });
@@ -32,7 +32,7 @@ describe('AgentWorker', () => {
   it('should process messages using class methods', async () => {
     const storage = createMemoryStorage();
     const llmClient = createMockLLMClient();
-    const agent = await AgentWorker.create({ storage, llmClient });
+    const agent = await Agent.create({ storage, llmClient });
 
     const conversationId = agent.processMessage('user-1', 'Hello');
 
@@ -43,7 +43,7 @@ describe('AgentWorker', () => {
   it('should support method chaining', async () => {
     const storage = createMemoryStorage();
     const llmClient = createMockLLMClient();
-    const agent = await AgentWorker.create({ storage, llmClient });
+    const agent = await Agent.create({ storage, llmClient });
 
     const task: Task = {
       id: 'task-1',
@@ -61,7 +61,7 @@ describe('AgentWorker', () => {
   it('should process message and wait for response', async () => {
     const storage = createMemoryStorage();
     const llmClient = createMockLLMClient();
-    const agent = await AgentWorker.create({ storage, llmClient });
+    const agent = await Agent.create({ storage, llmClient });
 
     const response = await agent.processMessageAndWait('user-1', 'Give me advice');
 
@@ -71,7 +71,7 @@ describe('AgentWorker', () => {
 
   it('should return error message when LLM not configured', async () => {
     const storage = createMemoryStorage();
-    const agent = await AgentWorker.create({ storage });
+    const agent = await Agent.create({ storage });
 
     const response = await agent.processMessageAndWait('user-1', 'Hello');
 
@@ -87,7 +87,7 @@ describe('AgentWorker', () => {
       isConfigured: () => true,
     };
     
-    const agent = await AgentWorker.create({ storage, llmClient: errorClient });
+    const agent = await Agent.create({ storage, llmClient: errorClient });
     const response = await agent.processMessageAndWait('user-1', 'Hello');
 
     expect(response).toContain('Error');

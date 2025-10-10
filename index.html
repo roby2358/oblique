@@ -12,52 +12,58 @@
     <header>
       <h1>🔮 Oblique</h1>
       <p class="subtitle">The Tangential Bot</p>
-      <button id="configure-button" class="config-toggle">⚙️ Configure</button>
     </header>
 
-    <div id="config-panel" class="config-panel hidden">
-      <h3>OpenRouter Configuration</h3>
-      <div class="form-group">
-        <label for="api-key">API Key:</label>
-        <input 
-          type="password" 
-          id="api-key" 
-          placeholder="sk-or-v1-..." 
-          autocomplete="off"
-        >
-      </div>
-      <div class="form-group">
-        <label for="model">Model:</label>
-        <input 
-          type="text" 
-          id="model" 
-          placeholder="anthropic/claude-3.5-haiku"
-          value="anthropic/claude-3.5-haiku"
-        >
-      </div>
-      <button id="save-config" class="btn-primary">Save Configuration</button>
-      <p class="config-note">
-        Get your API key at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>
-      </p>
-    </div>
-
     <nav class="nav-bar">
+      <div class="nav-item">
+        <a href="#configure">Configure</a>
+      </div>
       <div class="nav-item active">
         <a href="#chat">Chat</a>
       </div>
     </nav>
 
     <main>
-      <div id="chat-messages" class="chat-messages"></div>
-      
-      <div class="input-area">
-        <input 
-          type="text" 
-          id="message-input" 
-          placeholder="Type your message..."
-          autocomplete="off"
-        >
-        <button id="send-button" class="btn-send">Send</button>
+      <div id="configure-panel" class="panel hidden">
+        <div class="panel-content">
+          <h3>OpenRouter Configuration</h3>
+          <div class="form-group">
+            <label for="api-key">API Key:</label>
+            <input 
+              type="password" 
+              id="api-key" 
+              placeholder="sk-or-v1-..." 
+              autocomplete="off"
+            >
+          </div>
+          <div class="form-group">
+            <label for="model">Model:</label>
+            <input 
+              type="text" 
+              id="model" 
+              placeholder="anthropic/claude-3.5-haiku"
+              value="anthropic/claude-3.5-haiku"
+            >
+          </div>
+          <button id="save-config" class="btn-primary">Save Configuration</button>
+          <p class="config-note">
+            Get your API key at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>
+          </p>
+        </div>
+      </div>
+
+      <div id="chat-panel" class="panel">
+        <div id="chat-messages" class="chat-messages"></div>
+        
+        <div class="input-area">
+          <input 
+            type="text" 
+            id="message-input" 
+            placeholder="Type your message..."
+            autocomplete="off"
+          >
+          <button id="send-button" class="btn-send">Send</button>
+        </div>
       </div>
     </main>
 

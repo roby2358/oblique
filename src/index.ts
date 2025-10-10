@@ -99,7 +99,7 @@ const initializeAgent = async () => {
   });
 
   if (!llmClient) {
-    addMessage('⚠️ No API key configured. Click "Configure" to add your OpenRouter API key.', 'system');
+    addMessage('⚠️ No API key configured. Go to "Configure" to add your OpenRouter API key.', 'system');
   } else {
     addMessage('🔮 Oblique initialized. Type a message to receive an oblique response.', 'system');
   }
@@ -151,6 +151,18 @@ const startup = async () => {
   await initializeAgent();
 };
 
+const switchToPanel = (panelId: string) => {
+  // Hide all panels
+  $('.panel').addClass('hidden');
+  // Remove active from all nav items
+  $('.nav-item').removeClass('active');
+  
+  // Show selected panel
+  $(`#${panelId}-panel`).removeClass('hidden');
+  // Add active to corresponding nav item
+  $(`.nav-item a[href="#${panelId}"]`).parent().addClass('active');
+};
+
 // jQuery document ready
 $(document).ready(() => {
   // Event listeners
@@ -163,8 +175,12 @@ $(document).ready(() => {
     }
   });
 
-  $('#configure-button').on('click', () => {
-    $('#config-panel').toggleClass('hidden');
+  // Navigation handlers
+  $('.nav-item a').on('click', (e: any) => {
+    e.preventDefault();
+    const href = $(e.currentTarget).attr('href');
+    const panelId = href.substring(1); // Remove the #
+    switchToPanel(panelId);
   });
 
   $('#save-config').on('click', handleConfigure);

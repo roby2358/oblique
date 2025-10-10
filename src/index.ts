@@ -2,6 +2,8 @@
 import { Agent } from './core/agent.js';
 import { createMemoryStorage } from './storage/memory-storage.js';
 import { createOpenRouterClient } from './hooks/llm/index.js';
+import { createBlueskyClient, type BlueskyClient } from './hooks/bluesky/bluesky-client.js';
+import type { BlueskyMessage } from './types/index.js';
 
 // jQuery is loaded via CDN in index.html
 // Note: Run 'npm install' to get jQuery type definitions from @types/jquery
@@ -13,9 +15,14 @@ interface Config {
     model?: string;
     baseUrl?: string;
   };
+  bluesky?: {
+    handle?: string;
+    password?: string;
+  };
 }
 
 let agent: Agent;
+let blueskyClient: BlueskyClient | undefined;
 let config: Config = {};
 const userId = 'browser-user';
 
@@ -98,6 +105,16 @@ const initializeAgent = async () => {
     autoSave: true,
   });
 
+  // Initialize Bluesky client if configured
+  const blueskyHandle = config.bluesky?.handle || '';
+  const blueskyPassword = config.bluesky?.password || '';
+  if (blueskyHandle && blueskyPassword) {
+    blueskyClient = createBlueskyClient({
+      handle: blueskyHandle,
+      appPassword: blueskyPassword,
+    });
+  }
+
   if (!llmClient) {
     addMessage('⚠️ No API key configured. Go to "Configure" to add your OpenRouter API key.', 'system');
   } else {
@@ -130,6 +147,55 @@ const handleSendMessage = async () => {
   $messageInput.prop('disabled', false);
   $('#send-button').prop('disabled', false);
   $messageInput.focus();
+};
+
+const handleCheckBluesky = async () => {
+  if (!blueskyClient) {
+    $('#bluesky-posts').html('<p class="error">Bluesky not configured. Please add credentials to config.json</p>');
+    return;
+  }
+
+  $('#check-bluesky').prop('disabled', true).text('Checking...');
+  $('#bluesky-posts').html('<p>Loading posts...</p>');
+
+  try {
+    // Authenticate if not already
+    if (!blueskyClient.isAuthenticated()) {
+      await blueskyClient.authenticate();
+    }
+
+    // Get the user's posts
+    const handle = config.bluesky?.handle || '';
+    const posts = await blueskyClient.getAuthorPosts(handle, 10);
+
+    // Display posts
+    if (posts.length === 0) {
+      $('#bluesky-posts').html('<p>No posts found.</p>');
+    } else {
+      const postsHtml = posts.map((post: BlueskyMessage) => {
+        const date = new Date(post.createdAt).toLocaleString();
+        return `
+          <div class="bluesky-post">
+            <div class="post-author">@${post.author}</div>
+            <div class="post-text">${escapeHtml(post.text)}</div>
+            <div class="post-date">${date}</div>
+          </div>
+        `;
+      }).join('');
+      $('#bluesky-posts').html(postsHtml);
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    $('#bluesky-posts').html(`<p class="error">Error: ${errorMsg}</p>`);
+  }
+
+  $('#check-bluesky').prop('disabled', false).text('Check');
+};
+
+const escapeHtml = (text: string): string => {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 };
 
 // Load configuration and initialize
@@ -184,6 +250,8 @@ $(document).ready(() => {
   });
 
   $('#save-config').on('click', handleConfigure);
+
+  $('#check-bluesky').on('click', handleCheckBluesky);
 
   // Initialize
   startup();

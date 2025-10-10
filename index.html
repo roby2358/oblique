@@ -21,6 +21,9 @@
       <div class="nav-item active">
         <a href="#chat">Chat</a>
       </div>
+      <div class="nav-item">
+        <a href="#bluesky">Bluesky</a>
+      </div>
     </nav>
 
     <main>
@@ -63,6 +66,14 @@
             autocomplete="off"
           >
           <button id="send-button" class="btn-send">Send</button>
+        </div>
+      </div>
+
+      <div id="bluesky-panel" class="panel hidden">
+        <div class="panel-content">
+          <h3>Bluesky</h3>
+          <button id="check-bluesky" class="btn-primary">Check</button>
+          <div id="bluesky-posts" class="bluesky-posts"></div>
         </div>
       </div>
     </main>

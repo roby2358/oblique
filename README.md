@@ -3,13 +3,13 @@
 A bot that answers only obliquely using LLM APIs. Built in TypeScript as an agent combining a queue, pending map, and user action stacks.
 
 **Core Components:**
-- LLM hooks (OpenRouter, OpenAI, Anthropic)
-- Bluesky integration
+- LLM hooks (OpenRouter)
+- Bluesky integration (future)
 - Task queue for sequential processing
 - Pending map for async operations
 - User action stacks for conversation context
 
-**Status:** Browser-based web interface with CLI option. In-memory storage with hooks for persistence.
+**Status:** Browser-based web interface. In-memory storage with hooks for persistence.
 
 ## Getting Started
 
@@ -19,26 +19,24 @@ A bot that answers only obliquely using LLM APIs. Built in TypeScript as an agen
 npm install
 ```
 
-### Browser Interface (Default)
+### Development Mode
 
-The browser interface provides a modern web UI for interacting with Oblique.
-
-**Development mode:**
+Start the Vite dev server:
 ```cmd
 npm run dev
 ```
 
-This will start a Vite dev server (usually at http://localhost:3000) and open your browser.
+This will start a development server (usually at http://localhost:5173).
 
-**Configuration:**
+### Configuration
 
-Option 1 - Use `config.json` (recommended):
+**Option 1 - Use `config.json` (recommended):**
 1. Copy `config-example.json` to `config.json`
 2. Add your OpenRouter API key to `config.json`
 3. Optionally change the model (default: `anthropic/claude-3.5-haiku`)
 4. The app will load this config on startup
 
-Option 2 - Use the UI:
+**Option 2 - Use the UI:**
 - Click the "⚙️ Configure" button in the UI
 - Enter your OpenRouter API key (get one at https://openrouter.ai/keys)
 - Optionally change the model
@@ -47,31 +45,11 @@ Option 2 - Use the UI:
 
 Priority: `config.json` → localStorage → defaults
 
-**Production build:**
+### Production Build
+
 ```cmd
 npm run build
 npm start
-```
-
-### CLI Interface (Optional)
-
-For command-line usage, use the CLI scripts:
-
-**Development mode:**
-```cmd
-npm run dev:cli
-```
-
-**Configuration:**
-1. Copy `.env.example` to `.env` (create manually if needed)
-2. Add your API keys:
-   - For OpenRouter: Set `OPENROUTER_API_KEY` and optionally `OPENROUTER_MODEL`
-   - For Bluesky: Set `BLUESKY_HANDLE` and `BLUESKY_APP_PASSWORD`
-
-**Build and run:**
-```cmd
-npm run build:cli
-npm run start:cli
 ```
 
 ### Testing
@@ -88,26 +66,11 @@ npm run test:watch
 
 ### Usage
 
-**Browser Interface:**
 1. Open the app in your browser
-2. Configure your API key if not already set
+2. Configure your OpenRouter API key if not already set
 3. Type messages in the input box
 4. Receive oblique responses
-5. View agent status at the bottom
-
-**CLI Interface:**
-- Type messages to receive oblique responses
-- Type `/status` to see agent statistics
-- Type `/quit` to exit
-
-Example CLI session:
-```
-You: What is the meaning of life?
-Oblique: A river remembers the mountains it once climbed.
-
-You: /status
-Status: Queue=0, Pending=0, Users=1
-```
+5. View agent status at the bottom of the page
 
 ### Key Design Principles
 - **Functional approach**: Favor pure functions and immutable data structures where possible

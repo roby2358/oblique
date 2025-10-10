@@ -102,8 +102,7 @@ In-memory implementation for development and testing.
 Pluggable LLM client implementations.
 
 #### Supported Providers:
-- **OpenAI** (`openai.ts`) - GPT-4, GPT-3.5
-- **Anthropic** (`anthropic.ts`) - Claude 3.5 Sonnet
+- **OpenRouter** (`openrouter.ts`) - Unified access to multiple LLM providers
 
 #### Interface (`llm-client.ts`):
 ```typescript
@@ -178,24 +177,14 @@ Task Added
 
 ## Configuration
 
-### Environment Variables
+### Configuration File (`config.json`)
 
-```
-# LLM Provider (choose one or both)
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4
-
-ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
-
-# Bluesky
-BLUESKY_HANDLE=user.bsky.social
-BLUESKY_APP_PASSWORD=...
-
-# App Settings
-LOG_LEVEL=info
-MAX_QUEUE_SIZE=100
-REQUEST_TIMEOUT_MS=30000
+```json
+{
+  "openRouterApiKey": "sk-or-v1-...",
+  "openRouterModel": "anthropic/claude-3.5-haiku",
+  "openRouterBaseUrl": "https://openrouter.ai/api/v1/chat/completions"
+}
 ```
 
 ### Agent Configuration
@@ -203,8 +192,10 @@ REQUEST_TIMEOUT_MS=30000
 ```typescript
 const agent = await createAgent({
   storage: createMemoryStorage(),
-  llmClient: createAnthropicClient({ apiKey: '...' }),
-  blueskyClient: createBlueskyClient({ handle: '...', appPassword: '...' }),
+  llmClient: createOpenRouterClient({
+    apiKey: config.openRouterApiKey,
+    model: config.openRouterModel
+  }),
   autoSave: true,
 });
 ```
@@ -273,37 +264,15 @@ interface UserAction {
 }
 ```
 
-## CLI Interface (`src/index.ts`)
+## Browser Interface
 
-Interactive command-line interface for testing and development.
+Web-based interface built with Vite for interacting with Oblique.
 
-### Commands:
-- Regular text → Send message to Oblique
-- `/status` → Show queue/pending/user counts
-- `/quit` → Exit application
-
-### Example Session:
-
-```
-🔮 Oblique - The Tangential Bot
-
-Using Anthropic LLM
-Agent initialized.
-Type your messages and receive oblique responses.
-Commands: /status, /quit
-
-You: What is the weather like?
-
-Oblique: The clouds know secrets they'll never whisper to the sun.
-
-You: /status
-
-Status: Queue=0, Pending=0, Users=1
-
-You: /quit
-
-Goodbye!
-```
+**Key Features:**
+- Modern, responsive UI
+- Configuration via JSON file or UI
+- Real-time agent status display
+- LocalStorage persistence for user preferences
 
 ## Future Enhancements
 
@@ -314,8 +283,8 @@ Goodbye!
 4. **Multiple LLM Strategies** - A/B test different models
 5. **Rate Limiting** - API quota management
 6. **Response Caching** - Reduce API calls
-7. **Web Interface** - Browser-based interaction
-8. **Metrics & Analytics** - Track usage patterns
+7. **Metrics & Analytics** - Track usage patterns
+8. **CLI Interface** - Command-line interaction option
 
 ### Extensibility Points:
 - New LLM providers via `LLMClient` interface

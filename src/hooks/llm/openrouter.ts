@@ -24,8 +24,13 @@ export const createOpenRouterClient = (config: LLMConfig): LLMClient => {
           max_tokens: request.maxTokens ?? config.maxTokens ?? 500,
         }),
       };
+
+      console.log(fetchOptions);
+
       const response = await fetch(config.baseUrl, fetchOptions);
 
+      console.log(response);
+      
       if (!response.ok) {
         const error = await response.text();
         throw new Error(`OpenRouter API error: ${response.status} ${error}`);

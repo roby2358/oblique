@@ -6,15 +6,12 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
-    "build:cli": "tsc --module NodeNext --moduleResolution NodeNext src/cli.ts --outDir dist-cli",
+    "build": "tsc && vite build",
     "dev": "vite",
-    "dev:cli": "tsx src/cli.ts",
     "start": "vite preview",
-    "start:cli": "node dist-cli/cli.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
-    "clean": "rimraf dist dist-cli"
+    "clean": "rimraf dist"
   },
   "keywords": ["bot", "bluesky", "llm", "agent"],
   "author": "",

@@ -10,7 +10,8 @@ export interface BlueskyConfig {
 export interface BlueskyClient {
   authenticate(): Promise<void>;
   post(post: BlueskyPost): Promise<{ uri: string; cid: string }>;
-  getAuthorPosts(handle: string, limit?: number): Promise<BlueskyMessage[]>;
+  getNotifications(limit?: number, unreadOnly?: boolean): Promise<BlueskyMessage[]>;
+  markNotificationsAsSeen(): Promise<void>;
   isConfigured(): boolean;
   isAuthenticated(): boolean;
 }
@@ -44,23 +45,37 @@ export const createBlueskyClient = (config: BlueskyConfig): BlueskyClient => {
       };
     },
 
-    async getAuthorPosts(handle: string, limit: number = 10): Promise<BlueskyMessage[]> {
+    async getNotifications(limit: number = 25, unreadOnly: boolean = true): Promise<BlueskyMessage[]> {
       if (!authenticated) {
         throw new Error('Not authenticated. Call authenticate() first.');
       }
 
-      const response = await agent.getAuthorFeed({
-        actor: handle,
-        limit,
-      });
+      const response = await agent.listNotifications({ limit });
 
-      return response.data.feed.map((item: any) => ({
-        uri: item.post.uri,
-        cid: item.post.cid,
-        author: item.post.author.handle,
-        text: item.post.record.text,
-        createdAt: new Date(item.post.record.createdAt),
+      // Filter for notifications that have associated posts (mentions, replies, quotes, likes, reposts)
+      let notifications = response.data.notifications
+        .filter((notif: any) => notif.record?.text); // Only include notifications with text content
+
+      // Filter for unread only if requested
+      if (unreadOnly) {
+        notifications = notifications.filter((notif: any) => !notif.isRead);
+      }
+
+      return notifications.map((notif: any) => ({
+        uri: notif.uri,
+        cid: notif.cid,
+        author: notif.author.handle,
+        text: notif.record.text,
+        createdAt: new Date(notif.indexedAt),
       }));
+    },
+
+    async markNotificationsAsSeen(): Promise<void> {
+      if (!authenticated) {
+        throw new Error('Not authenticated. Call authenticate() first.');
+      }
+
+      await agent.updateSeenNotifications();
     },
 
     isConfigured(): boolean {

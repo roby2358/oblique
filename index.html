@@ -72,7 +72,13 @@
       <div id="bluesky-panel" class="panel hidden">
         <div class="panel-content">
           <h3>Bluesky</h3>
-          <button id="check-bluesky" class="btn-primary">Check</button>
+          <div class="bluesky-controls">
+            <button id="check-bluesky" class="btn-primary">Check</button>
+            <label class="checkbox-label">
+              <input type="checkbox" id="mark-as-seen" checked>
+              Mark as seen
+            </label>
+          </div>
           <div id="bluesky-posts" class="bluesky-posts"></div>
         </div>
       </div>

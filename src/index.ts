@@ -156,7 +156,7 @@ const handleCheckBluesky = async () => {
   }
 
   $('#check-bluesky').prop('disabled', true).text('Checking...');
-  $('#bluesky-posts').html('<p>Loading posts...</p>');
+  $('#bluesky-posts').html('<p>Loading notifications...</p>');
 
   try {
     // Authenticate if not already
@@ -164,25 +164,30 @@ const handleCheckBluesky = async () => {
       await blueskyClient.authenticate();
     }
 
-    // Get the user's posts
-    const handle = config.bluesky?.handle || '';
-    const posts = await blueskyClient.getAuthorPosts(handle, 10);
+    // Get unread notifications only (unreadOnly = true by default)
+    const notifications = await blueskyClient.getNotifications(25, true);
 
-    // Display posts
-    if (posts.length === 0) {
-      $('#bluesky-posts').html('<p>No posts found.</p>');
+    // Display notifications
+    if (notifications.length === 0) {
+      $('#bluesky-posts').html('<p>No new notifications.</p>');
     } else {
-      const postsHtml = posts.map((post: BlueskyMessage) => {
-        const date = new Date(post.createdAt).toLocaleString();
+      const postsHtml = notifications.map((notif: BlueskyMessage) => {
+        const date = new Date(notif.createdAt).toLocaleString();
         return `
           <div class="bluesky-post">
-            <div class="post-author">@${post.author}</div>
-            <div class="post-text">${escapeHtml(post.text)}</div>
+            <div class="post-author">@${notif.author}</div>
+            <div class="post-text">${escapeHtml(notif.text)}</div>
             <div class="post-date">${date}</div>
           </div>
         `;
       }).join('');
       $('#bluesky-posts').html(postsHtml);
+
+      // Mark as seen if checkbox is checked
+      const markAsSeen = $('#mark-as-seen').prop('checked');
+      if (markAsSeen && notifications.length > 0) {
+        await blueskyClient.markNotificationsAsSeen();
+      }
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';

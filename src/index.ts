@@ -20,6 +20,18 @@ let agent: Agent;
 let config: Config = {};
 const userId = 'browser-user';
 
+const loadConfig = async (): Promise<Config> => {
+  try {
+    const response = await fetch('/config.json');
+    if (response.ok) {
+      return await response.json();
+    }
+  } catch (error) {
+    console.warn('Could not load config.json, using defaults');
+  }
+  return {};
+};
+
 const addMessage = (text: string, sender: 'user' | 'oblique' | 'system') => {
   const senderLabel = sender === 'user' ? 'You' : sender === 'oblique' ? 'Oblique' : 'System';
   
@@ -51,16 +63,16 @@ const updateStatus = () => {
   $('#status').text(`Queue: ${status.queueSize} | Pending: ${status.pendingTasks}`);
 };
 
-const loadConfig = async (): Promise<Config> => {
-  try {
-    const response = await fetch('/config.json');
-    if (response.ok) {
-      return await response.json();
-    }
-  } catch (error) {
-    console.warn('Could not load config.json, using defaults');
+const handleConfigure = () => {
+  const apiKey = ($('#api-key').val() as string).trim();
+  const model = ($('#model').val() as string).trim() || 'anthropic/claude-3.5-haiku';
+
+  if (apiKey) {
+    localStorage.setItem('openrouter_api_key', apiKey);
+    localStorage.setItem('openrouter_model', model);
+    addMessage('✅ Configuration saved. Reinitializing agent...', 'system');
+    initializeAgent();
   }
-  return {};
 };
 
 const initializeAgent = async () => {
@@ -120,18 +132,6 @@ const handleSendMessage = async () => {
   $messageInput.prop('disabled', false);
   $('#send-button').prop('disabled', false);
   $messageInput.focus();
-};
-
-const handleConfigure = () => {
-  const apiKey = ($('#api-key').val() as string).trim();
-  const model = ($('#model').val() as string).trim() || 'anthropic/claude-3.5-haiku';
-
-  if (apiKey) {
-    localStorage.setItem('openrouter_api_key', apiKey);
-    localStorage.setItem('openrouter_model', model);
-    addMessage('✅ Configuration saved. Reinitializing agent...', 'system');
-    initializeAgent();
-  }
 };
 
 // Load configuration and initialize

@@ -42,34 +42,6 @@ export const createAgent = async (config: AgentConfig): Promise<Agent> => {
   };
 };
 
-export const processMessage = (
-  agent: Agent,
-  userId: UserId,
-  message: string,
-  onComplete?: (result: unknown) => void
-): [ConversationId, Agent] => {
-  // Generate unique conversation ID
-  const conversationId = generateConversationId();
-  
-  // Create initial task for this conversation
-  const task: Task = {
-    id: generateId(),
-    conversationId,
-    type: 'process_message',
-    payload: { userId, message },
-    createdAt: new Date(),
-    onComplete,
-  };
-  
-  // Add task to queue
-  const newAgent = {
-    ...agent,
-    queue: QueueOps.enqueue(agent.queue, task),
-  };
-  
-  return [conversationId, newAgent];
-};
-
 export const addTask = (agent: Agent, task: Task): Agent => {
   return {
     ...agent,
@@ -243,6 +215,34 @@ export const processAllTasks = async (agent: Agent): Promise<Agent> => {
   }
   
   return currentAgent;
+};
+
+export const processMessage = (
+  agent: Agent,
+  userId: UserId,
+  message: string,
+  onComplete?: (result: unknown) => void
+): [ConversationId, Agent] => {
+  // Generate unique conversation ID
+  const conversationId = generateConversationId();
+  
+  // Create initial task for this conversation
+  const task: Task = {
+    id: generateId(),
+    conversationId,
+    type: 'process_message',
+    payload: { userId, message },
+    createdAt: new Date(),
+    onComplete,
+  };
+  
+  // Add task to queue
+  const newAgent = {
+    ...agent,
+    queue: QueueOps.enqueue(agent.queue, task),
+  };
+  
+  return [conversationId, newAgent];
 };
 
 export const processMessageAndWait = async (

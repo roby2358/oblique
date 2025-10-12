@@ -14,6 +14,7 @@ describe('Orchestrator', () => {
     status,
     description: `Mock task ${taskId}`,
     work: `Work for ${taskId}`,
+    createdAt: new Date(),
     process: async () => {
       if (processResult) {
         return processResult;
@@ -25,6 +26,8 @@ describe('Orchestrator', () => {
         status: 'succeeded',
         description: `Mock task ${taskId}`,
         work: `Completed ${taskId}`,
+        createdAt: new Date(),
+        doneAt: new Date(),
         process: async () => {
           throw new Error('Task already completed');
         },
@@ -130,6 +133,7 @@ describe('Orchestrator', () => {
         status: 'ready',
         description: 'Error task',
         work: 'Will fail',
+        createdAt: new Date(),
         process: async () => {
           throw new Error('Test error');
         },
@@ -173,6 +177,7 @@ describe('Orchestrator', () => {
         status: 'waiting',
         description: 'Waiting task',
         work: 'Waiting...',
+        createdAt: new Date(),
         process: async () => task,
         onSuccess: (result: any) => ({
           taskId: 'task1',
@@ -180,6 +185,8 @@ describe('Orchestrator', () => {
           status: 'succeeded',
           description: 'Waiting task',
           work: `Result: ${result}`,
+          createdAt: new Date(),
+          doneAt: new Date(),
           process: async () => {
             throw new Error('Done');
           },
@@ -210,6 +217,7 @@ describe('Orchestrator', () => {
         status: 'waiting',
         description: 'Waiting task with error',
         work: 'Waiting...',
+        createdAt: new Date(),
         process: async () => task,
         onError: (error: any) => ({
           taskId: 'task1',
@@ -217,6 +225,8 @@ describe('Orchestrator', () => {
           status: 'dead',
           description: 'Waiting task with error',
           work: `Error: ${error.message}`,
+          createdAt: new Date(),
+          doneAt: new Date(),
           process: async () => {
             throw new Error('Failed');
           },

@@ -4,6 +4,11 @@ import * as Orchestrator from './core/orchestrator.js';
 
 declare const $: any;
 
+const formatDate = (date: Date | undefined): string => {
+  if (!date) return '';
+  return date.toLocaleTimeString();
+};
+
 export const updateObserverPanel = (orchestratorState: OrchestratorState | undefined) => {
   if (!orchestratorState) {
     $('#observer-queue-size').text('-');
@@ -46,10 +51,19 @@ const updateTaskList = (orchestratorState: OrchestratorState) => {
       .addClass('task-item-description')
       .text(task.description);
     
+    // Build status line with dates
+    let statusText = `${task.status} (${task.version})`;
+    if (task.createdAt) {
+      statusText += ` • ${formatDate(task.createdAt)}`;
+    }
+    if (task.doneAt) {
+      statusText += ` → ${formatDate(task.doneAt)}`;
+    }
+    
     const $status = $('<div>')
       .addClass('task-item-status')
       .addClass(`status-${task.status}`)
-      .text(`${task.status} (${task.version})`);
+      .text(statusText);
     
     $item.append($description).append($status);
     
@@ -73,6 +87,8 @@ const displayTaskDetails = (task: any) => {
     work: task.work,
     conversation: task.conversation,
     retryCount: task.retryCount,
+    createdAt: task.createdAt,
+    doneAt: task.doneAt,
   };
   
   const json = JSON.stringify(taskDetails, null, 2);

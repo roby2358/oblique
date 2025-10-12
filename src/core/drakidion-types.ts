@@ -55,6 +55,12 @@ export interface DrakidionTask {
   
   /** Optional: Error callback returning successor task */
   onError?: (error: any) => DrakidionTask;
+  
+  /** Optional: Timestamp when task was created */
+  createdAt?: Date;
+  
+  /** Optional: Timestamp when task reached terminal state (succeeded/dead/canceled) */
+  doneAt?: Date;
 }
 
 /**

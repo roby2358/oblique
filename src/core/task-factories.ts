@@ -7,9 +7,10 @@ import { generateTaskId } from '../utils/index.js';
 /**
  * Create a simple example task that increments work
  */
-export const createIncrementTask = (initialValue: number = 0): DrakidionTask => {
+export const createIncrementTask = (initialValue: number = 0, createdAt?: Date): DrakidionTask => {
   const taskId = generateTaskId();
   const work = `Count: ${initialValue}`;
+  const taskCreatedAt = createdAt || new Date();
   
   return {
     taskId,
@@ -17,6 +18,7 @@ export const createIncrementTask = (initialValue: number = 0): DrakidionTask => 
     status: 'ready',
     description: 'Increment counter task',
     work,
+    createdAt: taskCreatedAt,
     process: async () => {
       // Simulate some work
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -26,7 +28,7 @@ export const createIncrementTask = (initialValue: number = 0): DrakidionTask => 
       // Return successor task
       if (nextValue < 5) {
         // Continue incrementing
-        return createIncrementTask(nextValue);
+        return createIncrementTask(nextValue, taskCreatedAt);
       } else {
         // Done
         return {
@@ -35,6 +37,8 @@ export const createIncrementTask = (initialValue: number = 0): DrakidionTask => 
           status: 'succeeded',
           description: 'Increment counter task',
           work: `Count: ${nextValue} (completed)`,
+          createdAt: taskCreatedAt,
+          doneAt: new Date(),
           process: async () => {
             throw new Error('Task already completed');
           },
@@ -57,6 +61,7 @@ export const createLLMTask = (
 ): DrakidionTask => {
   const taskId = generateTaskId();
   const conversation = options?.conversation || [];
+  const createdAt = new Date();
   
   // Add user message to conversation
   const updatedConversation: ConversationMessage[] = [
@@ -71,6 +76,7 @@ export const createLLMTask = (
     description: `LLM: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`,
     work: '',
     conversation: updatedConversation,
+    createdAt,
     process: async () => {
       try {
         // Call LLM
@@ -93,6 +99,8 @@ export const createLLMTask = (
           description: `LLM: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`,
           work: response.content,
           conversation: finalConversation,
+          createdAt,
+          doneAt: new Date(),
           process: async () => {
             throw new Error('Task already completed');
           },
@@ -109,6 +117,8 @@ export const createLLMTask = (
           work: `Error: ${errorMsg}`,
           conversation: updatedConversation,
           retryCount: 0,
+          createdAt,
+          doneAt: new Date(),
           process: async () => {
             throw new Error('Task failed');
           },
@@ -133,6 +143,7 @@ export const createObliqueMessageTask = (
 ): DrakidionTask => {
   const taskId = generateTaskId();
   const conversation = options?.conversation || [];
+  const createdAt = new Date();
   
   // Add user message to conversation
   const updatedConversation: ConversationMessage[] = [
@@ -150,6 +161,7 @@ export const createObliqueMessageTask = (
     description: `Oblique: ${message.substring(0, 40)}${message.length > 40 ? '...' : ''}`,
     work: '',
     conversation: updatedConversation,
+    createdAt,
     process: async () => {
       try {
         // Call LLM with Oblique prompt
@@ -172,6 +184,8 @@ export const createObliqueMessageTask = (
           description: `Oblique: ${message.substring(0, 40)}${message.length > 40 ? '...' : ''}`,
           work: response.content,
           conversation: finalConversation,
+          createdAt,
+          doneAt: new Date(),
           process: async () => {
             throw new Error('Task already completed');
           },
@@ -187,6 +201,8 @@ export const createObliqueMessageTask = (
           description: `Oblique: ${message.substring(0, 40)}${message.length > 40 ? '...' : ''}`,
           work: `Error: ${errorMsg}`,
           conversation: updatedConversation,
+          createdAt,
+          doneAt: new Date(),
           process: async () => {
             throw new Error('Task failed');
           },
@@ -204,12 +220,15 @@ export const createWaitingTask = (
   taskId: string = generateTaskId(),
   onComplete?: (result: any) => void
 ): DrakidionTask => {
+  const createdAt = new Date();
+  
   return {
     taskId,
     version: 1,
     status: 'waiting',
     description: 'Waiting for async response',
     work: 'Waiting for async response...',
+    createdAt,
     process: async () => {
       throw new Error('Waiting tasks should not be processed directly');
     },
@@ -224,6 +243,8 @@ export const createWaitingTask = (
         status: 'succeeded',
         description: 'Waiting for async response',
         work: `Completed with result: ${JSON.stringify(result)}`,
+        createdAt,
+        doneAt: new Date(),
         process: async () => {
           throw new Error('Task already completed');
         },
@@ -238,6 +259,8 @@ export const createWaitingTask = (
         status: 'dead',
         description: 'Waiting for async response',
         work: `Failed with error: ${errorMsg}`,
+        createdAt,
+        doneAt: new Date(),
         process: async () => {
           throw new Error('Task failed');
         },
@@ -252,9 +275,11 @@ export const createWaitingTask = (
 export const createRetryTask = (
   operation: () => Promise<string>,
   maxRetries: number = 3,
-  retryCount: number = 0
+  retryCount: number = 0,
+  createdAt?: Date
 ): DrakidionTask => {
   const taskId = generateTaskId();
+  const taskCreatedAt = createdAt || new Date();
   
   return {
     taskId,
@@ -263,6 +288,7 @@ export const createRetryTask = (
     description: 'Retry task',
     work: retryCount > 0 ? `Retry attempt ${retryCount}/${maxRetries}` : 'Initial attempt',
     retryCount,
+    createdAt: taskCreatedAt,
     process: async () => {
       try {
         const result = await operation();
@@ -274,6 +300,8 @@ export const createRetryTask = (
           description: 'Retry task',
           work: result,
           retryCount,
+          createdAt: taskCreatedAt,
+          doneAt: new Date(),
           process: async () => {
             throw new Error('Task already completed');
           },
@@ -283,7 +311,7 @@ export const createRetryTask = (
         
         if (retryCount < maxRetries) {
           // Retry
-          return createRetryTask(operation, maxRetries, retryCount + 1);
+          return createRetryTask(operation, maxRetries, retryCount + 1, taskCreatedAt);
         } else {
           // Give up
           return {
@@ -293,6 +321,8 @@ export const createRetryTask = (
             description: 'Retry task',
             work: `Failed after ${maxRetries} retries: ${errorMsg}`,
             retryCount,
+            createdAt: taskCreatedAt,
+            doneAt: new Date(),
             process: async () => {
               throw new Error('Task failed');
             },
@@ -309,9 +339,11 @@ export const createRetryTask = (
 export const createTaskChain = (
   operations: Array<() => Promise<string>>,
   currentIndex: number = 0,
-  results: string[] = []
+  results: string[] = [],
+  createdAt?: Date
 ): DrakidionTask => {
   const taskId = generateTaskId();
+  const taskCreatedAt = createdAt || new Date();
   
   if (currentIndex >= operations.length) {
     // All operations complete
@@ -321,6 +353,8 @@ export const createTaskChain = (
       status: 'succeeded',
       description: `Task chain (${operations.length} steps)`,
       work: results.join('\n'),
+      createdAt: taskCreatedAt,
+      doneAt: new Date(),
       process: async () => {
         throw new Error('Task already completed');
       },
@@ -333,13 +367,14 @@ export const createTaskChain = (
     status: 'ready',
     description: `Task chain (step ${currentIndex + 1}/${operations.length})`,
     work: results.join('\n'),
+    createdAt: taskCreatedAt,
     process: async () => {
       try {
         const result = await operations[currentIndex]();
         const newResults = [...results, result];
         
         // Create next task in chain
-        return createTaskChain(operations, currentIndex + 1, newResults);
+        return createTaskChain(operations, currentIndex + 1, newResults, taskCreatedAt);
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
         
@@ -349,6 +384,8 @@ export const createTaskChain = (
           status: 'dead',
           description: `Task chain (step ${currentIndex + 1}/${operations.length})`,
           work: `Failed at step ${currentIndex + 1}: ${errorMsg}`,
+          createdAt: taskCreatedAt,
+          doneAt: new Date(),
           process: async () => {
             throw new Error('Task failed');
           },

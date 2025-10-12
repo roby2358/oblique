@@ -129,15 +129,53 @@
 
       <div id="queue-panel" class="panel hidden">
         <div class="panel-content">
-          <h3>Queue</h3>
-          <div id="queue-content"></div>
+          <div id="queue-content">
+            <div class="observer-row">
+              <button id="refresh-queue" class="btn-small">🔄</button>
+              <div class="observer-stats">
+                <div class="stat-item">
+                  <span class="stat-label">Queue Length:</span>
+                  <span id="queue-length" class="stat-value">-</span>
+                </div>
+              </div>
+            </div>
+            <div class="task-panels">
+              <div class="task-list-panel">
+                <h4>Queued Tasks</h4>
+                <div id="queue-task-list" class="task-list"></div>
+              </div>
+              <div class="task-detail-panel">
+                <h4>Task Details</h4>
+                <pre id="queue-task-detail" class="task-detail"></pre>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div id="waiting-panel" class="panel hidden">
         <div class="panel-content">
-          <h3>Waiting</h3>
-          <div id="waiting-content"></div>
+          <div id="waiting-content">
+            <div class="observer-row">
+              <button id="refresh-waiting" class="btn-small">🔄</button>
+              <div class="observer-stats">
+                <div class="stat-item">
+                  <span class="stat-label">Waiting Tasks:</span>
+                  <span id="waiting-size" class="stat-value">-</span>
+                </div>
+              </div>
+            </div>
+            <div class="task-panels">
+              <div class="task-list-panel">
+                <h4>Waiting Tasks</h4>
+                <div id="waiting-task-list" class="task-list"></div>
+              </div>
+              <div class="task-detail-panel">
+                <h4>Task Details</h4>
+                <pre id="waiting-task-detail" class="task-detail"></pre>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </main>

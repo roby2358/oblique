@@ -9,6 +9,8 @@ import { createBlueskyClient, type BlueskyClient } from './hooks/bluesky/bluesky
 import type { BlueskyMessage } from './types/index.js';
 import { createObliquePrompt } from './prompts/oblique.js';
 import { updateObserverPanel } from './orchestratorPanel.js';
+import { updateQueuePanel } from './queuePanel.js';
+import { updateWaitingPanel } from './waitingPanel.js';
 
 // jQuery is loaded via CDN in index.html
 // Note: Run 'npm install' to get jQuery type definitions from @types/jquery
@@ -263,6 +265,16 @@ const switchToPanel = (panelId: string) => {
   if (panelId === 'observer') {
     updateObserverPanel(orchestratorState);
   }
+  
+  // Update queue panel when switching to it
+  if (panelId === 'queue') {
+    updateQueuePanel(orchestratorState);
+  }
+  
+  // Update waiting panel when switching to it
+  if (panelId === 'waiting') {
+    updateWaitingPanel(orchestratorState);
+  }
 };
 
 // jQuery document ready
@@ -290,6 +302,10 @@ $(document).ready(() => {
   $('#check-bluesky').on('click', handleCheckBluesky);
 
   $('#refresh-observer').on('click', () => updateObserverPanel(orchestratorState));
+
+  $('#refresh-queue').on('click', () => updateQueuePanel(orchestratorState));
+
+  $('#refresh-waiting').on('click', () => updateWaitingPanel(orchestratorState));
 
   // Initialize
   startup();

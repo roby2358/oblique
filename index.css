@@ -303,6 +303,26 @@ main {
   background: var(--primary-hover);
 }
 
+.btn-small {
+  padding: 0.75rem;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3rem;
+}
+
+.btn-small:hover {
+  background: var(--primary-hover);
+}
+
 footer {
   padding: 0.75rem 2rem;
   background: var(--bg-dark);
@@ -387,6 +407,164 @@ footer {
   border: 1px solid var(--error-color);
   border-radius: 0.5rem;
   margin-top: 1rem;
+}
+
+/* Observer Panel */
+.observer-row {
+  display: flex;
+  align-items: stretch;
+  gap: 1rem;
+}
+
+.observer-stats {
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--bg-light);
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-color);
+  flex: 1;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--bg-medium);
+  border-radius: 0.5rem;
+  flex: 1;
+}
+
+.stat-label {
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.stat-value {
+  font-size: 1.125rem;
+  color: var(--primary-color);
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+}
+
+.task-panels {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  height: 500px;
+}
+
+.task-list-panel,
+.task-detail-panel {
+  background: var(--bg-light);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.task-list-panel {
+  flex: 1;
+  min-width: 250px;
+}
+
+.task-detail-panel {
+  flex: 2;
+}
+
+.task-list-panel h4,
+.task-detail-panel h4 {
+  margin: 0 0 1rem 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.task-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.task-item {
+  padding: 0.75rem;
+  background: var(--bg-medium);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.task-item:hover {
+  background: var(--bg-dark);
+  border-color: var(--primary-color);
+}
+
+.task-item.selected {
+  background: var(--bg-dark);
+  border-color: var(--primary-color);
+  border-width: 2px;
+}
+
+.task-item-description {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.task-item-status {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-family: 'Courier New', monospace;
+}
+
+.task-item-status.status-ready {
+  color: var(--success-color);
+}
+
+.task-item-status.status-running {
+  color: var(--warning-color);
+}
+
+.task-item-status.status-waiting {
+  color: var(--text-secondary);
+}
+
+.task-item-status.status-succeeded {
+  color: var(--success-color);
+}
+
+.task-item-status.status-dead,
+.task-item-status.status-canceled {
+  color: var(--error-color);
+}
+
+.task-detail {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--bg-medium);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+  line-height: 1.5;
+}
+
+.task-detail:empty::before {
+  content: 'Select a task to view details';
+  color: var(--text-secondary);
+  font-style: italic;
 }
 
 @media (max-width: 768px) {

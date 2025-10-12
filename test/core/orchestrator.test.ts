@@ -12,6 +12,7 @@ describe('Orchestrator', () => {
     taskId,
     version: 1,
     status,
+    description: `Mock task ${taskId}`,
     work: `Work for ${taskId}`,
     process: async () => {
       if (processResult) {
@@ -22,6 +23,7 @@ describe('Orchestrator', () => {
         taskId,
         version: 2,
         status: 'succeeded',
+        description: `Mock task ${taskId}`,
         work: `Completed ${taskId}`,
         process: async () => {
           throw new Error('Task already completed');
@@ -126,6 +128,7 @@ describe('Orchestrator', () => {
         taskId: 'task1',
         version: 1,
         status: 'ready',
+        description: 'Error task',
         work: 'Will fail',
         process: async () => {
           throw new Error('Test error');
@@ -168,12 +171,14 @@ describe('Orchestrator', () => {
         taskId: 'task1',
         version: 1,
         status: 'waiting',
+        description: 'Waiting task',
         work: 'Waiting...',
         process: async () => task,
         onSuccess: (result: any) => ({
           taskId: 'task1',
           version: 2,
           status: 'succeeded',
+          description: 'Waiting task',
           work: `Result: ${result}`,
           process: async () => {
             throw new Error('Done');
@@ -203,12 +208,14 @@ describe('Orchestrator', () => {
         taskId: 'task1',
         version: 1,
         status: 'waiting',
+        description: 'Waiting task with error',
         work: 'Waiting...',
         process: async () => task,
         onError: (error: any) => ({
           taskId: 'task1',
           version: 2,
           status: 'dead',
+          description: 'Waiting task with error',
           work: `Error: ${error.message}`,
           process: async () => {
             throw new Error('Failed');

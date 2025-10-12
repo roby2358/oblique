@@ -25,6 +25,15 @@
       <div class="nav-item">
         <a href="#bluesky">Bluesky</a>
       </div>
+      <div class="nav-item">
+        <a href="#observer">Observer</a>
+      </div>
+      <div class="nav-item">
+        <a href="#queue">Queue</a>
+      </div>
+      <div class="nav-item">
+        <a href="#waiting">Waiting</a>
+      </div>
     </nav>
 
     <main>
@@ -81,6 +90,54 @@
             </label>
           </div>
           <div id="bluesky-posts" class="bluesky-posts"></div>
+        </div>
+      </div>
+
+      <div id="observer-panel" class="panel hidden">
+        <div class="panel-content">
+          <div id="observer-content">
+            <div class="observer-row">
+              <button id="refresh-observer" class="btn-small">🔄</button>
+              <div class="observer-stats">
+                <div class="stat-item">
+                  <span class="stat-label">Task Queue:</span>
+                  <span id="observer-queue-size" class="stat-value">-</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Waiting Map:</span>
+                  <span id="observer-waiting-size" class="stat-value">-</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Last Updated:</span>
+                  <span id="observer-timestamp" class="stat-value">-</span>
+                </div>
+              </div>
+            </div>
+            <div class="task-panels">
+              <div class="task-list-panel">
+                <h4>Tasks</h4>
+                <div id="task-list" class="task-list"></div>
+              </div>
+              <div class="task-detail-panel">
+                <h4>Task Details</h4>
+                <pre id="task-detail" class="task-detail"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="queue-panel" class="panel hidden">
+        <div class="panel-content">
+          <h3>Queue</h3>
+          <div id="queue-content"></div>
+        </div>
+      </div>
+
+      <div id="waiting-panel" class="panel hidden">
+        <div class="panel-content">
+          <h3>Waiting</h3>
+          <div id="waiting-content"></div>
         </div>
       </div>
     </main>

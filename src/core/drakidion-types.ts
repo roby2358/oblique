@@ -35,6 +35,9 @@ export interface DrakidionTask {
   /** Current status */
   status: TaskStatus;
   
+  /** Human-readable description of the task */
+  description: string;
+  
   /** Work product being built (e.g., document, tweet) */
   work: string;
   

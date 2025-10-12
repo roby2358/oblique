@@ -15,6 +15,7 @@ export const createIncrementTask = (initialValue: number = 0): DrakidionTask => 
     taskId,
     version: 1,
     status: 'ready',
+    description: 'Increment counter task',
     work,
     process: async () => {
       // Simulate some work
@@ -32,6 +33,7 @@ export const createIncrementTask = (initialValue: number = 0): DrakidionTask => 
           taskId,
           version: 2,
           status: 'succeeded',
+          description: 'Increment counter task',
           work: `Count: ${nextValue} (completed)`,
           process: async () => {
             throw new Error('Task already completed');
@@ -66,6 +68,7 @@ export const createLLMTask = (
     taskId,
     version: 1,
     status: 'ready',
+    description: `LLM: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`,
     work: '',
     conversation: updatedConversation,
     process: async () => {
@@ -87,6 +90,7 @@ export const createLLMTask = (
           taskId,
           version: 2,
           status: 'succeeded',
+          description: `LLM: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`,
           work: response.content,
           conversation: finalConversation,
           process: async () => {
@@ -101,6 +105,7 @@ export const createLLMTask = (
           taskId,
           version: 2,
           status: 'dead',
+          description: `LLM: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`,
           work: `Error: ${errorMsg}`,
           conversation: updatedConversation,
           retryCount: 0,
@@ -142,6 +147,7 @@ export const createObliqueMessageTask = (
     taskId,
     version: 1,
     status: 'ready',
+    description: `Oblique: ${message.substring(0, 40)}${message.length > 40 ? '...' : ''}`,
     work: '',
     conversation: updatedConversation,
     process: async () => {
@@ -163,6 +169,7 @@ export const createObliqueMessageTask = (
           taskId,
           version: 2,
           status: 'succeeded',
+          description: `Oblique: ${message.substring(0, 40)}${message.length > 40 ? '...' : ''}`,
           work: response.content,
           conversation: finalConversation,
           process: async () => {
@@ -177,6 +184,7 @@ export const createObliqueMessageTask = (
           taskId,
           version: 2,
           status: 'dead',
+          description: `Oblique: ${message.substring(0, 40)}${message.length > 40 ? '...' : ''}`,
           work: `Error: ${errorMsg}`,
           conversation: updatedConversation,
           process: async () => {
@@ -200,6 +208,7 @@ export const createWaitingTask = (
     taskId,
     version: 1,
     status: 'waiting',
+    description: 'Waiting for async response',
     work: 'Waiting for async response...',
     process: async () => {
       throw new Error('Waiting tasks should not be processed directly');
@@ -213,6 +222,7 @@ export const createWaitingTask = (
         taskId,
         version: 2,
         status: 'succeeded',
+        description: 'Waiting for async response',
         work: `Completed with result: ${JSON.stringify(result)}`,
         process: async () => {
           throw new Error('Task already completed');
@@ -226,6 +236,7 @@ export const createWaitingTask = (
         taskId,
         version: 2,
         status: 'dead',
+        description: 'Waiting for async response',
         work: `Failed with error: ${errorMsg}`,
         process: async () => {
           throw new Error('Task failed');
@@ -249,6 +260,7 @@ export const createRetryTask = (
     taskId,
     version: retryCount + 1,
     status: 'ready',
+    description: 'Retry task',
     work: retryCount > 0 ? `Retry attempt ${retryCount}/${maxRetries}` : 'Initial attempt',
     retryCount,
     process: async () => {
@@ -259,6 +271,7 @@ export const createRetryTask = (
           taskId,
           version: retryCount + 2,
           status: 'succeeded',
+          description: 'Retry task',
           work: result,
           retryCount,
           process: async () => {
@@ -277,6 +290,7 @@ export const createRetryTask = (
             taskId,
             version: retryCount + 2,
             status: 'dead',
+            description: 'Retry task',
             work: `Failed after ${maxRetries} retries: ${errorMsg}`,
             retryCount,
             process: async () => {
@@ -305,6 +319,7 @@ export const createTaskChain = (
       taskId,
       version: currentIndex + 1,
       status: 'succeeded',
+      description: `Task chain (${operations.length} steps)`,
       work: results.join('\n'),
       process: async () => {
         throw new Error('Task already completed');
@@ -316,6 +331,7 @@ export const createTaskChain = (
     taskId,
     version: currentIndex + 1,
     status: 'ready',
+    description: `Task chain (step ${currentIndex + 1}/${operations.length})`,
     work: results.join('\n'),
     process: async () => {
       try {
@@ -331,6 +347,7 @@ export const createTaskChain = (
           taskId,
           version: currentIndex + 2,
           status: 'dead',
+          description: `Task chain (step ${currentIndex + 1}/${operations.length})`,
           work: `Failed at step ${currentIndex + 1}: ${errorMsg}`,
           process: async () => {
             throw new Error('Task failed');

@@ -8,6 +8,7 @@ import type { LLMClient } from './hooks/llm/llm-client.js';
 import { createBlueskyClient, type BlueskyClient } from './hooks/bluesky/bluesky-client.js';
 import type { BlueskyMessage } from './types/index.js';
 import { createObliquePrompt } from './prompts/oblique.js';
+import { updateObserverPanel } from './orchestratorPanel.js';
 
 // jQuery is loaded via CDN in index.html
 // Note: Run 'npm install' to get jQuery type definitions from @types/jquery
@@ -72,6 +73,7 @@ const updateStatus = () => {
   const status = Orchestrator.getStatus(orchestratorState);
   $('#status').text(`Queue: ${status.queueSize} | Waiting: ${status.waitingSize}`);
 };
+
 
 const handleConfigure = () => {
   const apiKey = ($('#api-key').val() as string).trim();
@@ -256,6 +258,11 @@ const switchToPanel = (panelId: string) => {
   $(`#${panelId}-panel`).removeClass('hidden');
   // Add active to corresponding nav item
   $(`.nav-item a[href="#${panelId}"]`).parent().addClass('active');
+  
+  // Update observer panel when switching to it
+  if (panelId === 'observer') {
+    updateObserverPanel(orchestratorState);
+  }
 };
 
 // jQuery document ready
@@ -281,6 +288,8 @@ $(document).ready(() => {
   $('#save-config').on('click', handleConfigure);
 
   $('#check-bluesky').on('click', handleCheckBluesky);
+
+  $('#refresh-observer').on('click', () => updateObserverPanel(orchestratorState));
 
   // Initialize
   startup();

@@ -1,12 +1,13 @@
 // Tests for TaskMap
-import * as TaskMapOps from '../../src/core/task-map.js';
-import type { DrakidionTask } from '../../src/core/drakidion-types.js';
+import * as TaskMapOps from '../../src/drakidion/task-map.js';
+import type { DrakidionTask } from '../../src/drakidion/drakidion-types.js';
 
 describe('TaskMap', () => {
   const createMockTask = (taskId: string, status: DrakidionTask['status'] = 'ready'): DrakidionTask => ({
     taskId,
     version: 1,
     status,
+    description: `Mock task ${taskId}`,
     work: `Work for ${taskId}`,
     process: async () => createMockTask(taskId, 'succeeded'),
   });

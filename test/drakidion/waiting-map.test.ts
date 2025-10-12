@@ -1,5 +1,5 @@
 // Tests for WaitingMap
-import * as WaitingMapOps from '../../src/core/waiting-map.js';
+import * as WaitingMapOps from '../../src/drakidion/waiting-map.js';
 
 describe('WaitingMap', () => {
   describe('createWaitingMap', () => {

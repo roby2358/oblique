@@ -40,7 +40,7 @@ This architecture eliminates the concept of "agents" in favor of a simpler, more
 
 ### Core Components
 
-#### 1. Queue (`src/core/queue.ts`)
+#### 1. Queue (`src/drakidion/queue.ts`)
 A functional FIFO queue for sequential task processing.
 
 **Key Functions:**
@@ -56,7 +56,7 @@ A functional FIFO queue for sequential task processing.
 - Pure functional design
 - Type-safe with TypeScript
 
-#### 2. Pending Map (`src/core/pending-map.ts`)
+#### 2. Pending Map (`src/drakidion/pending-map.ts`)
 Tracks asynchronous operations (like LLM API calls) that are in progress.
 
 **Key Functions:**
@@ -71,7 +71,7 @@ Tracks asynchronous operations (like LLM API calls) that are in progress.
 - Task metadata storage
 - Immutable Map-based implementation
 
-### System Orchestrator (`src/core/agent.ts`)
+### System Orchestrator (`src/drakidion/agent.ts`)
 
 The central coordinator that manages conversations and task processing.
 

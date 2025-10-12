@@ -1,7 +1,7 @@
 // Queue Panel - UI functions for displaying task queue
-import type { OrchestratorState } from './core/drakidion-types.js';
-import * as Orchestrator from './core/orchestrator.js';
-import * as TaskMapOps from './core/task-map.js';
+import type { OrchestratorState } from './drakidion/drakidion-types.js';
+import * as Orchestrator from './drakidion/orchestrator.js';
+import * as TaskMapOps from './drakidion/task-map.js';
 
 declare const $: any;
 

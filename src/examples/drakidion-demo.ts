@@ -1,6 +1,6 @@
 // DRAKIDION Demo - Example usage
-import * as DRAKIDION from '../core/drakidion.js';
-import type { DrakidionTask } from '../core/drakidion-types.js';
+import * as DRAKIDION from '../drakidion/drakidion.js';
+import type { DrakidionTask } from '../drakidion/drakidion-types.js';
 
 /**
  * Simple demo showing DRAKIDION task orchestration

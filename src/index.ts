@@ -1,8 +1,8 @@
 // Browser entry point
-import * as Orchestrator from './core/orchestrator.js';
-import * as TaskMapOps from './core/task-map.js';
-import * as TaskFactories from './core/task-factories.js';
-import type { OrchestratorState } from './core/drakidion-types.js';
+import * as Orchestrator from './drakidion/orchestrator.js';
+import * as TaskMapOps from './drakidion/task-map.js';
+import * as TaskFactories from './drakidion/task-factories.js';
+import type { OrchestratorState } from './drakidion/drakidion-types.js';
 import { createOpenRouterClient } from './hooks/llm/index.js';
 import type { LLMClient } from './hooks/llm/llm-client.js';
 import { createBlueskyClient, type BlueskyClient } from './hooks/bluesky/bluesky-client.js';

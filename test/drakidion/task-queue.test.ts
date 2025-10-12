@@ -1,5 +1,5 @@
 // Tests for TaskQueue
-import * as TaskQueueOps from '../../src/core/task-queue.js';
+import * as TaskQueueOps from '../../src/drakidion/task-queue.js';
 
 describe('TaskQueue', () => {
   describe('createTaskQueue', () => {

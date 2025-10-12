@@ -1,9 +1,25 @@
 // Tests for Orchestrator
-import * as Orchestrator from '../../src/core/orchestrator.js';
-import type { DrakidionTask } from '../../src/core/drakidion-types.js';
+import * as Orchestrator from '../../src/drakidion/orchestrator.js';
+import type { DrakidionTask } from '../../src/drakidion/drakidion-types.js';
 import { generateTaskId } from '../../src/utils/index.js';
 
 describe('Orchestrator', () => {
+  // Suppress console output during tests for cleaner output
+  let originalLog: typeof console.log;
+  let originalError: typeof console.error;
+
+  beforeEach(() => {
+    originalLog = console.log;
+    originalError = console.error;
+    console.log = () => {};
+    console.error = () => {};
+  });
+
+  afterEach(() => {
+    console.log = originalLog;
+    console.error = originalError;
+  });
+
   const createMockTask = (
     taskId: string,
     status: DrakidionTask['status'] = 'ready',

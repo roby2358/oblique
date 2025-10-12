@@ -1,5 +1,5 @@
 // Tests for Task Factories
-import { createIncrementTask, createRetryTask, createTaskChain } from '../../src/core/task-factories.js';
+import { createIncrementTask, createRetryTask, createTaskChain } from '../../src/drakidion/task-factories.js';
 
 describe('Task Factories', () => {
   describe('createIncrementTask', () => {

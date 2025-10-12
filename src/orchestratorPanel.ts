@@ -1,6 +1,6 @@
 // Observer Panel - UI functions for displaying orchestrator state
-import type { OrchestratorState } from './core/drakidion-types.js';
-import * as Orchestrator from './core/orchestrator.js';
+import type { OrchestratorState } from './drakidion/drakidion-types.js';
+import * as Orchestrator from './drakidion/orchestrator.js';
 
 declare const $: any;
 

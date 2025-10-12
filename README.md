@@ -151,7 +151,7 @@ The LLM is instructed to:
 
 ```
 src/
-├── core/           # Core task processing engines
+├── drakidion/      # Core task processing engines
 │   ├── agent.ts            # Original Agent orchestrator
 │   ├── queue.ts            # FIFO queue implementation
 │   ├── pending-map.ts      # Async operation tracker
@@ -176,7 +176,7 @@ src/
     └── drakidion-demo.ts   # DRAKIDION demo code
 
 test/               # Unit tests (Jest)
-├── core/               # Core component tests (100% coverage)
+├── drakidion/          # Core component tests (100% coverage)
 │   ├── agent.test.ts
 │   ├── queue.test.ts
 │   ├── pending-map.test.ts
@@ -195,7 +195,7 @@ test/               # Unit tests (Jest)
 ### Basic Usage
 
 ```typescript
-import { createAgent, processMessageAndWait } from './core/agent.js';
+import { createAgent, processMessageAndWait } from './drakidion/agent.js';
 import { createMemoryStorage } from './storage/memory-storage.js';
 import { createOpenRouterClient } from './hooks/llm/index.js';
 
@@ -222,7 +222,7 @@ console.log(response); // "A mirror shows what you bring to it."
 ### Advanced Usage with Manual Task Processing
 
 ```typescript
-import { processMessage, processNextTask } from './core/agent.js';
+import { processMessage, processNextTask } from './drakidion/agent.js';
 
 // Create conversation
 const [conversationId, agentWithTask] = processMessage(
@@ -244,7 +244,7 @@ currentAgent = await processNextTask(currentAgent);  // return_response
 ### Check Agent Status
 
 ```typescript
-import { getAgentStatus } from './core/agent.js';
+import { getAgentStatus } from './drakidion/agent.js';
 
 const status = getAgentStatus(agent);
 console.log(`Queue: ${status.queueSize}, Pending: ${status.pendingTasks}`);
@@ -256,7 +256,7 @@ Oblique has comprehensive unit test coverage for all core components.
 
 ### Test Coverage
 
-- **Core Components** (`test/core/`)
+- **Core Components** (`test/drakidion/`)
   - `queue.test.ts` - 15 tests (FIFO operations, immutability)
   - `pending-map.test.ts` - 13 tests (async tracking, timeouts)
   - `agent.test.ts` - 8 tests (task processing, conversation flow)

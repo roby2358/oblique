@@ -4,6 +4,10 @@ A bot that answers only obliquely using LLM APIs. Built in TypeScript as a conve
 
 ## Architecture
 
+Oblique now includes **two task orchestration systems**:
+
+### 1. Original Agent Architecture
+
 Oblique operates as a task processing engine with two core data structures:
 
 1. **Queue**: A FIFO queue containing all tasks waiting to be processed
@@ -23,6 +27,20 @@ User Message → Queue → Process → Pending Map → Queue → Complete
 - **Bluesky Hook** - Social network integration (future)
 
 **Status:** Browser-based web interface with full test coverage. Production-ready.
+
+### 2. DRAKIDION Task Orchestration
+
+**DRAKIDION** is a single-worker, browser-resident task orchestration system that executes asynchronous and deferred tasks entirely within a web page context. It uses immutable task snapshots and a finite state machine model.
+
+**Key Features:**
+- **Immutable Task Snapshots** - Each task is a snapshot with factory function pattern
+- **TaskMap** - Mutable map holding latest snapshot per taskId
+- **TaskQueue** - FIFO queue of taskIds with status='ready'
+- **WaitingMap** - Correlation tracking for async operations
+- **Orchestrator** - Single worker loop for sequential processing
+- **Safe-base32 IDs** - 24-character collision-resistant identifiers
+
+**Status:** Fully implemented with comprehensive test coverage. See `DRAKIDION.md` and `DRAKIDION_IMPLEMENTATION.md` for details.
 
 ## Getting Started
 
@@ -133,10 +151,17 @@ The LLM is instructed to:
 
 ```
 src/
-├── core/           # Core task processing engine
-│   ├── agent.ts        # Main orchestrator (processMessage, processNextTask)
-│   ├── queue.ts        # FIFO queue implementation
-│   └── pending-map.ts  # Async operation tracker
+├── core/           # Core task processing engines
+│   ├── agent.ts            # Original Agent orchestrator
+│   ├── queue.ts            # FIFO queue implementation
+│   ├── pending-map.ts      # Async operation tracker
+│   ├── drakidion.ts        # DRAKIDION main export
+│   ├── drakidion-types.ts  # DRAKIDION type definitions
+│   ├── task-map.ts         # DRAKIDION TaskMap
+│   ├── task-queue.ts       # DRAKIDION TaskQueue  
+│   ├── waiting-map.ts      # DRAKIDION WaitingMap
+│   ├── orchestrator.ts     # DRAKIDION Orchestrator
+│   └── task-factories.ts   # DRAKIDION task factories
 ├── hooks/          # External integrations
 │   ├── llm/            # LLM clients (OpenRouter)
 │   └── bluesky/        # Bluesky social integration
@@ -146,13 +171,23 @@ src/
 ├── prompts/        # Prompt engineering
 │   └── oblique.ts      # Oblique response prompts
 ├── types/          # TypeScript type definitions
-└── utils/          # Utility functions
+├── utils/          # Utility functions (including safe-base32 IDs)
+└── examples/       # Usage examples
+    └── drakidion-demo.ts   # DRAKIDION demo code
 
 test/               # Unit tests (Jest)
 ├── core/               # Core component tests (100% coverage)
+│   ├── agent.test.ts
+│   ├── queue.test.ts
+│   ├── pending-map.test.ts
+│   ├── task-map.test.ts        # DRAKIDION
+│   ├── task-queue.test.ts      # DRAKIDION
+│   ├── waiting-map.test.ts     # DRAKIDION
+│   ├── orchestrator.test.ts    # DRAKIDION
+│   └── task-factories.test.ts  # DRAKIDION
 ├── storage/            # Storage tests
 ├── prompts/            # Prompt tests
-└── utils/              # Utility tests
+└── utils/              # Utility tests (including ID generation)
 ```
 
 ## API Usage
@@ -302,6 +337,8 @@ Oblique emphasizes functional programming principles:
 - `README.md` - This file (getting started, API usage)
 - `SPEC.md` - Detailed specification and architecture
 - `IMPLEMENTATION_SUMMARY.md` - Task-based architecture implementation notes
+- `DRAKIDION.md` - DRAKIDION specification
+- `DRAKIDION_IMPLEMENTATION.md` - DRAKIDION implementation guide with examples
 
 ## License
 

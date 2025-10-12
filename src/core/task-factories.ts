@@ -114,6 +114,81 @@ export const createLLMTask = (
 };
 
 /**
+ * Create a task that processes an Oblique message with an LLM
+ * This applies the Oblique prompt transformation before calling the LLM
+ */
+export const createObliqueMessageTask = (
+  message: string,
+  llmClient: LLMClient,
+  createPrompt: (message: string) => string,
+  options?: {
+    temperature?: number;
+    conversation?: ConversationMessage[];
+  }
+): DrakidionTask => {
+  const taskId = generateTaskId();
+  const conversation = options?.conversation || [];
+  
+  // Add user message to conversation
+  const updatedConversation: ConversationMessage[] = [
+    ...conversation,
+    { source: 'user', text: message },
+  ];
+  
+  // Generate Oblique prompt
+  const prompt = createPrompt(message);
+  
+  return {
+    taskId,
+    version: 1,
+    status: 'ready',
+    work: '',
+    conversation: updatedConversation,
+    process: async () => {
+      try {
+        // Call LLM with Oblique prompt
+        const response = await llmClient.generateResponse({
+          prompt,
+          temperature: options?.temperature ?? 0.8,
+        });
+        
+        // Add assistant response to conversation
+        const finalConversation: ConversationMessage[] = [
+          ...updatedConversation,
+          { source: 'assistant', text: response.content },
+        ];
+        
+        // Return succeeded task with response
+        return {
+          taskId,
+          version: 2,
+          status: 'succeeded',
+          work: response.content,
+          conversation: finalConversation,
+          process: async () => {
+            throw new Error('Task already completed');
+          },
+        };
+      } catch (error) {
+        // Return dead task on error
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        
+        return {
+          taskId,
+          version: 2,
+          status: 'dead',
+          work: `Error: ${errorMsg}`,
+          conversation: updatedConversation,
+          process: async () => {
+            throw new Error('Task failed');
+          },
+        };
+      }
+    },
+  };
+};
+
+/**
  * Create a task that waits for an async response
  * This demonstrates the waiting/callback pattern
  */

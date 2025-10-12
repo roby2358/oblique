@@ -30,25 +30,29 @@ describe('Task Factories', () => {
   
   describe('createRetryTask', () => {
     it('should succeed on first attempt if operation succeeds', async () => {
-      const operation = jest.fn().mockResolvedValue('success');
+      let callCount = 0;
+      const operation = async () => {
+        callCount++;
+        return 'success';
+      };
       const task = createRetryTask(operation, 3);
       
       const successor = await task.process();
       
       expect(successor.status).toBe('succeeded');
       expect(successor.work).toBe('success');
-      expect(operation).toHaveBeenCalledTimes(1);
+      expect(callCount).toBe(1);
     });
     
     it('should retry on failure', async () => {
       let attempts = 0;
-      const operation = jest.fn().mockImplementation(async () => {
+      const operation = async () => {
         attempts++;
         if (attempts < 3) {
           throw new Error('Temporary failure');
         }
         return 'success after retries';
-      });
+      };
       
       let task = createRetryTask(operation, 3);
       
@@ -66,10 +70,13 @@ describe('Task Factories', () => {
       task = await task.process();
       expect(task.status).toBe('succeeded');
       expect(task.work).toBe('success after retries');
+      expect(attempts).toBe(3);
     });
     
     it('should give up after max retries', async () => {
-      const operation = jest.fn().mockRejectedValue(new Error('Permanent failure'));
+      const operation = async () => {
+        throw new Error('Permanent failure');
+      };
       let task = createRetryTask(operation, 2);
       
       // Attempt 1
@@ -89,38 +96,40 @@ describe('Task Factories', () => {
   
   describe('createTaskChain', () => {
     it('should execute operations sequentially', async () => {
+      const callCounts = [0, 0, 0];
       const operations = [
-        jest.fn().mockResolvedValue('step1'),
-        jest.fn().mockResolvedValue('step2'),
-        jest.fn().mockResolvedValue('step3'),
+        async () => { callCounts[0]++; return 'step1'; },
+        async () => { callCounts[1]++; return 'step2'; },
+        async () => { callCounts[2]++; return 'step3'; },
       ];
       
       let task = createTaskChain(operations);
       
       // Execute first operation
       task = await task.process();
-      expect(operations[0]).toHaveBeenCalled();
+      expect(callCounts[0]).toBe(1);
       expect(task.work).toBe('step1');
       expect(task.status).toBe('ready');
       
       // Execute second operation
       task = await task.process();
-      expect(operations[1]).toHaveBeenCalled();
+      expect(callCounts[1]).toBe(1);
       expect(task.work).toBe('step1\nstep2');
       expect(task.status).toBe('ready');
       
       // Execute third operation
       task = await task.process();
-      expect(operations[2]).toHaveBeenCalled();
+      expect(callCounts[2]).toBe(1);
       expect(task.work).toBe('step1\nstep2\nstep3');
       expect(task.status).toBe('succeeded');
     });
     
     it('should fail if any operation fails', async () => {
+      const callCounts = [0, 0, 0];
       const operations = [
-        jest.fn().mockResolvedValue('step1'),
-        jest.fn().mockRejectedValue(new Error('step2 failed')),
-        jest.fn().mockResolvedValue('step3'),
+        async () => { callCounts[0]++; return 'step1'; },
+        async () => { callCounts[1]++; throw new Error('step2 failed'); },
+        async () => { callCounts[2]++; return 'step3'; },
       ];
       
       let task = createTaskChain(operations);
@@ -135,7 +144,7 @@ describe('Task Factories', () => {
       expect(task.work).toContain('Failed at step 2');
       
       // Third operation should not be called
-      expect(operations[2]).not.toHaveBeenCalled();
+      expect(callCounts[2]).toBe(0);
     });
   });
 });

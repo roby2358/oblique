@@ -1,5 +1,5 @@
 // DRAKIDION Orchestrator - single worker loop for task processing
-import type { DrakidionTask, OrchestratorState, TaskStatus } from './drakidion-types.js';
+import type { DrakidionTask, OrchestratorState } from './drakidion-types.js';
 import * as TaskMapOps from './task-map.js';
 import * as TaskQueueOps from './task-queue.js';
 import * as WaitingMapOps from './waiting-map.js';

@@ -36,7 +36,10 @@ export const createBlueskyClient = (config: BlueskyConfig): BlueskyClient => {
 
       const response = await agent.post({
         text: post.text,
-        reply: post.replyTo,
+        reply: post.replyTo ? {
+          root: post.replyTo,
+          parent: post.replyTo,
+        } : undefined,
       });
 
       return {

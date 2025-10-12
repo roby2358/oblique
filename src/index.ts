@@ -1,9 +1,13 @@
 // Browser entry point
-import { Agent } from './core/agent.js';
-import { createMemoryStorage } from './storage/memory-storage.js';
+import * as Orchestrator from './core/orchestrator.js';
+import * as TaskMapOps from './core/task-map.js';
+import * as TaskFactories from './core/task-factories.js';
+import type { OrchestratorState } from './core/drakidion-types.js';
 import { createOpenRouterClient } from './hooks/llm/index.js';
+import type { LLMClient } from './hooks/llm/llm-client.js';
 import { createBlueskyClient, type BlueskyClient } from './hooks/bluesky/bluesky-client.js';
 import type { BlueskyMessage } from './types/index.js';
+import { createObliquePrompt } from './prompts/oblique.js';
 
 // jQuery is loaded via CDN in index.html
 // Note: Run 'npm install' to get jQuery type definitions from @types/jquery
@@ -21,10 +25,10 @@ interface Config {
   };
 }
 
-let agent: Agent;
+let orchestratorState: OrchestratorState;
+let llmClient: LLMClient | undefined;
 let blueskyClient: BlueskyClient | undefined;
 let config: Config = {};
-const userId = 'browser-user';
 
 const loadConfig = async (): Promise<Config> => {
   try {
@@ -61,12 +65,12 @@ const addMessage = (text: string, sender: 'user' | 'oblique' | 'system') => {
 };
 
 const updateStatus = () => {
-  if (!agent) {
+  if (!orchestratorState) {
     $('#status').text('Not initialized');
     return;
   }
-  const status = agent.getStatus();
-  $('#status').text(`Queue: ${status.queueSize} | Pending: ${status.pendingTasks}`);
+  const status = Orchestrator.getStatus(orchestratorState);
+  $('#status').text(`Queue: ${status.queueSize} | Waiting: ${status.waitingSize}`);
 };
 
 const handleConfigure = () => {
@@ -76,12 +80,12 @@ const handleConfigure = () => {
   if (apiKey) {
     localStorage.setItem('openrouter_api_key', apiKey);
     localStorage.setItem('openrouter_model', model);
-    addMessage('✅ Configuration saved. Reinitializing agent...', 'system');
-    initializeAgent();
+    addMessage('✅ Configuration saved. Reinitializing orchestrator...', 'system');
+    initializeOrchestrator();
   }
 };
 
-const initializeAgent = async () => {
+const initializeOrchestrator = () => {
   // Priority: config.json -> localStorage -> defaults
   const apiKey = config.openrouter?.apiKey 
     || localStorage.getItem('openrouter_api_key') 
@@ -92,18 +96,14 @@ const initializeAgent = async () => {
   const baseUrl = config.openrouter?.baseUrl 
     || 'https://openrouter.ai/api/v1/chat/completions';
   
-  const storage = createMemoryStorage();
-  const llmClient = apiKey ? createOpenRouterClient({
+  llmClient = apiKey ? createOpenRouterClient({
     apiKey,
     model,
     baseUrl,
   }) : undefined;
 
-  agent = await Agent.create({
-    storage,
-    llmClient,
-    autoSave: true,
-  });
+  // Create new orchestrator state
+  orchestratorState = Orchestrator.createOrchestrator();
 
   // Initialize Bluesky client if configured
   const blueskyHandle = config.bluesky?.handle || '';
@@ -136,7 +136,31 @@ const handleSendMessage = async () => {
   addMessage(message, 'user');
 
   try {
-    const response = await agent.processMessageAndWait(userId, message);
+    if (!llmClient) {
+      addMessage('⚠️ LLM client not configured', 'system');
+      $messageInput.prop('disabled', false);
+      $('#send-button').prop('disabled', false);
+      $messageInput.focus();
+      return;
+    }
+
+    // Create task for processing the message
+    const task = TaskFactories.createObliqueMessageTask(
+      message,
+      llmClient,
+      createObliquePrompt
+    );
+
+    // Add task to orchestrator
+    orchestratorState = Orchestrator.addTask(orchestratorState, task);
+
+    // Process all tasks
+    orchestratorState = await Orchestrator.processAllTasks(orchestratorState);
+
+    // Get the completed task and extract response
+    const completedTask = TaskMapOps.getTask(orchestratorState.taskMap, task.taskId);
+    const response = completedTask?.work || '[No response received]';
+
     addMessage(response, 'oblique');
     updateStatus();
   } catch (error) {
@@ -219,7 +243,7 @@ const startup = async () => {
     || 'anthropic/claude-3.5-haiku'
   );
   
-  await initializeAgent();
+  initializeOrchestrator();
 };
 
 const switchToPanel = (panelId: string) => {

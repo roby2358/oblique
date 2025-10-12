@@ -5,7 +5,6 @@
 ### 1. Core Architecture Changes
 
 **Added UUID Generation**
-- `generateUUID()` - Simple UUID v4 implementation
 - `generateConversationId()` - Wrapper for conversation IDs
 
 **Refactored Agent.ts**

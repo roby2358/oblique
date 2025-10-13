@@ -183,8 +183,6 @@ const handleSendMessage = async () => {
     // Add task to orchestrator (adds to waitingMap using taskId)
     orchestratorState = Orchestrator.addTask(orchestratorState, task);
     
-    // Show waiting status
-    addMessage('⏳ Waiting for LLM response...', 'system');
     updateStatus();
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';

@@ -50,8 +50,14 @@ export interface LLMResponse {
 export interface BlueskyPost {
   text: string;
   replyTo?: {
-    uri: string;
-    cid: string;
+    root: {
+      uri: string;
+      cid: string;
+    };
+    parent: {
+      uri: string;
+      cid: string;
+    };
   };
 }
 
@@ -61,6 +67,16 @@ export interface BlueskyMessage {
   author: string;
   text: string;
   createdAt: Date;
+  replyInfo?: {
+    root: {
+      uri: string;
+      cid: string;
+    };
+    parent: {
+      uri: string;
+      cid: string;
+    };
+  };
 }
 
 export interface StorageData {

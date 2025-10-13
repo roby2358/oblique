@@ -64,12 +64,23 @@ export const createHandleCheckBluesky = () => {
           updateStatus();
         };
 
+        const onWaitingTaskComplete = (taskId: string, result?: any, error?: any) => {
+          if (error) {
+            orchestratorState = Orchestrator.errorWaitingTask(orchestratorState, taskId, error);
+          } else {
+            orchestratorState = Orchestrator.resumeWaitingTask(orchestratorState, taskId, result);
+          }
+          setOrchestratorState(orchestratorState);
+          updateStatus();
+        };
+
         notifications.forEach((notif: BlueskyMessage) => {
           const task = createProcessNotificationTask(
             notif,
             llmClient,
             blueskyClient,
-            onTaskCreated
+            onTaskCreated,
+            onWaitingTaskComplete
           );
           
           orchestratorState = Orchestrator.addTask(orchestratorState, task);

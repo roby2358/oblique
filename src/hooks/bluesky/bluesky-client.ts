@@ -28,13 +28,16 @@ export class BlueskyClient {
       throw new Error('Not authenticated. Call authenticate() first.');
     }
 
-    const response = await this.agent.post({
+    const postData = {
       text: post.text,
-      reply: post.replyTo ? {
-        root: post.replyTo,
-        parent: post.replyTo,
-      } : undefined,
-    });
+      reply: post.replyTo,
+    };
+
+    console.log('Posting to Bluesky:', JSON.stringify(postData, null, 2));
+
+    const response = await this.agent.post(postData);
+
+    console.log('Post response:', { uri: response.uri, cid: response.cid });
 
     return {
       uri: response.uri,
@@ -58,13 +61,27 @@ export class BlueskyClient {
       notifications = notifications.filter((notif: any) => !notif.isRead);
     }
 
-    return notifications.map((notif: any) => ({
-      uri: notif.uri,
-      cid: notif.cid,
-      author: notif.author.handle,
-      text: notif.record.text,
-      createdAt: new Date(notif.indexedAt),
-    }));
+    return notifications.map((notif: any) => {
+      console.log('Raw notification:', JSON.stringify(notif, null, 2));
+      
+      // Extract reply info if this is part of a thread
+      let replyInfo;
+      if (notif.record.reply) {
+        replyInfo = {
+          root: notif.record.reply.root,
+          parent: notif.record.reply.parent,
+        };
+      }
+      
+      return {
+        uri: notif.uri,
+        cid: notif.cid,
+        author: notif.author.handle,
+        text: notif.record.text,
+        createdAt: new Date(notif.indexedAt),
+        replyInfo,
+      };
+    });
   }
 
   async markNotificationsAsSeen(): Promise<void> {

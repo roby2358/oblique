@@ -25,12 +25,14 @@ let orchestratorState: OrchestratorState;
 let llmClient: LLMClient | undefined;
 let blueskyClient: BlueskyClient | undefined;
 let config: Config = {};
+let stopOrchestrator: (() => void) | undefined;
 
 // State getters
 export const getOrchestratorState = () => orchestratorState;
 export const getLLMClient = () => llmClient;
 export const getBlueskyClient = () => blueskyClient;
 export const getConfig = () => config;
+export const getStopOrchestrator = () => stopOrchestrator;
 
 // State setters
 export const setOrchestratorState = (state: OrchestratorState) => {
@@ -94,6 +96,11 @@ export const updateStatus = () => {
 
 // Initialize the orchestrator
 export const initializeOrchestrator = () => {
+  // Stop existing orchestrator if running
+  if (stopOrchestrator) {
+    stopOrchestrator();
+  }
+
   // Priority: config.json -> localStorage -> defaults
   const apiKey = config.openrouter?.apiKey 
     || localStorage.getItem('openrouter_api_key') 
@@ -123,12 +130,22 @@ export const initializeOrchestrator = () => {
     });
   }
 
+  // Start the orchestrator loop
+  const result = Orchestrator.startLoop(orchestratorState, (updatedState) => {
+    orchestratorState = updatedState;
+    updateStatus();
+  });
+  
+  orchestratorState = result.state;
+  stopOrchestrator = result.stop;
+
   if (!llmClient) {
     addMessage('⚠️ No API key configured. Go to "Configure" to add your OpenRouter API key.', 'system');
   } else {
     addMessage('🔮 Oblique initialized. Type a message to receive an oblique response.', 'system');
   }
   
+  addMessage('▶️ Orchestrator loop started', 'system');
   updateStatus();
 };
 

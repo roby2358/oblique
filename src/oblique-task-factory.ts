@@ -17,7 +17,8 @@ export const createProcessNotificationTask = (
   notification: BlueskyMessage,
   llmClient: LLMClient,
   blueskyClient: BlueskyClient,
-  onTaskCreated: (task: DrakidionTask) => void
+  onTaskCreated: (task: DrakidionTask) => void,
+  onWaitingTaskComplete?: (taskId: string, result?: any, error?: any) => void
 ): DrakidionTask => {
   const taskId = generateTaskId();
   const createdAt = new Date();
@@ -37,7 +38,8 @@ export const createProcessNotificationTask = (
         notification,
         llmClient,
         blueskyClient,
-        onTaskCreated
+        onTaskCreated,
+        onWaitingTaskComplete
       );
       
       onTaskCreated(llmTask);
@@ -97,7 +99,8 @@ export const createSendToLLMTask = (
   notification: BlueskyMessage,
   llmClient: LLMClient,
   blueskyClient: BlueskyClient,
-  onTaskCreated: (task: DrakidionTask) => void
+  onTaskCreated: (task: DrakidionTask) => void,
+  onWaitingTaskComplete?: (taskId: string, result?: any, error?: any) => void
 ): DrakidionTask => {
   const taskId = generateTaskId();
   const createdAt = new Date();
@@ -116,6 +119,11 @@ export const createSendToLLMTask = (
     temperature: 0.8,
   })
     .then(response => {
+      // Notify that waiting task is complete (success)
+      if (onWaitingTaskComplete) {
+        onWaitingTaskComplete(taskId, response);
+      }
+      
       // Create the post reply task when LLM responds
       const postTask = createPostReplyTask(
         notification,
@@ -127,7 +135,11 @@ export const createSendToLLMTask = (
       onTaskCreated(postTask);
     })
     .catch(error => {
-      // On error, we could create a dead task or retry
+      // Notify that waiting task is complete (error)
+      if (onWaitingTaskComplete) {
+        onWaitingTaskComplete(taskId, undefined, error);
+      }
+      
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       console.error(`LLM task ${taskId} failed:`, errorMsg);
     });
@@ -213,12 +225,25 @@ export const createPostReplyTask = (
     createdAt,
     process: async () => {
       try {
+        // Determine root and parent for reply threading
+        // If the notification has replyInfo, use its root (original post in thread)
+        // Otherwise, use the notification itself as the root (starting a new thread)
+        const root = originalNotification.replyInfo?.root || {
+          uri: originalNotification.uri,
+          cid: originalNotification.cid,
+        };
+        
+        const parent = {
+          uri: originalNotification.uri,
+          cid: originalNotification.cid,
+        };
+
         // Post the reply to Bluesky
         const result = await blueskyClient.post({
           text: replyText,
           replyTo: {
-            uri: originalNotification.uri,
-            cid: originalNotification.cid,
+            root,
+            parent,
           },
         });
 

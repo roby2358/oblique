@@ -58,6 +58,36 @@ const switchToPanel = (panelId: string) => {
   }
 };
 
+// Expose debug functions to window for console access
+(window as any).oblique = {
+  getState: () => {
+    const { getOrchestratorState, getLLMClient, getBlueskyClient } = require('./panels.js');
+    return {
+      orchestrator: getOrchestratorState(),
+      hasLLM: !!getLLMClient(),
+      hasBluesky: !!getBlueskyClient(),
+    };
+  },
+  processNext: async () => {
+    const panels = await import('./panels.js');
+    const Orchestrator = await import('./drakidion/orchestrator.js');
+    let state = panels.getOrchestratorState();
+    const result = await Orchestrator.processNextTask(state);
+    panels.setOrchestratorState(result.state);
+    panels.updateStatus();
+    return result;
+  },
+  processAll: async () => {
+    const panels = await import('./panels.js');
+    const Orchestrator = await import('./drakidion/orchestrator.js');
+    let state = panels.getOrchestratorState();
+    state = await Orchestrator.processAllTasks(state);
+    panels.setOrchestratorState(state);
+    panels.updateStatus();
+    return state;
+  },
+};
+
 // jQuery document ready
 $(document).ready(() => {
   // Create panel handlers

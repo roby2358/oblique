@@ -3,7 +3,6 @@ import type { DrakidionTask, OrchestratorState } from './drakidion-types.js';
 import * as TaskMapOps from './task-map.js';
 import * as TaskQueueOps from './task-queue.js';
 import * as WaitingMapOps from './waiting-map.js';
-import { generateCorrelationId } from '../utils/index.js';
 
 /**
  * Create a new Orchestrator state
@@ -18,9 +17,12 @@ export const createOrchestrator = (): OrchestratorState => ({
 /**
  * Add a task to the orchestrator
  * The task is added to taskMap, and if status is 'ready', also added to taskQueue
- * If status is 'waiting', it's added to waitingMap (with auto-generated correlationId if needed)
+ * If status is 'waiting', it's added to waitingMap using taskId as the key
  */
-export const addTask = (state: OrchestratorState, task: DrakidionTask): OrchestratorState => {
+export const addTask = (
+  state: OrchestratorState, 
+  task: DrakidionTask
+): OrchestratorState => {
   // Add to taskMap
   TaskMapOps.setTask(state.taskMap, task);
   
@@ -28,11 +30,8 @@ export const addTask = (state: OrchestratorState, task: DrakidionTask): Orchestr
   if (task.status === 'ready') {
     TaskQueueOps.enqueue(state.taskQueue, task.taskId);
   } else if (task.status === 'waiting') {
-    // For waiting tasks, we auto-generate a correlationId if needed
-    // In practice, the task should handle correlation itself or use callbacks
-    // This is just to ensure the task is tracked in waitingMap
-    const correlationId = generateCorrelationId();
-    WaitingMapOps.addCorrelation(state.waitingMap, correlationId, task.taskId);
+    // For waiting tasks, use taskId as the correlation key
+    WaitingMapOps.addCorrelation(state.waitingMap, task.taskId, task.taskId);
   }
   
   return state;
@@ -187,33 +186,25 @@ export const startLoop = (
 };
 
 /**
- * Resume a waiting task by correlationId
- * Finds the task in waitingMap, removes correlation, and re-queues if ready
+ * Resume a waiting task by taskId
+ * Finds the task in waitingMap, removes it, and transitions via onSuccess callback
  */
 export const resumeWaitingTask = (
   state: OrchestratorState,
-  correlationId: string,
+  taskId: string,
   result?: any
 ): OrchestratorState => {
-  // Get taskId from waitingMap
-  const taskId = WaitingMapOps.getTaskId(state.waitingMap, correlationId);
-  
-  if (!taskId) {
-    console.warn(`No task found for correlationId ${correlationId}`);
-    return state;
-  }
-  
   // Get task from taskMap
   const task = TaskMapOps.getTask(state.taskMap, taskId);
   
   if (!task) {
     console.warn(`Task ${taskId} not found in taskMap`);
-    WaitingMapOps.removeCorrelation(state.waitingMap, correlationId);
+    WaitingMapOps.removeCorrelation(state.waitingMap, taskId);
     return state;
   }
   
   // Remove from waitingMap
-  WaitingMapOps.removeCorrelation(state.waitingMap, correlationId);
+  WaitingMapOps.removeCorrelation(state.waitingMap, taskId);
   
   // Call onSuccess callback if defined
   if (task.onSuccess) {
@@ -246,32 +237,24 @@ export const resumeWaitingTask = (
 };
 
 /**
- * Handle error for a waiting task
+ * Handle error for a waiting task by taskId
  */
 export const errorWaitingTask = (
   state: OrchestratorState,
-  correlationId: string,
+  taskId: string,
   error: any
 ): OrchestratorState => {
-  // Get taskId from waitingMap
-  const taskId = WaitingMapOps.getTaskId(state.waitingMap, correlationId);
-  
-  if (!taskId) {
-    console.warn(`No task found for correlationId ${correlationId}`);
-    return state;
-  }
-  
   // Get task from taskMap
   const task = TaskMapOps.getTask(state.taskMap, taskId);
   
   if (!task) {
     console.warn(`Task ${taskId} not found in taskMap`);
-    WaitingMapOps.removeCorrelation(state.waitingMap, correlationId);
+    WaitingMapOps.removeCorrelation(state.waitingMap, taskId);
     return state;
   }
   
   // Remove from waitingMap
-  WaitingMapOps.removeCorrelation(state.waitingMap, correlationId);
+  WaitingMapOps.removeCorrelation(state.waitingMap, taskId);
   
   // Call onError callback if defined
   if (task.onError) {

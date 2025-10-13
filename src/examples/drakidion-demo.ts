@@ -12,7 +12,7 @@ export const runSimpleDemo = async () => {
   const state = DRAKIDION.Orchestrator.createOrchestrator();
   
   // Create a simple increment task
-  const task = DRAKIDION.TaskFactories.createIncrementTask(0);
+  const task = DRAKIDION.TaskExampleFactories.createIncrementTask(0);
   console.log('Created task:', task.taskId);
   
   // Add to orchestrator
@@ -53,7 +53,7 @@ export const runRetryDemo = async () => {
     return 'Success after retries!';
   };
   
-  const task = DRAKIDION.TaskFactories.createRetryTask(operation, 3);
+  const task = DRAKIDION.TaskExampleFactories.createRetryTask(operation, 3);
   DRAKIDION.Orchestrator.addTask(state, task);
   
   console.log('Processing with retries...');
@@ -92,7 +92,7 @@ export const runChainDemo = async () => {
     },
   ];
   
-  const task = DRAKIDION.TaskFactories.createTaskChain(operations);
+  const task = DRAKIDION.TaskExampleFactories.createTaskChain(operations);
   DRAKIDION.Orchestrator.addTask(state, task);
   
   console.log('Processing chain...');
@@ -115,7 +115,7 @@ export const runCallbackDemo = async () => {
   
   let completionResult: any = null;
   
-  const task = DRAKIDION.TaskFactories.createWaitingTask(
+  const task = DRAKIDION.TaskExampleFactories.createWaitingTask(
     undefined,
     (result) => {
       console.log('Callback invoked with result:', result);
@@ -160,6 +160,7 @@ export const runCustomTaskDemo = async () => {
       taskId,
       version: 1,
       status: 'ready',
+      description: `Greeting task for ${name}`,
       work: '',
       process: async () => {
         // Simulate processing
@@ -171,6 +172,7 @@ export const runCustomTaskDemo = async () => {
           taskId,
           version: 2,
           status: 'succeeded',
+          description: `Greeting task for ${name}`,
           work: greeting,
           process: async () => {
             throw new Error('Task already completed');

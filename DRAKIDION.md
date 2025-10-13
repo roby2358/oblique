@@ -35,7 +35,7 @@ Each task is an object returned from a factory function (a closure). The factory
 - (optional) onError: (error: any) -> Task
   - callback function that returns successor task on error
 
-Creating a new state produces a new task object from a factory function. If the status is "ready" it goes into the taskQueue, if it's "waiting" it goes into the waitingMap (the Observer is responsible for creating the correlationId). The previous task state is discarded. Any other states are left in the taskMap without further action.
+Creating a new state produces a new task object from a factory function. If the status is "ready" it goes into the taskQueue, if it's "waiting" it goes into the waitingMap using the taskId as the correlation key. The previous task state is discarded. Any other states are left in the taskMap without further action.
 
 Different task types are implemented as different factory functions (e.g., createLLMTask, createPostTask) that return objects with this common structure but encapsulate type-specific behavior in their closures.
 
@@ -47,7 +47,7 @@ The task map is a key–value store of the latest task snapshot per taskId.
 
 Queue "taskQueue" holds tasks with status = "ready"
 
-The waiting registry "waitingMap" holds tasks in status = "waiting" that are paused pending asynchronous responses identified by correlation IDs.
+The waiting registry "waitingMap" holds tasks in status = "waiting" that are paused pending asynchronous responses. The taskId is used as the correlation key for tracking waiting tasks.
 
 The state machine behind each task determines which structure it belongs to.
 
@@ -59,13 +59,13 @@ It's a convenience structure, because you could get the same thing by iterating 
 
 ### Mutable waiting map "waitingMap"
 
-Maps correlation ID to task ID { correlationID: string -> taskId: string }
+Maps taskId to taskId { taskId: string -> taskId: string } for tasks in waiting state.
 
-- correlationId is another 24 character safe-base32 string, but start with "X" to distinguish it
+The taskId serves as the correlation key when tracking waiting tasks. This simplifies the API since we only need one identifier per task. When an async operation completes, it references the task by its taskId to resume processing.
 
-The correlationId is a convenience that complements onSuccess and onError. It is complementary to the onSuccess and onError callback hooks. I expect we'll mainly be using the callback hooks.
+The waitingMap works in conjunction with the onSuccess and onError callback hooks defined on tasks. When a waiting task's async operation completes, the callbacks create successor tasks that the orchestrator then processes.
 
-Note that task implementation is free to define its own callback hooks in addition to onSucess and onError. Those are just a baseline. A task does not need to define them if it's internal logic doesn't include callbacks.
+Note that task implementation is free to define its own callback hooks in addition to onSuccess and onError. Those are just a baseline. A task does not need to define them if its internal logic doesn't include callbacks.
 
 ### State transitions.
 
@@ -82,8 +82,13 @@ We only have a observer/taskQueue/waitingMap in the current window/tab. If the w
 
 ### Async responses.
 
-External events reference tasks via correlation IDs. When a response arrives, the orchestrator finds the corresponding task in the in-flight registry (waitingMap), generates a new snapshot, and re-queues it if ready.
-- Alternately, a task may have callback hooks onSuccess and onError that trigger the state change
+External events reference tasks via their taskId. When a response arrives, the orchestrator finds the corresponding task in the waitingMap using the taskId, then invokes the task's onSuccess or onError callback to generate a new snapshot, and processes it accordingly.
+
+The typical pattern:
+1. Task factory initiates async operation and returns a waiting task
+2. Async operation completes and invokes the completion callback with taskId
+3. Orchestrator calls task's onSuccess/onError to create successor task
+4. Successor task is processed (queued if ready, or terminal if succeeded/dead)
 
 ### Error handling and retries.
 
@@ -111,13 +116,13 @@ MUST process tasks sequentially; no concurrent executions.
 
 ### Async and Waiting
 
-MUST track asynchronous tasks using a correlation registry (corrId → taskId).
+MUST track asynchronous tasks using the waitingMap (taskId → taskId).
 
-MUST allow external responses to resume waiting tasks through correlation IDs.
+MUST allow external responses to resume waiting tasks through their taskId.
 
-MAY allow external responses to resume waiting tasks through callbacks
+MUST use onSuccess and onError callbacks to create successor tasks when async operations complete.
 
-SHOULD reject or ignore stale async responses that reference outdated snapshots.
+SHOULD reject or ignore stale async responses that reference tasks no longer in the waitingMap.
 
 ### Error Handling
 

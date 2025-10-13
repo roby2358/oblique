@@ -148,33 +148,51 @@ const handleSendMessage = async () => {
       return;
     }
 
-    // Create task for processing the message
+    // Create task for processing the message with completion handler
     const task = TaskFactories.createObliqueMessageTask(
       message,
       llmClient,
-      createObliquePrompt
+      createObliquePrompt,
+      (taskId, result, error) => {
+        // Handle LLM response completion
+        if (error) {
+          orchestratorState = Orchestrator.errorWaitingTask(orchestratorState, taskId, error);
+        } else {
+          orchestratorState = Orchestrator.resumeWaitingTask(orchestratorState, taskId, result);
+        }
+        
+        // Get the completed task and extract response
+        const completedTask = TaskMapOps.getTask(orchestratorState.taskMap, taskId);
+        const response = completedTask?.work || '[No response received]';
+        
+        // Display response
+        if (completedTask?.status === 'succeeded') {
+          addMessage(response, 'oblique');
+        } else {
+          addMessage(response, 'system');
+        }
+        
+        // Re-enable input
+        $messageInput.prop('disabled', false);
+        $('#send-button').prop('disabled', false);
+        $messageInput.focus();
+        updateStatus();
+      }
     );
 
-    // Add task to orchestrator
+    // Add task to orchestrator (adds to waitingMap using taskId)
     orchestratorState = Orchestrator.addTask(orchestratorState, task);
-
-    // Process all tasks
-    orchestratorState = await Orchestrator.processAllTasks(orchestratorState);
-
-    // Get the completed task and extract response
-    const completedTask = TaskMapOps.getTask(orchestratorState.taskMap, task.taskId);
-    const response = completedTask?.work || '[No response received]';
-
-    addMessage(response, 'oblique');
+    
+    // Show waiting status
+    addMessage('⏳ Waiting for LLM response...', 'system');
     updateStatus();
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
     addMessage(`Error: ${errorMsg}`, 'system');
+    $messageInput.prop('disabled', false);
+    $('#send-button').prop('disabled', false);
+    $messageInput.focus();
   }
-
-  $messageInput.prop('disabled', false);
-  $('#send-button').prop('disabled', false);
-  $messageInput.focus();
 };
 
 const handleCheckBluesky = async () => {

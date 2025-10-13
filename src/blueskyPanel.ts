@@ -1,6 +1,9 @@
 // Bluesky Panel - UI functions for handling Bluesky interactions
 import type { BlueskyMessage } from './types/index.js';
-import { getBlueskyClient } from './panels.js';
+import type { DrakidionTask } from './drakidion/drakidion-types.js';
+import { getBlueskyClient, getLLMClient, getOrchestratorState, setOrchestratorState, updateStatus } from './panels.js';
+import { createProcessNotificationTask } from './oblique-task-factory.js';
+import * as Orchestrator from './drakidion/orchestrator.js';
 
 declare const $: any;
 
@@ -13,9 +16,16 @@ const escapeHtml = (text: string): string => {
 export const createHandleCheckBluesky = () => {
   return async () => {
     const blueskyClient = getBlueskyClient();
+    const llmClient = getLLMClient();
+    let orchestratorState = getOrchestratorState();
     
     if (!blueskyClient) {
       $('#bluesky-posts').html('<p class="error">Bluesky not configured. Please add credentials to config.json</p>');
+      return;
+    }
+
+    if (!llmClient) {
+      $('#bluesky-posts').html('<p class="error">LLM not configured. Please add OpenRouter API key to config.json</p>');
       return;
     }
 
@@ -29,7 +39,7 @@ export const createHandleCheckBluesky = () => {
       }
 
       // Get unread notifications only (unreadOnly = true by default)
-      const notifications = await blueskyClient.getNotifications(25, true);
+      const notifications = await blueskyClient.getNotifications(3, true);
 
       // Display notifications
       if (notifications.length === 0) {
@@ -46,6 +56,32 @@ export const createHandleCheckBluesky = () => {
           `;
         }).join('');
         $('#bluesky-posts').html(postsHtml);
+
+        // Create tasks for each notification
+        const onTaskCreated = (task: DrakidionTask) => {
+          orchestratorState = Orchestrator.addTask(orchestratorState, task);
+          setOrchestratorState(orchestratorState);
+          updateStatus();
+        };
+
+        notifications.forEach((notif: BlueskyMessage) => {
+          const task = createProcessNotificationTask(
+            notif,
+            llmClient,
+            blueskyClient,
+            onTaskCreated
+          );
+          
+          orchestratorState = Orchestrator.addTask(orchestratorState, task);
+        });
+
+        // Update the global state
+        setOrchestratorState(orchestratorState);
+        updateStatus();
+
+        // Show success message
+        const tasksCreated = notifications.length;
+        $('#bluesky-posts').append(`<p class="success">✓ Created ${tasksCreated} task${tasksCreated === 1 ? '' : 's'} to reply to notification${tasksCreated === 1 ? '' : 's'}</p>`);
 
         // Mark as seen if checkbox is checked
         const markAsSeen = $('#mark-as-seen').prop('checked');

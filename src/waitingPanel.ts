@@ -2,6 +2,7 @@
 import type { OrchestratorState } from './drakidion/drakidion-types.js';
 import * as Orchestrator from './drakidion/orchestrator.js';
 import * as TaskMapOps from './drakidion/task-map.js';
+import { getOrchestratorState } from './panels.js';
 
 declare const $: any;
 
@@ -10,7 +11,8 @@ const formatDate = (date: Date | undefined): string => {
   return date.toLocaleTimeString();
 };
 
-export const updateWaitingPanel = (orchestratorState: OrchestratorState | undefined) => {
+export const updateWaitingPanel = () => {
+  const orchestratorState = getOrchestratorState();
   if (!orchestratorState) {
     $('#waiting-size').text('-');
     $('#waiting-task-list').empty();

@@ -1,6 +1,7 @@
 // Observer Panel - UI functions for displaying orchestrator state
 import type { OrchestratorState } from './drakidion/drakidion-types.js';
 import * as Orchestrator from './drakidion/orchestrator.js';
+import { getOrchestratorState } from './panels.js';
 
 declare const $: any;
 
@@ -9,7 +10,8 @@ const formatDate = (date: Date | undefined): string => {
   return date.toLocaleTimeString();
 };
 
-export const updateObserverPanel = (orchestratorState: OrchestratorState | undefined) => {
+export const updateObserverPanel = () => {
+  const orchestratorState = getOrchestratorState();
   if (!orchestratorState) {
     $('#observer-queue-size').text('-');
     $('#observer-waiting-size').text('-');

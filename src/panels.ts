@@ -3,7 +3,7 @@ import * as Orchestrator from './drakidion/orchestrator.js';
 import type { OrchestratorState } from './drakidion/drakidion-types.js';
 import { createOpenRouterClient } from './hooks/llm/index.js';
 import type { LLMClient } from './hooks/llm/llm-client.js';
-import { createBlueskyClient, type BlueskyClient } from './hooks/bluesky/bluesky-client.js';
+import { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
 
 declare const $: any;
 
@@ -117,7 +117,7 @@ export const initializeOrchestrator = () => {
   const blueskyHandle = config.bluesky?.handle || '';
   const blueskyPassword = config.bluesky?.password || '';
   if (blueskyHandle && blueskyPassword) {
-    blueskyClient = createBlueskyClient({
+    blueskyClient = new BlueskyClient({
       handle: blueskyHandle,
       appPassword: blueskyPassword,
     });

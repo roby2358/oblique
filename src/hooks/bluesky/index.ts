@@ -1,4 +1,4 @@
 // Bluesky hook exports
-export { createBlueskyClient } from './bluesky-client.js';
-export type { BlueskyClient, BlueskyConfig } from './bluesky-client.js';
+export { BlueskyClient } from './bluesky-client.js';
+export type { BlueskyConfig } from './bluesky-client.js';
 

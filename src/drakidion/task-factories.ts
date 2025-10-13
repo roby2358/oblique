@@ -5,6 +5,39 @@ import type { LLMClient } from '../hooks/llm/llm-client.js';
 import { generateTaskId } from '../utils/index.js';
 
 /**
+ * Helper to create the base successor task object
+ * Returns common fields: taskId, version (+1), description, work, createdAt, and stub process
+ */
+export const nextTask = (task: DrakidionTask): Omit<DrakidionTask, 'doneAt' | 'onSuccess' | 'onError'> => {
+  return {
+    taskId: task.taskId,
+    version: task.version + 1,
+    // make sure to set the status to something alive
+    status: 'dead',
+    description: task.description,
+    work: task.work,
+    conversation: task.conversation,
+    createdAt: task.createdAt,
+    process: async () => {
+      throw new Error('Task already completed');
+    },
+  };
+};
+
+/**
+ * General helper to create a succeeded version of any task
+ */
+export const createSucceededTask = (
+  task: DrakidionTask
+): DrakidionTask => {
+  return {
+    ...nextTask(task),
+    status: 'succeeded',
+    doneAt: new Date(),
+  };
+};
+
+/**
  * Create a task that processes an Oblique message with an LLM
  * This applies the Oblique prompt transformation before calling the LLM.
  * This creates a waiting task and initiates the LLM call immediately.

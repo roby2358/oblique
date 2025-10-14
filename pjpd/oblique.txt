@@ -1,0 +1,69 @@
+Priority:   80
+Status: ToDo
+ID: fix-mqsf
+fix onSuccess and onError
+---
+Priority:   70
+Status: ToDo
+ID: fix-convo-yqak
+Fix conversation handling
+---
+Priority:   60
+Status: ToDo
+ID: prompt-bug4
+fix prompt to llm using system command
+---
+Priority:   50
+Status: ToDo
+ID: thread-8df4
+implement full thread reading from notifications
+---
+Priority:   40
+Status: ToDo
+ID: alt-3suq
+extract and display alt text from image attachments
+---
+Priority:   30
+Status: ToDo
+ID: error-yihe
+Add retry logic and better error messages for API failures
+---
+Priority:   30
+Status: ToDo
+ID: ratelimit-797w
+Implement proper rate limiting for Bluesky API calls
+---
+Priority:   30
+Status: ToDo
+ID: format-uuep
+Improve how LLM responses are formatted before posting
+---
+Priority:   30
+Status: ToDo
+ID: context-yppk
+Maintain conversation history for better LLM context
+---
+Priority:   30
+Status: ToDo
+ID: filter-trdq
+Add filters for which notifications to respond to
+---
+Priority:   30
+Status: ToDo
+ID: test-ic9g
+Add more unit tests for critical components
+---
+Priority:   30
+Status: ToDo
+ID: config-ftxs
+Improve the configuration panel for easier setup
+---
+Priority:   30
+Status: ToDo
+ID: log-zgkr
+Add better logging for troubleshooting
+---
+Priority:   30
+Status: ToDo
+ID: templates-squn
+Support different response templates/personalities

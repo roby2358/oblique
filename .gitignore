@@ -12,3 +12,4 @@ dist-cli/
 coverage/
 .npm/
 .eslintcache
+/pjpd/bak/

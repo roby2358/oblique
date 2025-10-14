@@ -99,5 +99,25 @@ export class BlueskyClient {
   isAuthenticated(): boolean {
     return this.authenticated;
   }
+
+  /**
+   * Determines the appropriate reply threading info for a notification or mention.
+   * If the message has replyInfo, use its root (to maintain thread continuity).
+   * Otherwise, use the message itself as the root (starting a new thread).
+   * The parent is always the message being replied to.
+   */
+  notificationReplyTo(message: BlueskyMessage): { root: { uri: string; cid: string }; parent: { uri: string; cid: string } } {
+    const root = message.replyInfo?.root || {
+      uri: message.uri,
+      cid: message.cid,
+    };
+    
+    const parent = {
+      uri: message.uri,
+      cid: message.cid,
+    };
+
+    return { root, parent };
+  }
 }
 

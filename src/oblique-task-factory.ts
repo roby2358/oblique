@@ -213,26 +213,13 @@ export const createPostReplyTask = (
     conversation,
     process: async () => {
       try {
-        // Determine root and parent for reply threading
-        // If the notification has replyInfo, use its root (original post in thread)
-        // Otherwise, use the notification itself as the root (starting a new thread)
-        const root = originalNotification.replyInfo?.root || {
-          uri: originalNotification.uri,
-          cid: originalNotification.cid,
-        };
-        
-        const parent = {
-          uri: originalNotification.uri,
-          cid: originalNotification.cid,
-        };
+        // Get reply threading info for the notification
+        const replyTo = blueskyClient.notificationReplyTo(originalNotification);
 
         // Post the reply to Bluesky
         const result = await blueskyClient.post({
           text: replyText,
-          replyTo: {
-            root,
-            parent,
-          },
+          replyTo,
         });
 
         // Return succeeded version

@@ -1,9 +1,11 @@
 // Tests for Task Factories
 import { 
-  createObliqueMessageTask,
   newReadyTask,
   newWaitingTask,
 } from '../../src/drakidion/task-factories.js';
+import {
+  createObliqueMessageTask,
+} from '../../src/oblique-task-factory.js';
 import {
   createLLMTask,
   createIncrementTask, 

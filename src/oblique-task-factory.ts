@@ -5,13 +5,13 @@ import type { DrakidionTask, ConversationMessage } from './drakidion/drakidion-t
 import type { BlueskyMessage } from './types/index.js';
 import type { LLMClient } from './hooks/llm/llm-client.js';
 import type { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
-import { generateTaskId } from './utils/index.js';
 import { createObliquePrompt } from './prompts/oblique.js';
-import { nextTask, createSucceededTask } from './drakidion/task-factories.js';
+import { nextTask, createSucceededTask, newReadyTask } from './drakidion/task-factories.js';
 
 /**
  * Step 1: Create a task to process a Bluesky notification
  * This is a READY task that creates a WAITING task for LLM response
+ * Starts a new task chain (taskId generated, version 1)
  */
 export const createProcessNotificationTask = (
   notification: BlueskyMessage,
@@ -20,26 +20,20 @@ export const createProcessNotificationTask = (
   onTaskCreated: (task: DrakidionTask) => void,
   onWaitingTaskComplete?: (taskId: string, result?: any, error?: any) => void
 ): DrakidionTask => {
-  const taskId = generateTaskId();
-  const createdAt = new Date();
   const description = `Process notification from @${notification.author}`;
-  const work = notification.text;
 
   const task: DrakidionTask = {
-    taskId,
-    version: 1,
-    status: 'ready',
-    description,
-    work,
-    createdAt,
+    ...newReadyTask(description), // Starts new chain: fresh taskId, version 1
+    work: notification.text,
     process: async () => {
-      // Create and queue the LLM task
+      // Create and queue the LLM task as successor (same taskId, version 2)
       const llmTask = createSendToLLMTask(
         notification,
         llmClient,
         blueskyClient,
         onTaskCreated,
-        onWaitingTaskComplete
+        onWaitingTaskComplete,
+        task // Pass predecessor task for threading
       );
       
       onTaskCreated(llmTask);
@@ -94,16 +88,16 @@ const createSendToLLMDeadTask = (
 /**
  * Step 2: Create a task to send message to LLM
  * This is a WAITING task that creates a READY task when response arrives
+ * Successor task (inherits taskId from predecessor, version = predecessor.version + 1)
  */
 export const createSendToLLMTask = (
   notification: BlueskyMessage,
   llmClient: LLMClient,
   blueskyClient: BlueskyClient,
   onTaskCreated: (task: DrakidionTask) => void,
-  onWaitingTaskComplete?: (taskId: string, result?: any, error?: any) => void
+  onWaitingTaskComplete: ((taskId: string, result?: any, error?: any) => void) | undefined,
+  predecessor: DrakidionTask
 ): DrakidionTask => {
-  const taskId = generateTaskId();
-  const createdAt = new Date();
   const description = `Oblique: ${notification.text.substring(0, 40)}${notification.text.length > 40 ? '...' : ''}`;
   
   const conversation: ConversationMessage[] = [
@@ -113,6 +107,17 @@ export const createSendToLLMTask = (
   // Generate Oblique prompt
   const prompt = createObliquePrompt(notification.text);
 
+  // Create waiting task as successor (inherits taskId, increments version)
+  const task: DrakidionTask = {
+    ...nextTask(predecessor),
+    status: 'waiting',
+    description,
+    work: 'Waiting for LLM response...',
+    conversation,
+    onSuccess: (result: any) => createSendToLLMSucceededTask(task, result.content),
+    onError: (error: any) => createSendToLLMDeadTask(task, error),
+  };
+
   // Initiate the LLM call immediately
   llmClient.generateResponse({
     prompt,
@@ -121,15 +126,16 @@ export const createSendToLLMTask = (
     .then(response => {
       // Notify that waiting task is complete (success)
       if (onWaitingTaskComplete) {
-        onWaitingTaskComplete(taskId, response);
+        onWaitingTaskComplete(task.taskId, response);
       }
       
-      // Create the post reply task when LLM responds
+      // Create the post reply task when LLM responds as successor
       const postTask = createPostReplyTask(
         notification,
         response.content,
         blueskyClient,
-        conversation
+        conversation,
+        task // Pass predecessor task for threading
       );
       
       onTaskCreated(postTask);
@@ -137,32 +143,12 @@ export const createSendToLLMTask = (
     .catch(error => {
       // Notify that waiting task is complete (error)
       if (onWaitingTaskComplete) {
-        onWaitingTaskComplete(taskId, undefined, error);
+        onWaitingTaskComplete(task.taskId, undefined, error);
       }
       
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`LLM task ${taskId} failed:`, errorMsg);
+      console.error(`LLM task ${task.taskId} failed:`, errorMsg);
     });
-
-  // Return waiting task
-  const task: DrakidionTask = {
-    taskId,
-    version: 1,
-    status: 'waiting',
-    description,
-    work: 'Waiting for LLM response...',
-    conversation,
-    createdAt,
-    process: async () => {
-      throw new Error('Waiting tasks should not be processed directly');
-    },
-    onSuccess: (result: any) => {
-      return createSendToLLMSucceededTask(task, result.content);
-    },
-    onError: (error: any) => {
-      return createSendToLLMDeadTask(task, error);
-    },
-  };
 
   return task;
 };
@@ -204,25 +190,23 @@ const createPostReplyDeadTask = (
 /**
  * Step 3: Create a task to post reply to Bluesky
  * This is a READY task that posts the response and succeeds
+ * Successor task (inherits taskId from predecessor, version = predecessor.version + 1)
  */
 export const createPostReplyTask = (
   originalNotification: BlueskyMessage,
   replyText: string,
   blueskyClient: BlueskyClient,
-  conversation?: ConversationMessage[]
+  conversation: ConversationMessage[] | undefined,
+  predecessor: DrakidionTask
 ): DrakidionTask => {
-  const taskId = generateTaskId();
-  const createdAt = new Date();
   const description = `Post reply to @${originalNotification.author}`;
 
   const task: DrakidionTask = {
-    taskId,
-    version: 1,
+    ...nextTask(predecessor),
     status: 'ready',
     description,
     work: replyText,
     conversation,
-    createdAt,
     process: async () => {
       try {
         // Determine root and parent for reply threading

@@ -5,6 +5,52 @@ import type { LLMClient } from '../hooks/llm/llm-client.js';
 import { generateTaskId } from '../utils/index.js';
 
 /**
+ * Helper to create a new ready task with initial values and defaults
+ * Starts a new task chain with a fresh taskId and version 1
+ * Use with spread operator: { ...newReadyTask(description), work, process }
+ * 
+ * For successor tasks in a chain, use nextTask() instead.
+ */
+export const newReadyTask = (description: string) => {
+  return {
+    taskId: generateTaskId(),
+    version: 1,
+    status: 'ready' as const,
+    description,
+    work: '',
+    conversation: undefined as ConversationMessage[] | undefined,
+    createdAt: new Date(),
+    process: async (): Promise<DrakidionTask> => {
+      throw new Error('Task process not implemented');
+    },
+  };
+};
+
+/**
+ * Helper to create a new waiting task with initial values and defaults
+ * Starts a new task chain with a fresh taskId and version 1
+ * Use with spread operator: { ...newWaitingTask(description), work, onSuccess, onError }
+ * 
+ * For successor tasks in a chain, use nextTask() instead.
+ */
+export const newWaitingTask = (description: string) => {
+  return {
+    taskId: generateTaskId(),
+    version: 1,
+    status: 'waiting' as const,
+    description,
+    work: 'Waiting...',
+    conversation: undefined as ConversationMessage[] | undefined,
+    createdAt: new Date(),
+    process: async (): Promise<DrakidionTask> => {
+      throw new Error('Waiting tasks should not be processed directly');
+    },
+    onSuccess: undefined as ((result: any) => DrakidionTask) | undefined,
+    onError: undefined as ((error: any) => DrakidionTask) | undefined,
+  };
+};
+
+/**
  * Helper to create the base successor task object
  * Returns common fields: taskId, version (+1), description, work, createdAt, and stub process
  */

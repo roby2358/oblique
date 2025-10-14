@@ -1,6 +1,8 @@
 // Tests for Task Factories
 import { 
   createObliqueMessageTask,
+  newReadyTask,
+  newWaitingTask,
 } from '../../src/drakidion/task-factories.js';
 import {
   createLLMTask,
@@ -12,6 +14,157 @@ import {
 import type { LLMClient } from '../../src/hooks/llm/llm-client.js';
 
 describe('Task Factories', () => {
+  describe('newReadyTask', () => {
+    it('should create a ready task with initial values and defaults', async () => {
+      const task = {
+        ...newReadyTask('Test task'),
+        work: 'Initial work',
+        process: async () => {
+          return {
+            ...task,
+            status: 'succeeded' as const,
+            work: 'Completed',
+            doneAt: new Date(),
+          };
+        },
+      };
+
+      expect(task.status).toBe('ready');
+      expect(task.version).toBe(1); // Always starts at version 1
+      expect(task.description).toBe('Test task');
+      expect(task.work).toBe('Initial work');
+      expect(task.taskId).toHaveLength(24); // Always generates new taskId
+      expect(task.createdAt).toBeInstanceOf(Date);
+      expect(task.conversation).toBeUndefined();
+
+      // Test that process function works
+      const result = await task.process();
+      expect(result.status).toBe('succeeded');
+      expect(result.work).toBe('Completed');
+    });
+
+    it('should provide default empty work', () => {
+      const task = {
+        ...newReadyTask('Test task'),
+      };
+
+      expect(task.work).toBe('');
+    });
+
+    it('should provide default process that throws', async () => {
+      const task = {
+        ...newReadyTask('Test task'),
+      };
+
+      await expect(task.process()).rejects.toThrow('Task process not implemented');
+    });
+
+    it('should accept optional conversation override', () => {
+      const conversation = [
+        { source: 'user', text: 'Hello' },
+        { source: 'assistant', text: 'Hi there' },
+      ];
+
+      const task = {
+        ...newReadyTask('Test task'),
+        work: 'Work',
+        conversation,
+      };
+
+      expect(task.conversation).toEqual(conversation);
+    });
+  });
+
+  describe('newWaitingTask', () => {
+    it('should create a waiting task with initial values and defaults', () => {
+      const task = {
+        ...newWaitingTask('Waiting task'),
+        work: 'Custom waiting...',
+        onSuccess: (result: any) => ({
+          ...task,
+          status: 'succeeded' as const,
+          work: result.data,
+          doneAt: new Date(),
+        }),
+        onError: (error: any) => ({
+          ...task,
+          status: 'dead' as const,
+          work: `Error: ${error.message}`,
+          doneAt: new Date(),
+        }),
+      };
+
+      expect(task.status).toBe('waiting');
+      expect(task.version).toBe(1); // Always starts at version 1
+      expect(task.description).toBe('Waiting task');
+      expect(task.work).toBe('Custom waiting...');
+      expect(task.taskId).toHaveLength(24); // Always generates new taskId
+      expect(task.createdAt).toBeInstanceOf(Date);
+      expect(task.onSuccess).toBeDefined();
+      expect(task.onError).toBeDefined();
+      expect(task.conversation).toBeUndefined();
+    });
+
+    it('should provide default work of "Waiting..."', () => {
+      const task = {
+        ...newWaitingTask('Waiting task'),
+      };
+
+      expect(task.work).toBe('Waiting...');
+    });
+
+    it('should throw error when process is called (default behavior)', async () => {
+      const task = {
+        ...newWaitingTask('Waiting task'),
+      };
+
+      await expect(task.process()).rejects.toThrow('Waiting tasks should not be processed directly');
+    });
+
+    it('should accept optional conversation override', () => {
+      const conversation = [{ source: 'user', text: 'Test' }];
+
+      const task = {
+        ...newWaitingTask('Waiting task'),
+        conversation,
+      };
+
+      expect(task.conversation).toEqual(conversation);
+    });
+
+    it('should call onSuccess callback correctly', () => {
+      const task = {
+        ...newWaitingTask('Waiting task'),
+        onSuccess: (result: any) => ({
+          ...task,
+          status: 'succeeded' as const,
+          work: `Success: ${result.data}`,
+          doneAt: new Date(),
+        }),
+      };
+
+      const result = task.onSuccess!({ data: 'test result' });
+      expect(result.status).toBe('succeeded');
+      expect(result.work).toBe('Success: test result');
+    });
+
+    it('should call onError callback correctly', () => {
+      const task = {
+        ...newWaitingTask('Waiting task'),
+        onError: (error: any) => ({
+          ...task,
+          status: 'dead' as const,
+          work: `Error: ${error.message}`,
+          doneAt: new Date(),
+        }),
+      };
+
+      const result = task.onError!(new Error('test error'));
+      expect(result.status).toBe('dead');
+      expect(result.work).toBe('Error: test error');
+    });
+  });
+
   describe('createIncrementTask', () => {
     it('should create a task with initial value', () => {
       const task = createIncrementTask(0);

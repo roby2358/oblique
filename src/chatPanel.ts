@@ -1,7 +1,7 @@
 // Chat Panel - UI functions for handling chat interactions
 import * as Orchestrator from './drakidion/orchestrator.js';
 import * as TaskMapOps from './drakidion/task-map.js';
-import * as TaskFactories from './drakidion/task-factories.js';
+import { createObliqueMessageTask } from './oblique-task-factory.js';
 import { createObliquePrompt } from './prompts/oblique.js';
 import { getOrchestratorState, setOrchestratorState, getLLMClient, addMessage, updateStatus } from './panels.js';
 
@@ -30,26 +30,21 @@ export const createHandleSendMessage = () => {
       }
 
       // Create task for processing the message with completion handler
-      const task = TaskFactories.createObliqueMessageTask(
+      const task = createObliqueMessageTask(
         message,
         llmClient,
         createObliquePrompt,
-        (taskId, result, error) => {
+        (taskId, successorTask) => {
           // Handle LLM response completion
           let orchestratorState = getOrchestratorState();
-          if (error) {
-            orchestratorState = Orchestrator.errorWaitingTask(orchestratorState, taskId, error);
-          } else {
-            orchestratorState = Orchestrator.resumeWaitingTask(orchestratorState, taskId, result);
-          }
+          orchestratorState = Orchestrator.resumeWaitingTask(orchestratorState, taskId, successorTask);
           setOrchestratorState(orchestratorState);
           
-          // Get the completed task and extract response
-          const completedTask = TaskMapOps.getTask(orchestratorState.taskMap, taskId);
-          const response = completedTask?.work || '[No response received]';
+          // Extract response from successor task
+          const response = successorTask.work || '[No response received]';
           
           // Display response
-          if (completedTask?.status === 'succeeded') {
+          if (successorTask.status === 'succeeded') {
             addMessage(response, 'oblique');
           } else {
             addMessage(response, 'system');

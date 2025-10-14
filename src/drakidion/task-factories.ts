@@ -28,7 +28,7 @@ export const newReadyTask = (description: string) => {
 /**
  * Helper to create a new waiting task with initial values and defaults
  * Starts a new task chain with a fresh taskId and version 1
- * Use with spread operator: { ...newWaitingTask(description), work, onSuccess, onError }
+ * Use with spread operator: { ...newWaitingTask(description), work }
  * 
  * For successor tasks in a chain, use nextTask() instead.
  */
@@ -44,8 +44,6 @@ export const newWaitingTask = (description: string) => {
     process: async (): Promise<DrakidionTask> => {
       throw new Error('Waiting tasks should not be processed directly');
     },
-    onSuccess: undefined as ((result: any) => DrakidionTask) | undefined,
-    onError: undefined as ((error: any) => DrakidionTask) | undefined,
   };
 };
 
@@ -53,7 +51,7 @@ export const newWaitingTask = (description: string) => {
  * Helper to create the base successor task object
  * Returns common fields: taskId, version (+1), description, work, createdAt, and stub process
  */
-export const nextTask = (task: DrakidionTask): Omit<DrakidionTask, 'doneAt' | 'onSuccess' | 'onError'> => {
+export const nextTask = (task: DrakidionTask): Omit<DrakidionTask, 'doneAt'> => {
   return {
     taskId: task.taskId,
     version: task.version + 1,

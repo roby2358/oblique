@@ -5,14 +5,70 @@ import type { LLMClient } from '../hooks/llm/llm-client.js';
 import { generateTaskId } from '../utils/index.js';
 
 /**
+ * Succeeded version of LLM task
+ */
+const createLLMTaskSucceeded = (
+  task: DrakidionTask,
+  message: string,
+  updatedConversation: ConversationMessage[],
+  resultContent: string
+): DrakidionTask => {
+  const finalConversation: ConversationMessage[] = [
+    ...updatedConversation,
+    { source: 'assistant', text: resultContent },
+  ];
+  
+  return {
+    taskId: task.taskId,
+    version: task.version + 1,
+    status: 'succeeded',
+    description: `LLM: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`,
+    work: resultContent,
+    conversation: finalConversation,
+    createdAt: task.createdAt,
+    doneAt: new Date(),
+    process: async () => {
+      throw new Error('Task already completed');
+    },
+  };
+};
+
+/**
+ * Dead version of LLM task
+ */
+const createLLMTaskDead = (
+  task: DrakidionTask,
+  message: string,
+  updatedConversation: ConversationMessage[],
+  error: any
+): DrakidionTask => {
+  const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+  
+  return {
+    taskId: task.taskId,
+    version: task.version + 1,
+    status: 'dead',
+    description: `LLM: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`,
+    work: `Error: ${errorMsg}`,
+    conversation: updatedConversation,
+    retryCount: 0,
+    createdAt: task.createdAt,
+    doneAt: new Date(),
+    process: async () => {
+      throw new Error('Task failed');
+    },
+  };
+};
+
+/**
  * Create a task that processes a message with an LLM
  * This creates a waiting task and initiates the LLM call immediately.
- * The onComplete callback is called when the LLM responds (success or error).
+ * The onComplete callback is called when the LLM responds with the successor task.
  */
 export const createLLMTask = (
   message: string,
   llmClient: LLMClient,
-  onComplete: (taskId: string, result?: any, error?: any) => void,
+  onComplete: (taskId: string, successorTask: DrakidionTask) => void,
   options?: {
     temperature?: number;
     conversation?: ConversationMessage[];
@@ -28,21 +84,7 @@ export const createLLMTask = (
     { source: 'user', text: message },
   ];
   
-  // Initiate the LLM call immediately
-  llmClient.generateResponse({
-    prompt: message,
-    temperature: options?.temperature ?? 0.8,
-  })
-    .then(response => {
-      // Call onComplete with the response
-      onComplete(taskId, response);
-    })
-    .catch(error => {
-      // Call onComplete with the error
-      onComplete(taskId, undefined, error);
-    });
-  
-  // Return waiting task with callbacks
+  // Create waiting task
   const task: DrakidionTask = {
     taskId,
     version: 1,
@@ -54,48 +96,27 @@ export const createLLMTask = (
     process: async () => {
       throw new Error('Waiting tasks should not be processed directly');
     },
-    onSuccess: (result: any) => {
-      // Add assistant response to conversation
-      const finalConversation: ConversationMessage[] = [
-        ...updatedConversation,
-        { source: 'assistant', text: result.content },
-      ];
-      
-      // Return succeeded task with response
-      return {
-        taskId,
-        version: 2,
-        status: 'succeeded',
-        description: `LLM: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`,
-        work: result.content,
-        conversation: finalConversation,
-        createdAt,
-        doneAt: new Date(),
-        process: async () => {
-          throw new Error('Task already completed');
-        },
-      };
-    },
-    onError: (error: any) => {
-      // Return dead task on error
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      
-      return {
-        taskId,
-        version: 2,
-        status: 'dead',
-        description: `LLM: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`,
-        work: `Error: ${errorMsg}`,
-        conversation: updatedConversation,
-        retryCount: 0,
-        createdAt,
-        doneAt: new Date(),
-        process: async () => {
-          throw new Error('Task failed');
-        },
-      };
-    },
   };
+  
+  // Initiate the LLM call immediately
+  llmClient.generateResponse({
+    prompt: message,
+    temperature: options?.temperature ?? 0.8,
+  })
+    .then(response => {
+      // Create succeeded task
+      const succeededTask = createLLMTaskSucceeded(task, message, updatedConversation, response.content);
+      
+      // Call onComplete with successor task
+      onComplete(taskId, succeededTask);
+    })
+    .catch(error => {
+      // Create dead task
+      const deadTask = createLLMTaskDead(task, message, updatedConversation, error);
+      
+      // Call onComplete with error successor task
+      onComplete(taskId, deadTask);
+    });
   
   return task;
 };
@@ -146,15 +167,15 @@ export const createIncrementTask = (initialValue: number = 0, createdAt?: Date):
 
 /**
  * Create a task that waits for an async response
- * This demonstrates the waiting/callback pattern
+ * This demonstrates the waiting pattern
+ * Note: This is just a stub - actual async handling happens externally
  */
 export const createWaitingTask = (
-  taskId: string = generateTaskId(),
-  onComplete?: (result: any) => void
+  taskId: string = generateTaskId()
 ): DrakidionTask => {
   const createdAt = new Date();
   
-  return {
+  const task: DrakidionTask = {
     taskId,
     version: 1,
     status: 'waiting',
@@ -164,41 +185,9 @@ export const createWaitingTask = (
     process: async () => {
       throw new Error('Waiting tasks should not be processed directly');
     },
-    onSuccess: (result: any) => {
-      if (onComplete) {
-        onComplete(result);
-      }
-      
-      return {
-        taskId,
-        version: 2,
-        status: 'succeeded',
-        description: 'Waiting for async response',
-        work: `Completed with result: ${JSON.stringify(result)}`,
-        createdAt,
-        doneAt: new Date(),
-        process: async () => {
-          throw new Error('Task already completed');
-        },
-      };
-    },
-    onError: (error: any) => {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      
-      return {
-        taskId,
-        version: 2,
-        status: 'dead',
-        description: 'Waiting for async response',
-        work: `Failed with error: ${errorMsg}`,
-        createdAt,
-        doneAt: new Date(),
-        process: async () => {
-          throw new Error('Task failed');
-        },
-      };
-    },
   };
+  
+  return task;
 };
 
 /**

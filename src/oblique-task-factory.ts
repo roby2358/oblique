@@ -18,12 +18,13 @@ export const createProcessNotificationTask = (
   llmClient: LLMClient,
   blueskyClient: BlueskyClient,
   onTaskCreated: (task: DrakidionTask) => void,
-  onWaitingTaskComplete?: (taskId: string, result?: any, error?: any) => void
+  onWaitingTaskComplete?: (taskId: string, successorTask: DrakidionTask) => void
 ): DrakidionTask => {
-  const description = `Process notification from @${notification.author}`;
+  const description = `Notification from @${notification.author}`;
 
   const task: DrakidionTask = {
-    ...newReadyTask(description), // Starts new chain: fresh taskId, version 1
+    // Starts new chain: fresh taskId, version 1
+    ...newReadyTask(description),
     work: notification.text,
     process: async () => {
       // Create and queue the LLM task as successor (same taskId, version 2)
@@ -33,7 +34,8 @@ export const createProcessNotificationTask = (
         blueskyClient,
         onTaskCreated,
         onWaitingTaskComplete,
-        task // Pass predecessor task for threading
+        // Pass predecessor task for threading
+        task
       );
       
       onTaskCreated(llmTask);
@@ -59,11 +61,9 @@ const createSendToLLMSucceededTask = (
   ];
 
   return {
-    ...nextTask(task),
-    status: 'succeeded',
+    ...createSucceededTask(task),
     work: responseContent,
     conversation: finalConversation,
-    doneAt: new Date(),
   };
 };
 
@@ -95,7 +95,7 @@ export const createSendToLLMTask = (
   llmClient: LLMClient,
   blueskyClient: BlueskyClient,
   onTaskCreated: (task: DrakidionTask) => void,
-  onWaitingTaskComplete: ((taskId: string, result?: any, error?: any) => void) | undefined,
+  onWaitingTaskComplete: ((taskId: string, successorTask: DrakidionTask) => void) | undefined,
   predecessor: DrakidionTask
 ): DrakidionTask => {
   const description = `Oblique: ${notification.text.substring(0, 40)}${notification.text.length > 40 ? '...' : ''}`;
@@ -114,8 +114,6 @@ export const createSendToLLMTask = (
     description,
     work: 'Waiting for LLM response...',
     conversation,
-    onSuccess: (result: any) => createSendToLLMSucceededTask(task, result.content),
-    onError: (error: any) => createSendToLLMDeadTask(task, error),
   };
 
   // Initiate the LLM call immediately
@@ -124,9 +122,12 @@ export const createSendToLLMTask = (
     temperature: 0.8,
   })
     .then(response => {
-      // Notify that waiting task is complete (success)
+      // Create succeeded task
+      const succeededTask = createSendToLLMSucceededTask(task, response.content);
+      
+      // Notify that waiting task is complete with successor
       if (onWaitingTaskComplete) {
-        onWaitingTaskComplete(task.taskId, response);
+        onWaitingTaskComplete(task.taskId, succeededTask);
       }
       
       // Create the post reply task when LLM responds as successor
@@ -141,9 +142,12 @@ export const createSendToLLMTask = (
       onTaskCreated(postTask);
     })
     .catch(error => {
-      // Notify that waiting task is complete (error)
+      // Create dead task
+      const deadTask = createSendToLLMDeadTask(task, error);
+      
+      // Notify that waiting task is complete with error successor
       if (onWaitingTaskComplete) {
-        onWaitingTaskComplete(task.taskId, undefined, error);
+        onWaitingTaskComplete(task.taskId, deadTask);
       }
       
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -294,7 +298,7 @@ export const createObliqueMessageTask = (
   message: string,
   llmClient: LLMClient,
   createPrompt: (message: string) => string,
-  onComplete: (taskId: string, result?: any, error?: any) => void,
+  onComplete: (taskId: string, successorTask: DrakidionTask) => void,
   options?: {
     temperature?: number;
     conversation?: ConversationMessage[];
@@ -317,8 +321,6 @@ export const createObliqueMessageTask = (
     ...newWaitingTask(description),
     work: 'Waiting for LLM response...',
     conversation: updatedConversation,
-    onSuccess: (result: any) => createObliqueMessageSucceededTask(task, result.content),
-    onError: (error: any) => createObliqueMessageDeadTask(task, error),
   };
   
   // Initiate the LLM call immediately
@@ -327,12 +329,18 @@ export const createObliqueMessageTask = (
     temperature: options?.temperature ?? 0.8,
   })
     .then(response => {
-      // Call onComplete with the response
-      onComplete(task.taskId, response);
+      // Create succeeded task
+      const succeededTask = createObliqueMessageSucceededTask(task, response.content);
+      
+      // Call onComplete with successor task
+      onComplete(task.taskId, succeededTask);
     })
     .catch(error => {
-      // Call onComplete with the error
-      onComplete(task.taskId, undefined, error);
+      // Create dead task
+      const deadTask = createObliqueMessageDeadTask(task, error);
+      
+      // Call onComplete with error successor task
+      onComplete(task.taskId, deadTask);
     });
   
   return task;

@@ -186,13 +186,13 @@ export const startLoop = (
 };
 
 /**
- * Resume a waiting task by taskId
- * Finds the task in waitingMap, removes it, and transitions via onSuccess callback
+ * Resume a waiting task by taskId with a successor task
+ * Finds the task in waitingMap, removes it, and transitions to successor
  */
 export const resumeWaitingTask = (
   state: OrchestratorState,
   taskId: string,
-  result?: any
+  successorTask: DrakidionTask
 ): OrchestratorState => {
   // Get task from taskMap
   const task = TaskMapOps.getTask(state.taskMap, taskId);
@@ -206,43 +206,17 @@ export const resumeWaitingTask = (
   // Remove from waitingMap
   WaitingMapOps.removeCorrelation(state.waitingMap, taskId);
   
-  // Call onSuccess callback if defined
-  if (task.onSuccess) {
-    try {
-      const successorTask = task.onSuccess(result);
-      return transitionTask(state, taskId, successorTask);
-    } catch (error) {
-      console.error(`Error in onSuccess callback for task ${taskId}:`, error);
-      
-      // Call onError if defined
-      if (task.onError) {
-        try {
-          const errorTask = task.onError(error);
-          return transitionTask(state, taskId, errorTask);
-        } catch (e) {
-          console.error(`Error in onError callback for task ${taskId}:`, e);
-        }
-      }
-    }
-  }
-  
-  // Default: mark as ready and re-queue
-  const readyTask: DrakidionTask = {
-    ...task,
-    status: 'ready',
-    version: task.version + 1,
-  };
-  
-  return transitionTask(state, taskId, readyTask);
+  // Transition to successor task
+  return transitionTask(state, taskId, successorTask);
 };
 
 /**
- * Handle error for a waiting task by taskId
+ * Handle error for a waiting task by taskId with a successor task
  */
 export const errorWaitingTask = (
   state: OrchestratorState,
   taskId: string,
-  error: any
+  successorTask: DrakidionTask
 ): OrchestratorState => {
   // Get task from taskMap
   const task = TaskMapOps.getTask(state.taskMap, taskId);
@@ -256,27 +230,8 @@ export const errorWaitingTask = (
   // Remove from waitingMap
   WaitingMapOps.removeCorrelation(state.waitingMap, taskId);
   
-  // Call onError callback if defined
-  if (task.onError) {
-    try {
-      const errorTask = task.onError(error);
-      return transitionTask(state, taskId, errorTask);
-    } catch (e) {
-      console.error(`Error in onError callback for task ${taskId}:`, e);
-    }
-  }
-  
-  // Default: mark as dead
-  const deadTask: DrakidionTask = {
-    ...task,
-    status: 'dead',
-    version: task.version + 1,
-    work: task.work + `\n[ERROR: ${error instanceof Error ? error.message : 'Unknown error'}]`,
-  };
-  
-  TaskMapOps.setTask(state.taskMap, deadTask);
-  
-  return state;
+  // Transition to successor task
+  return transitionTask(state, taskId, successorTask);
 };
 
 /**

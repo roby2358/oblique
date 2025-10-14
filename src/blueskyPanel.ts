@@ -64,12 +64,8 @@ export const createHandleCheckBluesky = () => {
           updateStatus();
         };
 
-        const onWaitingTaskComplete = (taskId: string, result?: any, error?: any) => {
-          if (error) {
-            orchestratorState = Orchestrator.errorWaitingTask(orchestratorState, taskId, error);
-          } else {
-            orchestratorState = Orchestrator.resumeWaitingTask(orchestratorState, taskId, result);
-          }
+        const onWaitingTaskComplete = (taskId: string, successorTask: DrakidionTask) => {
+          orchestratorState = Orchestrator.resumeWaitingTask(orchestratorState, taskId, successorTask);
           setOrchestratorState(orchestratorState);
           updateStatus();
         };

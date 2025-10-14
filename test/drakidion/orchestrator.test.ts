@@ -184,7 +184,7 @@ describe('Orchestrator', () => {
   });
   
   describe('resumeWaitingTask', () => {
-    it('should resume a waiting task with onSuccess callback', () => {
+    it('should resume a waiting task with successor task', () => {
       const state = Orchestrator.createOrchestrator();
       
       const task: DrakidionTask = {
@@ -195,18 +195,19 @@ describe('Orchestrator', () => {
         work: 'Waiting...',
         createdAt: new Date(),
         process: async () => task,
-        onSuccess: (result: any) => ({
-          taskId: 'task1',
-          version: 2,
-          status: 'succeeded',
-          description: 'Waiting task',
-          work: `Result: ${result}`,
-          createdAt: new Date(),
-          doneAt: new Date(),
-          process: async () => {
-            throw new Error('Done');
-          },
-        }),
+      };
+      
+      const successorTask: DrakidionTask = {
+        taskId: 'task1',
+        version: 2,
+        status: 'succeeded',
+        description: 'Waiting task',
+        work: 'Result: test result',
+        createdAt: new Date(),
+        doneAt: new Date(),
+        process: async () => {
+          throw new Error('Done');
+        },
       };
       
       Orchestrator.addTask(state, task);
@@ -215,7 +216,7 @@ describe('Orchestrator', () => {
       const correlationIds = state.waitingMap.correlations.keys();
       const correlationId = Array.from(correlationIds)[0];
       
-      const newState = Orchestrator.resumeWaitingTask(state, correlationId, 'test result');
+      const newState = Orchestrator.resumeWaitingTask(state, correlationId, successorTask);
       
       const status = Orchestrator.getStatus(newState);
       expect(status.waitingSize).toBe(0);
@@ -224,7 +225,7 @@ describe('Orchestrator', () => {
   });
   
   describe('errorWaitingTask', () => {
-    it('should handle error for waiting task with onError callback', () => {
+    it('should handle error for waiting task with successor task', () => {
       const state = Orchestrator.createOrchestrator();
       
       const task: DrakidionTask = {
@@ -235,18 +236,19 @@ describe('Orchestrator', () => {
         work: 'Waiting...',
         createdAt: new Date(),
         process: async () => task,
-        onError: (error: any) => ({
-          taskId: 'task1',
-          version: 2,
-          status: 'dead',
-          description: 'Waiting task with error',
-          work: `Error: ${error.message}`,
-          createdAt: new Date(),
-          doneAt: new Date(),
-          process: async () => {
-            throw new Error('Failed');
-          },
-        }),
+      };
+      
+      const errorTask: DrakidionTask = {
+        taskId: 'task1',
+        version: 2,
+        status: 'dead',
+        description: 'Waiting task with error',
+        work: 'Error: Test error',
+        createdAt: new Date(),
+        doneAt: new Date(),
+        process: async () => {
+          throw new Error('Failed');
+        },
       };
       
       Orchestrator.addTask(state, task);
@@ -258,7 +260,7 @@ describe('Orchestrator', () => {
       const newState = Orchestrator.errorWaitingTask(
         state,
         correlationId,
-        new Error('Test error')
+        errorTask
       );
       
       const status = Orchestrator.getStatus(newState);

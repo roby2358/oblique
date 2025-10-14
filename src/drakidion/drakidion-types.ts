@@ -50,12 +50,6 @@ export interface DrakidionTask {
   /** Optional: Retry counter */
   retryCount?: number;
   
-  /** Optional: Success callback returning successor task */
-  onSuccess?: (result: any) => DrakidionTask;
-  
-  /** Optional: Error callback returning successor task */
-  onError?: (error: any) => DrakidionTask;
-  
   /** Optional: Timestamp when task was created */
   createdAt?: Date;
   

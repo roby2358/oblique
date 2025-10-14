@@ -3,6 +3,7 @@ import {
   newReadyTask,
   newWaitingTask,
 } from '../../src/drakidion/task-factories.js';
+import type { DrakidionTask } from '../../src/drakidion/drakidion-types.js';
 import {
   createObliqueMessageTask,
 } from '../../src/oblique-task-factory.js';
@@ -82,18 +83,6 @@ describe('Task Factories', () => {
       const task = {
         ...newWaitingTask('Waiting task'),
         work: 'Custom waiting...',
-        onSuccess: (result: any) => ({
-          ...task,
-          status: 'succeeded' as const,
-          work: result.data,
-          doneAt: new Date(),
-        }),
-        onError: (error: any) => ({
-          ...task,
-          status: 'dead' as const,
-          work: `Error: ${error.message}`,
-          doneAt: new Date(),
-        }),
       };
 
       expect(task.status).toBe('waiting');
@@ -102,8 +91,6 @@ describe('Task Factories', () => {
       expect(task.work).toBe('Custom waiting...');
       expect(task.taskId).toHaveLength(24); // Always generates new taskId
       expect(task.createdAt).toBeInstanceOf(Date);
-      expect(task.onSuccess).toBeDefined();
-      expect(task.onError).toBeDefined();
       expect(task.conversation).toBeUndefined();
     });
 
@@ -132,38 +119,6 @@ describe('Task Factories', () => {
       };
 
       expect(task.conversation).toEqual(conversation);
-    });
-
-    it('should call onSuccess callback correctly', () => {
-      const task = {
-        ...newWaitingTask('Waiting task'),
-        onSuccess: (result: any) => ({
-          ...task,
-          status: 'succeeded' as const,
-          work: `Success: ${result.data}`,
-          doneAt: new Date(),
-        }),
-      };
-
-      const result = task.onSuccess!({ data: 'test result' });
-      expect(result.status).toBe('succeeded');
-      expect(result.work).toBe('Success: test result');
-    });
-
-    it('should call onError callback correctly', () => {
-      const task = {
-        ...newWaitingTask('Waiting task'),
-        onError: (error: any) => ({
-          ...task,
-          status: 'dead' as const,
-          work: `Error: ${error.message}`,
-          doneAt: new Date(),
-        }),
-      };
-
-      const result = task.onError!(new Error('test error'));
-      expect(result.status).toBe('dead');
-      expect(result.work).toBe('Error: test error');
     });
   });
 
@@ -327,36 +282,6 @@ describe('Task Factories', () => {
       
       await expect(task.process()).rejects.toThrow('Waiting tasks should not be processed directly');
     });
-
-    it('should transition to succeeded when onSuccess is called', () => {
-      const task = createWaitingTask();
-      
-      const successor = task.onSuccess!({ data: 'test result' });
-      
-      expect(successor.status).toBe('succeeded');
-      expect(successor.work).toContain('test result');
-    });
-
-    it('should transition to dead when onError is called', () => {
-      const task = createWaitingTask();
-      
-      const successor = task.onError!(new Error('Test error'));
-      
-      expect(successor.status).toBe('dead');
-      expect(successor.work).toContain('Test error');
-    });
-
-    it('should call onComplete callback', () => {
-      let callbackResult: any = null;
-      const onComplete = (result: any) => {
-        callbackResult = result;
-      };
-      
-      const task = createWaitingTask(undefined, onComplete);
-      task.onSuccess!({ data: 'test' });
-      
-      expect(callbackResult).toEqual({ data: 'test' });
-    });
   });
 
   describe('createLLMTask', () => {
@@ -395,8 +320,8 @@ describe('Task Factories', () => {
     it('should initiate LLM call and invoke onComplete on success', async () => {
       const mockClient = createMockLLMClient('Test response');
       let completedWith: any = null;
-      const onComplete = (taskId: string, result?: any, error?: any) => {
-        completedWith = { taskId, result, error };
+      const onComplete = (taskId: string, successorTask: DrakidionTask) => {
+        completedWith = { taskId, successorTask };
       };
       
       const task = createLLMTask('Test message', mockClient, onComplete);
@@ -406,15 +331,15 @@ describe('Task Factories', () => {
       
       expect(completedWith).not.toBeNull();
       expect(completedWith.taskId).toBe(task.taskId);
-      expect(completedWith.result).toEqual({ content: 'Test response', model: 'test-model' });
-      expect(completedWith.error).toBeUndefined();
+      expect(completedWith.successorTask.status).toBe('succeeded');
+      expect(completedWith.successorTask.work).toBe('Test response');
     });
 
     it('should invoke onComplete with error on failure', async () => {
       const mockClient = createMockLLMClient('', true);
       let completedWith: any = null;
-      const onComplete = (taskId: string, result?: any, error?: any) => {
-        completedWith = { taskId, result, error };
+      const onComplete = (taskId: string, successorTask: DrakidionTask) => {
+        completedWith = { taskId, successorTask };
       };
       
       const task = createLLMTask('Test message', mockClient, onComplete);
@@ -424,37 +349,8 @@ describe('Task Factories', () => {
       
       expect(completedWith).not.toBeNull();
       expect(completedWith.taskId).toBe(task.taskId);
-      expect(completedWith.result).toBeUndefined();
-      expect(completedWith.error).toBeInstanceOf(Error);
-    });
-
-    it('should have onSuccess callback that returns succeeded task', () => {
-      const mockClient = createMockLLMClient();
-      const onComplete = () => {};
-      
-      const task = createLLMTask('Test message', mockClient, onComplete);
-      
-      const successor = task.onSuccess!({ content: 'LLM response' });
-      
-      expect(successor.status).toBe('succeeded');
-      expect(successor.work).toBe('LLM response');
-      expect(successor.conversation).toHaveLength(2);
-      expect(successor.conversation![1]).toEqual({ 
-        source: 'assistant', 
-        text: 'LLM response' 
-      });
-    });
-
-    it('should have onError callback that returns dead task', () => {
-      const mockClient = createMockLLMClient();
-      const onComplete = () => {};
-      
-      const task = createLLMTask('Test message', mockClient, onComplete);
-      
-      const successor = task.onError!(new Error('API error'));
-      
-      expect(successor.status).toBe('dead');
-      expect(successor.work).toContain('API error');
+      expect(completedWith.successorTask.status).toBe('dead');
+      expect(completedWith.successorTask.work).toContain('LLM API error');
     });
 
     it('should respect custom temperature', async () => {
@@ -532,8 +428,8 @@ describe('Task Factories', () => {
     it('should apply prompt transformation and call LLM', async () => {
       const mockClient = createMockLLMClient('Transformed response');
       let completedWith: any = null;
-      const onComplete = (taskId: string, result?: any, error?: any) => {
-        completedWith = { taskId, result, error };
+      const onComplete = (taskId: string, successorTask: DrakidionTask) => {
+        completedWith = { taskId, successorTask };
       };
       
       const task = createObliqueMessageTask(
@@ -548,43 +444,8 @@ describe('Task Factories', () => {
       
       expect(completedWith).not.toBeNull();
       expect(completedWith.taskId).toBe(task.taskId);
-      expect(completedWith.result).toEqual({ content: 'Transformed response', model: 'test-model' });
-      expect(completedWith.error).toBeUndefined();
-    });
-
-    it('should have onSuccess callback that returns succeeded task', () => {
-      const mockClient = createMockLLMClient();
-      const onComplete = () => {};
-      
-      const task = createObliqueMessageTask(
-        'Test message',
-        mockClient,
-        mockCreatePrompt,
-        onComplete
-      );
-      
-      const successor = task.onSuccess!({ content: 'Oblique response' });
-      
-      expect(successor.status).toBe('succeeded');
-      expect(successor.work).toBe('Oblique response');
-      expect(successor.conversation).toHaveLength(2);
-    });
-
-    it('should have onError callback that returns dead task', () => {
-      const mockClient = createMockLLMClient();
-      const onComplete = () => {};
-      
-      const task = createObliqueMessageTask(
-        'Test message',
-        mockClient,
-        mockCreatePrompt,
-        onComplete
-      );
-      
-      const successor = task.onError!(new Error('Transform error'));
-      
-      expect(successor.status).toBe('dead');
-      expect(successor.work).toContain('Transform error');
+      expect(completedWith.successorTask.status).toBe('succeeded');
+      expect(completedWith.successorTask.work).toBe('Transformed response');
     });
   });
 });

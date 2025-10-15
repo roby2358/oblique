@@ -1,8 +1,7 @@
 // Chat Panel - UI functions for handling chat interactions
 import * as Orchestrator from './drakidion/orchestrator.js';
-import * as TaskMapOps from './drakidion/task-map.js';
 import { createObliqueMessageTask } from './oblique-task-factory.js';
-import { createObliquePrompt } from './prompts/oblique.js';
+import { systemPrompt, obliquePrompt } from './prompts/oblique.js';
 import { getOrchestratorState, setOrchestratorState, getLLMClient, addMessage, updateStatus } from './panels.js';
 
 declare const $: any;
@@ -29,11 +28,15 @@ export const createHandleSendMessage = () => {
         return;
       }
 
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: obliquePrompt(message) },
+      ];
+
       // Create task for processing the message with completion handler
       const task = createObliqueMessageTask(
-        message,
         llmClient,
-        createObliquePrompt,
+        messages,
         (taskId, successorTask) => {
           // Handle LLM response completion
           let orchestratorState = getOrchestratorState();

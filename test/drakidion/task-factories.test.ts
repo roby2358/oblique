@@ -64,8 +64,8 @@ describe('Task Factories', () => {
 
     it('should accept optional conversation override', () => {
       const conversation = [
-        { source: 'user', text: 'Hello' },
-        { source: 'assistant', text: 'Hi there' },
+        { role: 'user', content: 'Hello' },
+        { role: 'assistant', content: 'Hi there' },
       ];
 
       const task = {
@@ -111,7 +111,7 @@ describe('Task Factories', () => {
     });
 
     it('should accept optional conversation override', () => {
-      const conversation = [{ source: 'user', text: 'Test' }];
+      const conversation = [{ role: 'user', content: 'Test' }];
 
       const task = {
         ...newWaitingTask('Waiting task'),
@@ -314,7 +314,7 @@ describe('Task Factories', () => {
       expect(task.work).toBe('Waiting for LLM response...');
       expect(task.taskId).toHaveLength(24);
       expect(task.conversation).toHaveLength(1);
-      expect(task.conversation![0]).toEqual({ source: 'user', text: 'Test message' });
+      expect(task.conversation![0]).toEqual({ role: 'user', content: 'Test message' });
     });
 
     it('should initiate LLM call and invoke onComplete on success', async () => {
@@ -371,8 +371,8 @@ describe('Task Factories', () => {
       const onComplete = () => {};
       
       const existingConversation = [
-        { source: 'user', text: 'Previous message' },
-        { source: 'assistant', text: 'Previous response' },
+        { role: 'user', content: 'Previous message' },
+        { role: 'assistant', content: 'Previous response' },
       ];
       
       const task = createLLMTask('New message', mockClient, onComplete, {
@@ -382,7 +382,7 @@ describe('Task Factories', () => {
       expect(task.conversation).toHaveLength(3);
       expect(task.conversation![0]).toEqual(existingConversation[0]);
       expect(task.conversation![1]).toEqual(existingConversation[1]);
-      expect(task.conversation![2]).toEqual({ source: 'user', text: 'New message' });
+      expect(task.conversation![2]).toEqual({ role: 'user', content: 'New message' });
     });
   });
 
@@ -406,22 +406,19 @@ describe('Task Factories', () => {
       };
     };
 
-    const mockCreatePrompt = (message: string) => `Oblique: ${message}`;
-
     it('should create a waiting task', () => {
       const mockClient = createMockLLMClient();
       const onComplete = () => {};
       
       const task = createObliqueMessageTask(
-        'Test message',
         mockClient,
-        mockCreatePrompt,
+        [{role: 'user', content: 'Test message'}],
         onComplete
       );
       
       expect(task.status).toBe('waiting');
       expect(task.work).toBe('Waiting for LLM response...');
-      expect(task.description).toContain('Oblique:');
+      expect(task.description).toContain('Oblique message');
       expect(task.taskId).toHaveLength(24);
     });
 
@@ -433,9 +430,8 @@ describe('Task Factories', () => {
       };
       
       const task = createObliqueMessageTask(
-        'Test message',
         mockClient,
-        mockCreatePrompt,
+        [{role: 'user', content: 'Test message'}],
         onComplete
       );
       

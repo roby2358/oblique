@@ -17,9 +17,7 @@ export const createOpenRouterClient = (config: LLMConfig): LLMClient => {
         },
         body: JSON.stringify({
           model: request.model || config.model,
-          messages: [
-            { role: 'user', content: request.prompt }
-          ],
+          messages: request.conversation,
           temperature: request.temperature ?? config.temperature ?? 0.7,
           max_tokens: request.maxTokens ?? config.maxTokens ?? 500,
         }),

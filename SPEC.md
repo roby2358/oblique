@@ -157,8 +157,8 @@ Integration with Bluesky social network via `@atproto/api`.
 Prompt engineering for oblique responses.
 
 **Functions:**
-- `createObliquePrompt(message)` - Generate prompt with instructions
-- `createSystemPrompt()` - System-level behavior definition
+- `obliquePrompt(message)` - Generate prompt with instructions
+- `systemPrompt` - System-level behavior definition
 
 **Oblique Response Rules:**
 - Never answer directly

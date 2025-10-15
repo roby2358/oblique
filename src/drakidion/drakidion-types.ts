@@ -17,8 +17,8 @@ export type TaskStatus =
  * Conversation message for LLM interactions
  */
 export interface ConversationMessage {
-  source: string;
-  text: string;
+  role: string;
+  content: string;
 }
 
 /**

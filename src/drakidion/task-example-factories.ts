@@ -15,7 +15,7 @@ const createLLMTaskSucceeded = (
 ): DrakidionTask => {
   const finalConversation: ConversationMessage[] = [
     ...updatedConversation,
-    { source: 'assistant', text: resultContent },
+    { role: 'assistant', content: resultContent },
   ];
   
   return {
@@ -81,7 +81,7 @@ export const createLLMTask = (
   // Add user message to conversation
   const updatedConversation: ConversationMessage[] = [
     ...conversation,
-    { source: 'user', text: message },
+    { role: 'user', content: message },
   ];
   
   // Create waiting task
@@ -98,9 +98,13 @@ export const createLLMTask = (
     },
   };
   
+  const messages: { role: string; content: string }[] = [
+    { role: 'user', content: message },
+  ];
+
   // Initiate the LLM call immediately
   llmClient.generateResponse({
-    prompt: message,
+    conversation: messages,
     temperature: options?.temperature ?? 0.8,
   })
     .then(response => {

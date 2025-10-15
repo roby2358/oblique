@@ -3,6 +3,11 @@ Status: ToDo
 ID: fix-mqsf
 fix onSuccess and onError
 ---
+Priority:   75
+Status: ToDo
+ID: refactor-ne3i
+Rename 'conversation' field to 'messages' throughout the codebase for better clarity and consistency with LLM API conventions
+---
 Priority:   70
 Status: ToDo
 ID: fix-convo-yqak

@@ -1,6 +1,6 @@
 // DRAKIDION Task Factory Functions
 // Factory functions that create tasks with closure-based behavior
-import type { DrakidionTask, ConversationMessage } from './drakidion-types.js';
+import type { DrakidionTask } from './drakidion-types.js';
 import { generateTaskId } from '../utils/index.js';
 
 /**
@@ -10,15 +10,15 @@ import { generateTaskId } from '../utils/index.js';
  * 
  * For successor tasks in a chain, use nextTask() instead.
  */
-export const newReadyTask = (description: string) => {
+export const newReadyTask = (description: string): Omit<DrakidionTask, 'doneAt'> => {
   return {
     taskId: generateTaskId(),
     version: 1,
     createdAt: new Date(),
-    status: 'ready' as const,
+    status: 'ready',
     description,
     work: '',
-    conversation: undefined as ConversationMessage[] | undefined,
+    conversation: undefined,
     process: async (): Promise<DrakidionTask> => {
       throw new Error('Task process not implemented');
     },
@@ -32,15 +32,15 @@ export const newReadyTask = (description: string) => {
  * 
  * For successor tasks in a chain, use nextTask() instead.
  */
-export const newWaitingTask = (description: string) => {
+export const newWaitingTask = (description: string): Omit<DrakidionTask, 'doneAt'> => {
   return {
     taskId: generateTaskId(),
     version: 1,
     createdAt: new Date(),
-    status: 'waiting' as const,
+    status: 'waiting',
     description,
     work: 'Waiting...',
-    conversation: undefined as ConversationMessage[] | undefined,
+    conversation: undefined,
     process: async (): Promise<DrakidionTask> => {
       throw new Error('Waiting tasks should not be processed directly');
     },
@@ -55,8 +55,7 @@ export const nextTask = (task: DrakidionTask): Omit<DrakidionTask, 'doneAt'> => 
   return {
     taskId: task.taskId,
     version: task.version + 1,
-    // make sure to set the status to something alive
-    status: 'dead',
+    status: 'ready',
     description: task.description,
     work: task.work,
     conversation: task.conversation,
@@ -80,3 +79,15 @@ export const createSucceededTask = (
   };
 };
 
+/**
+ * General helper to create a succeeded version of any task
+ */
+export const createDeadTask = (
+  task: DrakidionTask
+): DrakidionTask => {
+  return {
+    ...nextTask(task),
+    status: 'dead',
+    doneAt: new Date(),
+  };
+};

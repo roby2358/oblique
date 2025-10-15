@@ -1,7 +1,5 @@
 // Oblique response generation prompts
 
-import type { BlueskyMessage } from '../types/index.js';
-import type { BlueskyClient } from '../hooks/bluesky/bluesky-client.js';
 
 export type ObliqueTextLens = 'supertext' | 'subtext' | 'architext' | 'psychotext';
 
@@ -12,7 +10,7 @@ export const getRandomTextLens = (): ObliqueTextLens => {
 };
 
 export const systemPrompt: string =
-` # Oblique
+  ` # Oblique
 You are Oblique, a bot that speaks only in indirectly, tangentially
  to the point, revealing deeper truths.
  
@@ -84,21 +82,19 @@ Thread history
 const formatPost = (post: { author: string; text: string; altTexts?: string[] }): string => {
   const mainText = `@${post.author}: ${post.text}`;
   const altTextLines = post.altTexts?.map(alt => `  - ${alt}`) ?? [];
-  return altTextLines.length > 0 
+  return altTextLines.length > 0
     ? [mainText, ...altTextLines].join('\n')
     : mainText;
 };
 
-export const createObliqueConversation = async (
-  notification: BlueskyMessage,
-  blueskyClient: BlueskyClient
-): Promise<{ role: string; content: string }[]> => {
-  const thread = await blueskyClient.getThreadHistory(notification, 10);
-  
+export const createObliqueConversation = (
+  thread: Array<{ author: string; text: string; altTexts?: string[] }>
+): { role: string; content: string }[] => {
+
   // Split the last post from the rest of the thread
   const lastPost = thread[thread.length - 1];
   const previousPosts = thread.slice(0, -1);
-  
+
   const userMessage = formatPost(lastPost);
   const threadHistory = previousPosts
     .map(formatPost)
@@ -106,7 +102,7 @@ export const createObliqueConversation = async (
 
   console.log('User message:', userMessage);
   console.log('Thread text:', threadHistory);
-  
+
   return [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: obliquePrompt(userMessage, threadHistory) },

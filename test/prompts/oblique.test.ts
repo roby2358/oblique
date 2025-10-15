@@ -1,4 +1,4 @@
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect } from '@jest/globals';
 import { 
   obliquePrompt, 
   systemPrompt, 
@@ -6,8 +6,6 @@ import {
   getRandomTextLens,
   type ObliqueTextLens 
 } from '../../src/prompts/oblique.js';
-import type { BlueskyMessage } from '../../src/types/index.js';
-import type { BlueskyClient } from '../../src/hooks/bluesky/bluesky-client.js';
 
 describe('Oblique Prompts', () => {
   describe('obliquePrompt', () => {
@@ -65,32 +63,15 @@ describe('Oblique Prompts', () => {
   });
 
   describe('createObliqueConversation', () => {
-    const mockBlueskyClient: jest.Mocked<BlueskyClient> = {
-      getThreadHistory: jest.fn()
-    } as any;
 
-    const mockNotification: BlueskyMessage = {
-      uri: 'test-uri',
-      cid: 'test-cid',
-      author: 'test-user',
-      text: 'Test post',
-      createdAt: new Date()
-    };
-
-    beforeEach(() => {
-      jest.clearAllMocks();
-    });
-
-    it('should split last post from thread history', async () => {
+    it('should split last post from thread history', () => {
       const mockThread = [
         { author: 'user1', text: 'First post', altTexts: [] },
         { author: 'user2', text: 'Second post', altTexts: [] },
         { author: 'user3', text: 'Last post', altTexts: [] }
       ];
 
-      mockBlueskyClient.getThreadHistory.mockResolvedValue(mockThread);
-
-      const result = await createObliqueConversation(mockNotification, mockBlueskyClient);
+      const result = createObliqueConversation(mockThread);
 
       expect(result).toHaveLength(2);
       expect(result[0].role).toBe('system');
@@ -104,14 +85,12 @@ describe('Oblique Prompts', () => {
       expect(result[1].content).toContain('@user2: Second post');
     });
 
-    it('should handle single post in thread', async () => {
+    it('should handle single post in thread', () => {
       const mockThread = [
         { author: 'user1', text: 'Only post', altTexts: [] }
       ];
 
-      mockBlueskyClient.getThreadHistory.mockResolvedValue(mockThread);
-
-      const result = await createObliqueConversation(mockNotification, mockBlueskyClient);
+      const result = createObliqueConversation(mockThread);
 
       expect(result).toHaveLength(2);
       expect(result[1].content).toContain('@user1: Only post');
@@ -120,7 +99,7 @@ describe('Oblique Prompts', () => {
       expect(result[1].content).toContain('""'); // Empty thread history
     });
 
-    it('should format posts with alt texts correctly', async () => {
+    it('should format posts with alt texts correctly', () => {
       const mockThread = [
         { 
           author: 'user1', 
@@ -130,9 +109,7 @@ describe('Oblique Prompts', () => {
         { author: 'user2', text: 'Simple post', altTexts: [] }
       ];
 
-      mockBlueskyClient.getThreadHistory.mockResolvedValue(mockThread);
-
-      const result = await createObliqueConversation(mockNotification, mockBlueskyClient);
+      const result = createObliqueConversation(mockThread);
 
       expect(result[1].content).toContain('@user1: Post with image');
       expect(result[1].content).toContain('  - Image description');
@@ -140,16 +117,6 @@ describe('Oblique Prompts', () => {
       expect(result[1].content).toContain('@user2: Simple post');
     });
 
-    it('should call getThreadHistory with correct parameters', async () => {
-      // Mock with at least one post to avoid empty thread error
-      mockBlueskyClient.getThreadHistory.mockResolvedValue([
-        { author: 'test-user', text: 'Test post', altTexts: [] }
-      ]);
-
-      await createObliqueConversation(mockNotification, mockBlueskyClient);
-
-      expect(mockBlueskyClient.getThreadHistory).toHaveBeenCalledWith(mockNotification, 10);
-    });
   });
 });
 

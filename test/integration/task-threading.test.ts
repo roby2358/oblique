@@ -32,6 +32,9 @@ describe('Task ID Threading', () => {
       uri: 'at://did:plc:test/app.bsky.feed.post/reply123',
       cid: 'bafyreply123',
     }),
+    getThreadHistory: async () => [
+      { author: 'testuser.bsky.social', text: 'Hello Oblique!', altTexts: [] }
+    ],
     isConfigured: () => true,
   } as any);
 

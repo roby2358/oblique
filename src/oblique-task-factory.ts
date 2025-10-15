@@ -105,8 +105,9 @@ export const createSendToLLMTask = (
     conversation: predecessor.conversation,
   };
   
-  // Fetch the conversation with thread history and initiate the LLM call
-  createObliqueConversation(notification, blueskyClient)
+  // Fetch the thread history and create conversation
+  blueskyClient.getThreadHistory(notification, 10)
+    .then(thread => createObliqueConversation(thread))
     .then(conversation => {
       // Initiate the LLM call immediately
       return llmClient.generateResponse({

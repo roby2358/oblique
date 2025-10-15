@@ -123,6 +123,40 @@ export class BlueskyClient {
   }
 
   /**
+   * Checks if anyone has already replied to the specific post mentioned in a notification.
+   * This is used to see if someone beat Oblique to replying to that particular post.
+   * Returns true if there are replies to that specific post, false otherwise.
+   */
+  async hasRepliesToPost(message: BlueskyMessage): Promise<boolean> {
+    if (!this.authenticated) {
+      throw new Error('Not authenticated. Call authenticate() first.');
+    }
+
+    try {
+      // Get minimal thread data (depth=1) to check for direct replies only
+      // This fetches just the post and its direct replies, not the full conversation
+      const response = await this.agent.getPostThread({ 
+        uri: message.uri, 
+        depth: 1,  // Only get direct replies, not nested ones
+        parentHeight: 0  // Don't fetch parent posts
+      });
+      
+      if (!response.data.thread || (response.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
+        return false;
+      }
+      
+      const thread = response.data.thread as any;
+      
+      // Check if there are any direct replies to this specific post
+      // The replies array contains direct replies to this post
+      return !!(thread.replies && thread.replies.length > 0);
+    } catch (error) {
+      console.error('Error checking for replies to post:', error);
+      return false;
+    }
+  }
+
+  /**
    * Fetches the thread history for a message, going back up to maxDepth posts.
    * Returns an array of messages in chronological order (oldest first).
    */
@@ -137,7 +171,11 @@ export class BlueskyClient {
     // Walk back through the thread up to maxDepth posts
     for (let i = 0; i < maxDepth && currentUri; i++) {
       try {
-        const response = await this.agent.getPostThread({ uri: currentUri });
+        const response = await this.agent.getPostThread({ 
+          uri: currentUri,
+          depth: 0,  // We only need the post itself, not its replies
+          parentHeight: 0  // We only need this specific post, not its parents
+        });
         
         if (!response.data.thread || (response.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
           break;

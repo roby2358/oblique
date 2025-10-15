@@ -1,27 +1,7 @@
-Priority:   80
-Status: ToDo
-ID: fix-mqsf
-fix onSuccess and onError
----
 Priority:   75
 Status: ToDo
 ID: refactor-ne3i
 Rename 'conversation' field to 'messages' throughout the codebase for better clarity and consistency with LLM API conventions
----
-Priority:   70
-Status: ToDo
-ID: fix-convo-yqak
-Fix conversation handling
----
-Priority:   60
-Status: ToDo
-ID: prompt-bug4
-fix prompt to llm using system command
----
-Priority:   50
-Status: ToDo
-ID: thread-8df4
-implement full thread reading from notifications
 ---
 Priority:   40
 Status: ToDo
@@ -72,3 +52,23 @@ Priority:   30
 Status: ToDo
 ID: templates-squn
 Support different response templates/personalities
+---
+Priority:    0
+Status: Done
+ID: thread-8df4
+implement full thread reading from notifications
+---
+Priority:    0
+Status: Done
+ID: prompt-bug4
+fix prompt to llm using system command
+---
+Priority:    0
+Status: Done
+ID: fix-mqsf
+fix onSuccess and onError
+---
+Priority:    0
+Status: Done
+ID: fix-convo-yqak
+Fix conversation handling

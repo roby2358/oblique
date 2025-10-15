@@ -1,7 +1,7 @@
 // Bluesky Panel - UI functions for handling Bluesky interactions
 import type { BlueskyMessage } from './types/index.js';
 import type { DrakidionTask } from './drakidion/drakidion-types.js';
-import { getBlueskyClient, getLLMClient, getOrchestratorState, setOrchestratorState, updateStatus } from './panels.js';
+import { getBlueskyClient, getLLMClient, getOrchestratorState, setOrchestratorState, updateStatus, getConfig } from './panels.js';
 import { createProcessNotificationTask } from './oblique-task-factory.js';
 import * as Orchestrator from './drakidion/orchestrator.js';
 
@@ -27,7 +27,7 @@ const getIgnoreList = (): string[] => {
 // Get Oblique's current handle from config
 const getObliqueHandle = (): string | null => {
   try {
-    const config = JSON.parse(localStorage.getItem('oblique-config') || '{}');
+    const config = getConfig();
     return config.bluesky?.handle || null;
   } catch {
     return null;
@@ -36,32 +36,34 @@ const getObliqueHandle = (): string | null => {
 
 // Check if text contains a direct mention of the handle
 const containsDirectMention = (text: string, handle: string): boolean => {
-  if (!handle) return false;
-  
-  // Remove @ symbol if present and create case-insensitive regex
   const cleanHandle = handle.replace('@', '');
   const mentionRegex = new RegExp(`@${cleanHandle}\\b`, 'i');
-  return mentionRegex.test(text);
+  const result = mentionRegex.test(text);
+
+  return result;
 };
 
 // Check if a single notification should be responded to based on response rules
 const shouldRespondToNotification = (
   notification: BlueskyMessage,
   ignoreList: string[],
+  isDirectMention: boolean,
   hasReplies: boolean = false
 ): boolean => {
-  const obliqueHandle = getObliqueHandle();
-
   // Rule 1: Check if author is in ignore list
   if (ignoreList.includes(notification.author)) {
     console.log(`Skipping @${notification.author}: Author is in ignore list`);
     return false;
   }
 
-  // Rule 2: Check if it's a direct mention OR no one has replied
-  const isDirectMention = obliqueHandle ? containsDirectMention(notification.text, obliqueHandle) : false;
+  // Rule 2: If it's a direct mention, we MUST reply regardless of existing replies
+  if (isDirectMention) {
+    console.log(`  ✓ Direct mention detected - will respond to @${notification.author}`);
+    return true;
+  }
   
-  if (!isDirectMention && hasReplies) {
+  // Rule 3: If it's not a direct mention, check if anyone has already replied
+  if (hasReplies) {
     console.log(`Skipping @${notification.author}: Someone already replied to this post`);
     return false;
   }
@@ -131,76 +133,77 @@ export const createHandleCheckBluesky = () => {
       }
 
       // Display notifications
-        const postsHtml = notifications.map((notif: BlueskyMessage) => {
-          const date = new Date(notif.createdAt).toLocaleString();
-          return `
-            <div class="bluesky-post">
-              <div class="post-author">@${notif.author}</div>
-              <div class="post-text">${escapeHtml(notif.text)}</div>
-              <div class="post-date">${date}</div>
-            </div>
-          `;
-        }).join('');
-        $('#bluesky-posts').html(postsHtml);
+      const postsHtml = notifications.map((notif: BlueskyMessage) => {
+        const date = new Date(notif.createdAt).toLocaleString();
+        return `
+          <div class="bluesky-post">
+            <div class="post-author">@${notif.author}</div>
+            <div class="post-text">${escapeHtml(notif.text)}</div>
+            <div class="post-date">${date}</div>
+          </div>
+        `;
+      }).join('');
+      $('#bluesky-posts').html(postsHtml);
 
-        // Filter notifications based on response rules and create tasks
-        const ignoreList = getIgnoreList();
-        let tasksCreated = 0;
-        const onTaskCreated = createOnTaskCreated(orchestratorState, setOrchestratorState, updateStatus);
-        const onWaitingTaskComplete = createOnWaitingTaskComplete(orchestratorState, setOrchestratorState, updateStatus);
-
-        // Iterate through each notification and check if we should respond
-        for (const notif of notifications) {
-          // Check if anyone has replied to this post (for non-direct mentions)
-          const obliqueHandle = getObliqueHandle();
-          const isDirectMention = obliqueHandle ? containsDirectMention(notif.text, obliqueHandle) : false;
-          let hasReplies = false;
-          
-          if (!isDirectMention) {
-            try {
-              hasReplies = await blueskyClient.hasRepliesToPost(notif);
-            } catch (error) {
-              console.warn(`Error checking replies for ${notif.author}:`, error);
-              hasReplies = true; // Skip to be safe if we can't check
-            }
-          }
-
-          const shouldRespond = shouldRespondToNotification(notif, ignoreList, hasReplies);
-
-          if (shouldRespond) {
-            const task = createProcessNotificationTask(
-              notif,
-              llmClient,
-              blueskyClient,
-              onTaskCreated,
-              onWaitingTaskComplete
-            );
-            
-            orchestratorState = Orchestrator.addTask(orchestratorState, task);
-            tasksCreated++;
-          }
-        }
-
-
-        // Update the global state
-        setOrchestratorState(orchestratorState);
-        updateStatus();
-
-        // Show success message
-        const totalNotifications = notifications.length;
-        const filteredCount = totalNotifications - tasksCreated;
-        
-        let successMessage = `✓ Created ${tasksCreated} task${tasksCreated === 1 ? '' : 's'} to reply to notification${tasksCreated === 1 ? '' : 's'}`;
-        if (filteredCount > 0) {
-          successMessage += ` (${filteredCount} notification${filteredCount === 1 ? '' : 's'} filtered out)`;
-        }
-        $('#bluesky-posts').append(`<p class="success">${successMessage}</p>`);
-
-      // Mark as seen if checkbox is checked
+      // Filter notifications based on response rules and create tasks
+      const ignoreList = getIgnoreList();
+      let tasksCreated = 0;
+      const onTaskCreated = createOnTaskCreated(orchestratorState, setOrchestratorState, updateStatus);
+      const onWaitingTaskComplete = createOnWaitingTaskComplete(orchestratorState, setOrchestratorState, updateStatus);
+      const obliqueHandle = getObliqueHandle();
       const markAsSeen = $('#mark-as-seen').prop('checked');
-      if (markAsSeen && notifications.length > 0) {
-        await blueskyClient.markNotificationsAsSeen();
+
+      // Iterate through each notification and check if we should respond
+      for (const notif of notifications) {
+        if (markAsSeen) {
+          await blueskyClient.markNotificationsAsSeen();
+        }
+  
+        // Check if anyone has replied to this post (for non-direct mentions)
+        const isDirectMention = obliqueHandle ? containsDirectMention(notif.text, obliqueHandle) : false;
+        
+        let hasReplies = false;
+        
+        if (!isDirectMention) {
+          try {
+            hasReplies = await blueskyClient.hasRepliesToPost(notif);
+          } catch (error) {
+            // assume it's OK
+            console.warn(`Error checking replies for ${notif.author}:`, error);
+            hasReplies = false;
+          }
+        }
+
+        const shouldRespond = shouldRespondToNotification(notif, ignoreList, isDirectMention, hasReplies);
+        console.log(`Should respond: ${shouldRespond}`);
+
+        if (shouldRespond) {
+          const task = createProcessNotificationTask(
+            notif,
+            llmClient,
+            blueskyClient,
+            onTaskCreated,
+            onWaitingTaskComplete
+          );
+          
+          orchestratorState = Orchestrator.addTask(orchestratorState, task);
+          tasksCreated++;
+        }
       }
+
+      // Update the global state
+      setOrchestratorState(orchestratorState);
+      updateStatus();
+
+      // Show success message
+      const totalNotifications = notifications.length;
+      const filteredCount = totalNotifications - tasksCreated;
+      
+      let successMessage = `✓ Created ${tasksCreated} task${tasksCreated === 1 ? '' : 's'} to reply to notification${tasksCreated === 1 ? '' : 's'}`;
+      if (filteredCount > 0) {
+        successMessage += ` (${filteredCount} notification${filteredCount === 1 ? '' : 's'} filtered out)`;
+      }
+      $('#bluesky-posts').append(`<p class="success">${successMessage}</p>`);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       $('#bluesky-posts').html(`<p class="error">Error: ${errorMsg}</p>`);
@@ -209,4 +212,3 @@ export const createHandleCheckBluesky = () => {
     enableCheckButton();
   };
 };
-

@@ -45,6 +45,10 @@ export class BlueskyClient {
     };
   }
 
+  logNotification = (notif: any) => {
+    console.log('Raw notification:', JSON.stringify(notif, null, 2));
+  }
+
   async getNotifications(limit: number = 25, unreadOnly: boolean = true): Promise<BlueskyMessage[]> {
     if (!this.authenticated) {
       throw new Error('Not authenticated. Call authenticate() first.');
@@ -62,8 +66,6 @@ export class BlueskyClient {
     }
 
     return notifications.map((notif: any) => {
-      console.log('Raw notification:', JSON.stringify(notif, null, 2));
-      
       // Extract reply info if this is part of a thread
       let replyInfo;
       if (notif.record.reply) {
@@ -118,6 +120,54 @@ export class BlueskyClient {
     };
 
     return { root, parent };
+  }
+
+  /**
+   * Fetches the thread history for a message, going back up to maxDepth posts.
+   * Returns an array of messages in chronological order (oldest first).
+   */
+  async getThreadHistory(message: BlueskyMessage, maxDepth: number = 5): Promise<Array<{ author: string; text: string }>> {
+    if (!this.authenticated) {
+      throw new Error('Not authenticated. Call authenticate() first.');
+    }
+
+    const thread: Array<{ author: string; text: string }> = [];
+    let currentUri = message.replyInfo?.parent?.uri;
+    
+    // Walk back through the thread up to maxDepth posts
+    for (let i = 0; i < maxDepth && currentUri; i++) {
+      try {
+        const response = await this.agent.getPostThread({ uri: currentUri });
+        
+        if (!response.data.thread || (response.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
+          break;
+        }
+        
+        const post = response.data.thread as any;
+        thread.unshift({
+          author: post.post.author.handle,
+          text: post.post.record.text,
+        });
+        
+        // Move to parent post if it exists
+        if (post.parent && post.parent.$type === 'app.bsky.feed.defs#threadViewPost') {
+          currentUri = post.parent.post.uri;
+        } else {
+          currentUri = undefined;
+        }
+      } catch (error) {
+        console.error('Error fetching thread post:', error);
+        break;
+      }
+    }
+    
+    // Add the current message at the end
+    thread.push({
+      author: message.author,
+      text: message.text,
+    });
+    
+    return thread;
   }
 }
 

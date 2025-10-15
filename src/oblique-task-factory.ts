@@ -5,7 +5,7 @@ import type { DrakidionTask, ConversationMessage } from './drakidion/drakidion-t
 import type { BlueskyMessage } from './types/index.js';
 import type { LLMClient } from './hooks/llm/llm-client.js';
 import type { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
-import { systemPrompt, obliquePrompt } from './prompts/oblique.js';
+import { createObliqueConversation } from './prompts/oblique.js';
 import { nextTask, createSucceededTask, createDeadTask, newReadyTask, newWaitingTask } from './drakidion/task-factories.js';
 
 /**
@@ -105,18 +105,17 @@ export const createSendToLLMTask = (
     conversation: predecessor.conversation,
   };
   
-  const conversation: ConversationMessage[] = [
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: obliquePrompt(notification.text) },
-  ];
-
-  // Initiate the LLM call immediately
-  llmClient.generateResponse({
-    conversation,
-    temperature: 0.8,
-    maxTokens: 3000,
-  })
-    .then(response => {
+  // Fetch the conversation with thread history and initiate the LLM call
+  createObliqueConversation(notification, blueskyClient)
+    .then(conversation => {
+      // Initiate the LLM call immediately
+      return llmClient.generateResponse({
+        conversation,
+        temperature: 0.8,
+        maxTokens: 3000,
+      }).then(response => ({ conversation, response }));
+    })
+    .then(({ conversation, response }) => {
       // Create succeeded task
       const succeededTask = createSendToLLMSucceededTask(task, response.content);
       

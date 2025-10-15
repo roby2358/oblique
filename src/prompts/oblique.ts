@@ -1,5 +1,8 @@
 // Oblique response generation prompts
 
+import type { BlueskyMessage } from '../types/index.js';
+import type { BlueskyClient } from '../hooks/bluesky/bluesky-client.js';
+
 export type ObliqueTextLens = 'supertext' | 'subtext' | 'architext' | 'psychotext';
 
 export const getRandomTextLens = (): ObliqueTextLens => {
@@ -67,4 +70,23 @@ Reply to the user message through the chosen lens: "${focus}"
 User message: "${userMessage}"
 
 Generate an oblique response:`;
+};
+
+export const createObliqueConversation = async (
+  notification: BlueskyMessage,
+  blueskyClient: BlueskyClient
+): Promise<{ role: string; content: string }[]> => {
+  const thread = await blueskyClient.getThreadHistory(notification, 10);
+  
+  const threadText = thread
+    .map(post => `@${post.author}: ${post.text}`)
+    .join('\n');
+
+  console.log('Post:', notification.text);
+  console.log('Thread text:', threadText);
+  
+  return [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: obliquePrompt(threadText) },
+  ];
 };

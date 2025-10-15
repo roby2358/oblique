@@ -126,12 +126,12 @@ export class BlueskyClient {
    * Fetches the thread history for a message, going back up to maxDepth posts.
    * Returns an array of messages in chronological order (oldest first).
    */
-  async getThreadHistory(message: BlueskyMessage, maxDepth: number = 5): Promise<Array<{ author: string; text: string }>> {
+  async getThreadHistory(message: BlueskyMessage, maxDepth: number = 5): Promise<Array<{ author: string; text: string; altTexts?: string[] }>> {
     if (!this.authenticated) {
       throw new Error('Not authenticated. Call authenticate() first.');
     }
 
-    const thread: Array<{ author: string; text: string }> = [];
+    const thread: Array<{ author: string; text: string; altTexts?: string[] }> = [];
     let currentUri = message.replyInfo?.parent?.uri;
     
     // Walk back through the thread up to maxDepth posts
@@ -144,9 +144,21 @@ export class BlueskyClient {
         }
         
         const post = response.data.thread as any;
+        
+        // Extract alt text from images if present
+        const altTexts: string[] = [];
+        if (post.post.record.embed?.images) {
+          for (const image of post.post.record.embed.images) {
+            if (image.alt) {
+              altTexts.push(image.alt);
+            }
+          }
+        }
+        
         thread.unshift({
           author: post.post.author.handle,
           text: post.post.record.text,
+          altTexts: altTexts.length > 0 ? altTexts : undefined,
         });
         
         // Move to parent post if it exists

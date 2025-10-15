@@ -5,8 +5,9 @@ import type { BlueskyClient } from '../hooks/bluesky/bluesky-client.js';
 
 export type ObliqueTextLens = 'supertext' | 'subtext' | 'architext' | 'psychotext';
 
+const lenses: ObliqueTextLens[] = ['supertext', 'subtext', 'architext', 'psychotext'];
+
 export const getRandomTextLens = (): ObliqueTextLens => {
-  const lenses: ObliqueTextLens[] = ['supertext', 'subtext', 'architext', 'psychotext'];
   return lenses[Math.floor(Math.random() * lenses.length)];
 };
 
@@ -55,6 +56,7 @@ Rules for oblique responses:
 - Speak in a plain voice
 - Answer broadly not specifically
 - Relate your response in the lens of supertext, subtext, architext, and psychotext
+- Omit the lens from your response
 - Keep responses brief (1-3 sentences)
 - Be thoughtful but and thought-provoking
 - Avoid being nonsensical - maintain the thread of meaning
@@ -72,6 +74,14 @@ User message: "${userMessage}"
 Generate an oblique response:`;
 };
 
+const formatPost = (post: { author: string; text: string; altTexts?: string[] }): string => {
+  const mainText = `@${post.author}: ${post.text}`;
+  const altTextLines = post.altTexts?.map(alt => `  - ${alt}`) ?? [];
+  return altTextLines.length > 0 
+    ? [mainText, ...altTextLines].join('\n')
+    : mainText;
+};
+
 export const createObliqueConversation = async (
   notification: BlueskyMessage,
   blueskyClient: BlueskyClient
@@ -79,7 +89,7 @@ export const createObliqueConversation = async (
   const thread = await blueskyClient.getThreadHistory(notification, 10);
   
   const threadText = thread
-    .map(post => `@${post.author}: ${post.text}`)
+    .map(formatPost)
     .join('\n');
 
   console.log('Post:', notification.text);

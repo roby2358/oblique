@@ -81,14 +81,6 @@ const enableCheckButton = () => {
 };
 
 // Callback functions for task management
-const createOnTaskCreated = (orchestratorState: any, setOrchestratorState: (state: any) => void, updateStatus: () => void) => {
-  return (task: DrakidionTask) => {
-    orchestratorState = Orchestrator.addTask(orchestratorState, task);
-    setOrchestratorState(orchestratorState);
-    updateStatus();
-  };
-};
-
 const createOnWaitingTaskComplete = (orchestratorState: any, setOrchestratorState: (state: any) => void, updateStatus: () => void) => {
   return (taskId: string, successorTask: DrakidionTask) => {
     orchestratorState = Orchestrator.resumeWaitingTask(orchestratorState, taskId, successorTask);
@@ -148,7 +140,6 @@ export const createHandleCheckBluesky = () => {
       // Filter notifications based on response rules and create tasks
       const ignoreList = getIgnoreList();
       let tasksCreated = 0;
-      const onTaskCreated = createOnTaskCreated(orchestratorState, setOrchestratorState, updateStatus);
       const onWaitingTaskComplete = createOnWaitingTaskComplete(orchestratorState, setOrchestratorState, updateStatus);
       const obliqueHandle = getObliqueHandle();
       const markAsSeen = $('#mark-as-seen').prop('checked');
@@ -182,7 +173,6 @@ export const createHandleCheckBluesky = () => {
             notif,
             llmClient,
             blueskyClient,
-            onTaskCreated,
             onWaitingTaskComplete
           );
           

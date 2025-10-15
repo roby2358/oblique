@@ -160,64 +160,90 @@ export class BlueskyClient {
    * Fetches the thread history for a message, going back up to maxDepth posts.
    * Returns an array of messages in chronological order (oldest first).
    */
-  async getThreadHistory(message: BlueskyMessage, maxDepth: number = 5): Promise<Array<{ author: string; text: string; altTexts?: string[] }>> {
+  async getThreadHistory(message: BlueskyMessage, maxDepth: number): Promise<Array<{ author: string; text: string; altTexts?: string[] }>> {
     if (!this.authenticated) {
       throw new Error('Not authenticated. Call authenticate() first.');
     }
-
-    const thread: Array<{ author: string; text: string; altTexts?: string[] }> = [];
-    let currentUri = message.replyInfo?.parent?.uri;
     
-    // Walk back through the thread up to maxDepth posts
-    for (let i = 0; i < maxDepth && currentUri; i++) {
-      try {
-        const response = await this.agent.getPostThread({ 
-          uri: currentUri,
-          depth: 0,  // We only need the post itself, not its replies
-          parentHeight: 0  // We only need this specific post, not its parents
-        });
-        
-        if (!response.data.thread || (response.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
-          break;
+    // If this is a reply, get the thread from the parent post
+    // If not a reply, just return the current message
+    if (!message.replyInfo?.parent?.uri) {
+      return [{
+        author: message.author,
+        text: message.text,
+      }];
+    }
+
+    try {
+      const response = await this.agent.getPostThread({ 
+        uri: message.replyInfo.parent.uri,
+        depth: 0,  // We only need the post itself, not its replies
+        parentHeight: maxDepth  // Fetch up to maxDepth parent posts
+      });
+      
+      if (!response.data.thread || (response.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
+        return [{
+          author: message.author,
+          text: message.text,
+        }];
+      }
+      
+      const postsInOrder: Array<{ author: string; text: string; altTexts?: string[] }> = [];
+      
+      // The API should return the thread with parent posts already included
+      // We need to traverse the thread structure to extract all posts
+      const extractPostsFromThread = (threadNode: any): void => {
+        if (!threadNode || threadNode.$type !== 'app.bsky.feed.defs#threadViewPost') {
+          return;
         }
         
-        const post = response.data.thread as any;
-        
-        // Extract alt text from images if present
-        const altTexts: string[] = [];
-        if (post.post.record.embed?.images) {
-          for (const image of post.post.record.embed.images) {
-            if (image.alt) {
-              altTexts.push(image.alt);
+        const post = threadNode.post;
+        if (post && post.record) {
+          // Extract alt text from images if present
+          const altTexts: string[] = [];
+          if (post.record.embed?.images) {
+            for (const image of post.record.embed.images) {
+              if (image.alt) {
+                altTexts.push(image.alt);
+              }
             }
           }
+          
+          postsInOrder.push({
+            author: post.author.handle,
+            text: post.record.text,
+            altTexts: altTexts.length > 0 ? altTexts : undefined,
+          });
         }
         
-        thread.unshift({
-          author: post.post.author.handle,
-          text: post.post.record.text,
-          altTexts: altTexts.length > 0 ? altTexts : undefined,
-        });
-        
-        // Move to parent post if it exists
-        if (post.parent && post.parent.$type === 'app.bsky.feed.defs#threadViewPost') {
-          currentUri = post.parent.post.uri;
-        } else {
-          currentUri = undefined;
+        // Recursively extract from parent
+        if (threadNode.parent) {
+          extractPostsFromThread(threadNode.parent);
         }
-      } catch (error) {
-        console.error('Error fetching thread post:', error);
-        break;
-      }
+      };
+      
+      // Extract all posts from the thread (this will be in newest-to-oldest order)
+      extractPostsFromThread(response.data.thread);
+      
+      // Reverse to get oldest-to-newest order
+      const thread = postsInOrder.reverse();
+      
+      // Add the current message at the end (newest)
+      thread.push({
+        author: message.author,
+        text: message.text,
+      });
+      
+      return thread;
+      
+    } catch (error) {
+      console.error('Error fetching thread:', error);
+      // Return just the current message on error
+      return [{
+        author: message.author,
+        text: message.text,
+      }];
     }
-    
-    // Add the current message at the end
-    thread.push({
-      author: message.author,
-      text: message.text,
-    });
-    
-    return thread;
   }
 }
 

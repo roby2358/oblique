@@ -8,10 +8,25 @@ Status: ToDo
 ID: refactor-ne3i
 Rename 'conversation' field to 'messages' throughout the codebase for better clarity and consistency with LLM API conventions
 ---
-Priority:   40
+Priority:   70
 Status: ToDo
-ID: alt-3suq
-extract and display alt text from image attachments
+ID: filter-trdq
+Implement rules for which notifications to respond to
+---
+Priority:   65
+Status: ToDo
+ID: bot-ignore-6mcw
+Add ignore list for known bots that can be updated manually and add exponential backoff timing for replies to bots based on post timestamps
+---
+Priority:   60
+Status: ToDo
+ID: alt-notif-tin4
+Investigate and fix issue with alt text not appearing correctly in notification handling
+---
+Priority:   60
+Status: ToDo
+ID: prompt-sep-ait3
+Separate the most recent post from thread history in the oblique LLM prompt for better context handling
 ---
 Priority:   30
 Status: ToDo
@@ -35,11 +50,6 @@ Maintain conversation history for better LLM context
 ---
 Priority:   30
 Status: ToDo
-ID: filter-trdq
-Add filters for which notifications to respond to
----
-Priority:   30
-Status: ToDo
 ID: test-ic9g
 Add more unit tests for critical components
 ---
@@ -57,6 +67,11 @@ Priority:   30
 Status: ToDo
 ID: templates-squn
 Support different response templates/personalities
+---
+Priority:    0
+Status: Done
+ID: alt-3suq
+extract and display alt text from image attachments
 ---
 Priority:    0
 Status: Done

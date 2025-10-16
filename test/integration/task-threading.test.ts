@@ -15,6 +15,7 @@ describe('Task ID Threading', () => {
     author: 'testuser.bsky.social',
     text: 'Hello Oblique!',
     createdAt: new Date(),
+    reason: 'mention',
   };
 
   // Mock LLM client

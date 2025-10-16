@@ -81,6 +81,7 @@ export class BlueskyClient {
         author: notif.author.handle,
         text: notif.record.text,
         createdAt: new Date(notif.indexedAt),
+        reason: notif.reason,
         replyInfo,
       };
     });

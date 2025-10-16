@@ -67,6 +67,7 @@ export interface BlueskyMessage {
   author: string;
   text: string;
   createdAt: Date;
+  reason: string; // 'mention', 'reply', 'quote', 'like', 'repost', etc.
   replyInfo?: {
     root: {
       uri: string;

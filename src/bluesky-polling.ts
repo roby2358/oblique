@@ -1,6 +1,6 @@
 // Bluesky Polling Module - Handles automatic notification polling
 import type { DrakidionTask } from './drakidion/drakidion-types.js';
-import { getBlueskyClient, getLLMClient, getOrchestratorState, setOrchestratorState, updateStatus, getConfig } from './panels.js';
+import { getBlueskyClient, getLLMClient, getOrchestratorState, setOrchestratorState, updateStatus } from './panels.js';
 import { createProcessNotificationTask } from './oblique-task-factory.js';
 import * as Orchestrator from './drakidion/orchestrator.js';
 import type { BlueskyMessage } from './types/index.js';
@@ -22,30 +22,10 @@ const getIgnoreList = (): string[] => {
   }
 };
 
-// Get Oblique's current handle from config
-const getObliqueHandle = (): string | null => {
-  try {
-    const config = getConfig();
-    return config.bluesky?.handle || null;
-  } catch {
-    return null;
-  }
-};
-
-// Check if text contains a direct mention of the handle
-const containsDirectMention = (text: string, handle: string): boolean => {
-  const cleanHandle = handle.replace('@', '');
-  const mentionRegex = new RegExp(`@${cleanHandle}\\b`, 'i');
-  const result = mentionRegex.test(text);
-
-  return result;
-};
-
 // Check if a single notification should be responded to based on response rules
 const shouldRespondToNotification = (
   notification: BlueskyMessage,
   ignoreList: string[],
-  isDirectMention: boolean,
   hasReplies: boolean = false
 ): boolean => {
   // Rule 1: Check if author is in ignore list
@@ -54,13 +34,19 @@ const shouldRespondToNotification = (
     return false;
   }
 
-  // Rule 2: If it's a direct mention, we MUST reply regardless of existing replies
-  if (isDirectMention) {
+  // Rule 2: Don't reply to quote posts
+  if (notification.reason === 'quote') {
+    console.log(`Skipping @${notification.author}: This is a quote post`);
+    return false;
+  }
+
+  // Rule 3: If it's a direct mention, we MUST reply regardless of existing replies
+  if (notification.reason === 'mention') {
     console.log(`  ✓ Direct mention detected - will respond to @${notification.author}`);
     return true;
   }
   
-  // Rule 3: If it's not a direct mention, check if anyone has already replied
+  // Rule 4: If it's not a direct mention, check if anyone has already replied
   if (hasReplies) {
     console.log(`Skipping @${notification.author}: Someone already replied to this post`);
     return false;
@@ -190,7 +176,6 @@ export const checkNotifications = async () => {
     const ignoreList = getIgnoreList();
     let tasksCreated = 0;
     const onWaitingTaskComplete = createOnWaitingTaskComplete(orchestratorState, setOrchestratorState, updateStatus);
-    const obliqueHandle = getObliqueHandle();
     const markAsSeen = $('#mark-as-seen').prop('checked');
 
     // Iterate through each notification and check if we should respond
@@ -200,11 +185,9 @@ export const checkNotifications = async () => {
       }
   
       // Check if anyone has replied to this post (for non-direct mentions)
-      const isDirectMention = obliqueHandle ? containsDirectMention(notif.text, obliqueHandle) : false;
-      
       let hasReplies = false;
       
-      if (!isDirectMention) {
+      if (notif.reason !== 'mention') {
         try {
           hasReplies = await blueskyClient.hasRepliesToPost(notif);
         } catch (error) {
@@ -214,7 +197,7 @@ export const checkNotifications = async () => {
         }
       }
 
-      const shouldRespond = shouldRespondToNotification(notif, ignoreList, isDirectMention, hasReplies);
+      const shouldRespond = shouldRespondToNotification(notif, ignoreList, hasReplies);
       console.log(`Should respond: ${shouldRespond}`);
 
       if (shouldRespond) {

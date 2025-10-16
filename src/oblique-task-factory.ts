@@ -9,6 +9,30 @@ import { createObliqueConversation } from './prompts/oblique.js';
 import { nextTask, createSucceededTask, createDeadTask, newReadyTask, newWaitingTask } from './drakidion/task-factories.js';
 
 /**
+ * Intelligently truncate text by finding the last punctuation mark
+ * If no punctuation found, truncate to maxLength
+ */
+const truncateAtLastPunctuation = (text: string, maxLength: number = 279): string => {
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  // Find the last occurrence of common punctuation marks
+  const punctuationMarks = ['.', '!', '?', ',', ':', ';'];
+  let lastPunctuationIndex = maxLength;
+  
+  for (const mark of punctuationMarks) {
+    const index = text.lastIndexOf(mark, maxLength);
+    if (index > lastPunctuationIndex) {
+      lastPunctuationIndex = index;
+    }
+  }
+  
+  // Truncate before the punctuation mark, or at maxLength if no punctuation found
+  return text.substring(0, lastPunctuationIndex);
+};
+
+/**
  * Generate LLM response with retry logic for length constraints
  * Retries up to 5 times if response is longer than 280 characters
  */
@@ -35,10 +59,10 @@ const generateLLMResponseWithRetry = async (
     
     console.log(`Attempt ${attempts}: Response too long (${response.content.length} chars), retrying...`);
     
-    // If this is the last attempt, truncate the response to 279 characters
+    // If this is the last attempt, intelligently truncate the response
     if (attempts >= maxAttempts) {
-      const truncatedContent = response.content.substring(0, 279);
-      console.log(`Max attempts reached, truncating to 279 characters: "${truncatedContent}"`);
+      const truncatedContent = truncateAtLastPunctuation(response.content, 279);
+      console.log(`Max attempts reached, intelligently truncating: "${truncatedContent}"`);
       return { 
         conversation, 
         response: { ...response, content: truncatedContent }

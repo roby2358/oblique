@@ -15,6 +15,7 @@ describe('BlueskyClient', () => {
     author: 'testuser.bsky.social',
     text: 'Hello Oblique!',
     createdAt: new Date(),
+    reason: 'mention',
   };
 
   beforeEach(() => {

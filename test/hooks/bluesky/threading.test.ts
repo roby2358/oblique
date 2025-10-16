@@ -25,6 +25,7 @@ describe('BlueskyClient Threading', () => {
         author: 'current.bsky.social',
         text: 'Current message',
         createdAt: new Date(),
+        reason: 'reply',
         replyInfo: {
           root: { uri: 'at://did:plc:test/app.bsky.feed.post/root', cid: 'bafyroot' },
           parent: { uri: 'at://did:plc:test/app.bsky.feed.post/parent1', cid: 'bafyparent1' }
@@ -125,6 +126,7 @@ describe('BlueskyClient Threading', () => {
         author: 'standalone.bsky.social',
         text: 'Standalone message',
         createdAt: new Date(),
+        reason: 'mention',
         // No replyInfo
       };
 
@@ -143,6 +145,7 @@ describe('BlueskyClient Threading', () => {
         author: 'current.bsky.social',
         text: 'Current message',
         createdAt: new Date(),
+        reason: 'reply',
         replyInfo: {
           root: { uri: 'at://did:plc:test/app.bsky.feed.post/root', cid: 'bafyroot' },
           parent: { uri: 'at://did:plc:test/app.bsky.feed.post/parent1', cid: 'bafyparent1' }
@@ -199,6 +202,7 @@ describe('BlueskyClient Threading', () => {
         author: 'current.bsky.social',
         text: 'Current message',
         createdAt: new Date(),
+        reason: 'reply',
         replyInfo: {
           root: { uri: 'at://did:plc:test/app.bsky.feed.post/root', cid: 'bafyroot' },
           parent: { uri: 'at://did:plc:test/app.bsky.feed.post/parent1', cid: 'bafyparent1' }
@@ -253,6 +257,7 @@ describe('BlueskyClient Threading', () => {
         author: 'test.bsky.social',
         text: 'Test message',
         createdAt: new Date(),
+        reason: 'mention',
       };
 
       await expect(client.getThreadHistory(mockNotification, 10)).rejects.toThrow(

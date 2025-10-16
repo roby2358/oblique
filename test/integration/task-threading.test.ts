@@ -43,8 +43,8 @@ describe('Task ID Threading', () => {
     const mockBlueskyClient = createMockBlueskyClient();
     
     const createdTasks: DrakidionTask[] = [];
-    const onTaskCreated = (task: DrakidionTask) => {
-      createdTasks.push(task);
+    const onTaskCreated = (_taskId: string, successorTask: DrakidionTask) => {
+      createdTasks.push(successorTask);
     };
 
     // Create the initial task
@@ -104,8 +104,8 @@ describe('Task ID Threading', () => {
     const mockBlueskyClient = createMockBlueskyClient();
     
     const allTasks: DrakidionTask[] = [];
-    const onTaskCreated = (task: DrakidionTask) => {
-      allTasks.push(task);
+    const onTaskCreated = (_taskId: string, successorTask: DrakidionTask) => {
+      allTasks.push(successorTask);
     };
 
     // Create and process initial task

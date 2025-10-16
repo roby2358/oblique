@@ -3,15 +3,15 @@ Status: ToDo
 ID: alt-notif-tin4
 Investigate and fix issue with alt text not appearing correctly in notification handling
 ---
-Priority:   60
-Status: ToDo
-ID: templates-squn
-Support different response templates/personalities
----
 Priority:   50
 Status: ToDo
 ID: cleanup-h2ts
 Review and clean up task syntax and formatting to make it easier to work with - standardize descriptions, improve clarity, and ensure consistent formatting across all tasks
+---
+Priority:   30
+Status: ToDo
+ID: templates-squn
+Support different response templates/personalities
 ---
 Priority:   30
 Status: ToDo

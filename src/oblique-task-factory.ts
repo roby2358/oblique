@@ -131,7 +131,8 @@ export const createSendToLLMTask = (
     .then(thread => createObliqueConversation(thread))
     .then(conversation => generateLLMResponseWithRetry(llmClient, conversation))
     .then(({ conversation, response }) => {
-      // Create the post reply task as the direct successor
+      console.log('LLM response:', response.content);
+
       const postTask = createPostReplyTask(
         notification,
         response.content,

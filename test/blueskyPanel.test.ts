@@ -8,6 +8,7 @@ describe('Bluesky Polling Module', () => {
     addClass: jest.fn().mockReturnThis(),
     removeClass: jest.fn().mockReturnThis(),
     prop: jest.fn().mockReturnThis(),
+    val: jest.fn().mockReturnValue('60'), // Mock val() method for input elements
   }));
 
   beforeEach(() => {

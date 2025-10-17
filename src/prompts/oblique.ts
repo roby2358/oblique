@@ -81,23 +81,6 @@ export const getRandomTextLens = (): ObliqueTextLens => {
   return lensKeys[Math.floor(Math.random() * lensKeys.length)];
 };
 
-export const obliquePrompt = (userMessage: string, threadHistory: string): string => {
-  const focus = lenses[getRandomTextLens()];
-  return `
-Reply to this prompt:
-
-"${userMessage}"
-
-Reply through the chosen lens:
-
-"${focus}"
-
-Thread history:
-
-"${threadHistory}"
-`;
-};
-
 const formatPost = (post: { author: string; text: string; altTexts?: string[] }): string => {
   const mainText = `@${post.author}: ${post.text}`;
   const altTextLines = post.altTexts?.map(alt => `  - ${alt}`) ?? [];
@@ -119,11 +102,27 @@ export const createObliqueConversation = (
     .map(formatPost)
     .join('\n');
 
-  console.log('User message:', userMessage);
-  console.log('Thread text:', threadHistory);
-
   return [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: obliquePrompt(userMessage, threadHistory) },
   ];
+};
+
+export const obliquePrompt = (userMessage: string, threadHistory: string): string => {
+  const focus = lenses[getRandomTextLens()];
+  const promptText =
+  `Reply to this message:
+
+  "${userMessage}"
+
+  Reply through the chosen lens:
+
+  "${focus}"
+
+  Thread history:
+
+  "${threadHistory}"
+  `;
+
+  return promptText;
 };

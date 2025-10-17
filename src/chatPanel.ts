@@ -28,7 +28,9 @@ export const createHandleSendMessage = () => {
         return;
       }
 
-      const content = obliquePrompt(message);
+      const content = obliquePrompt(message, "");
+
+      console.log('Content:', content);
 
       const messages = [
         { role: 'system', content: systemPrompt },
@@ -48,6 +50,8 @@ export const createHandleSendMessage = () => {
           // Extract response from successor task
           const response = successorTask.work || '[No response received]';
           
+          console.log('Response:', response);
+
           // Display response
           if (successorTask.status === 'succeeded') {
             addMessage(response, 'oblique');

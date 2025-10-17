@@ -120,6 +120,52 @@ const updateCountdown = (nextCheckTime: Date) => {
   updateTimer();
 };
 
+// Process a single notification to determine if it should be responded to
+const processNotification = async (
+  notif: BlueskyMessage,
+  markAsSeen: boolean,
+  blueskyClient: any,
+  llmClient: any,
+  ignoreList: string[],
+  onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void,
+  orchestratorState: any
+): Promise<{ taskCreated: boolean; orchestratorState: any }> => {
+  if (markAsSeen) {
+    await blueskyClient.markNotificationsAsSeen();
+  }
+
+  // Check if anyone has replied to this post (for non-direct mentions)
+  let hasReplies = false;
+  
+  if (notif.reason !== 'mention') {
+    try {
+      hasReplies = await blueskyClient.hasRepliesToPost(notif);
+    } catch (error) {
+      // assume it's OK
+      console.warn(`Error checking replies for ${notif.author}:`, error);
+      hasReplies = false;
+    }
+  }
+
+  const shouldRespond = shouldRespondToNotification(notif, ignoreList, hasReplies);
+  console.log(`Should respond: ${shouldRespond}`);
+
+  if (!shouldRespond) {
+    return { taskCreated: false, orchestratorState };
+  }
+
+  // Happy path: create and add task
+  const task = createProcessNotificationTask(
+    notif,
+    llmClient,
+    blueskyClient,
+    onWaitingTaskComplete
+  );
+  
+  const updatedOrchestratorState = Orchestrator.addTask(orchestratorState, task);
+  return { taskCreated: true, orchestratorState: updatedOrchestratorState };
+};
+
 // Main notification checking logic (shared between manual and polling)
 export const checkNotifications = async () => {
   const blueskyClient = getBlueskyClient();
@@ -182,37 +228,21 @@ export const checkNotifications = async () => {
 
     // Iterate through each notification and check if we should respond
     for (const notif of notifications) {
-      if (markAsSeen) {
-        await blueskyClient.markNotificationsAsSeen();
-      }
-  
-      // Check if anyone has replied to this post (for non-direct mentions)
-      let hasReplies = false;
+      const result = await processNotification(
+        notif,
+        markAsSeen,
+        blueskyClient,
+        llmClient,
+        ignoreList,
+        onWaitingTaskComplete,
+        orchestratorState
+      );
       
-      if (notif.reason !== 'mention') {
-        try {
-          hasReplies = await blueskyClient.hasRepliesToPost(notif);
-        } catch (error) {
-          // assume it's OK
-          console.warn(`Error checking replies for ${notif.author}:`, error);
-          hasReplies = false;
-        }
-      }
-
-      const shouldRespond = shouldRespondToNotification(notif, ignoreList, hasReplies);
-      console.log(`Should respond: ${shouldRespond}`);
-
-      if (shouldRespond) {
-        const task = createProcessNotificationTask(
-          notif,
-          llmClient,
-          blueskyClient,
-          onWaitingTaskComplete
-        );
-        
-        orchestratorState = Orchestrator.addTask(orchestratorState, task);
+      if (result.taskCreated) {
         tasksCreated++;
       }
+      
+      orchestratorState = result.orchestratorState;
     }
 
     // Update the global state

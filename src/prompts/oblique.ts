@@ -39,20 +39,20 @@ The intertextual elements and cultural allusions present
 
 const lenses: Record<ObliqueTextLens, string> = {
   'supertext':
-`The intertextual elements and cultural allusions present
+`Supertext: The intertextual elements and cultural allusions present
  in the work. Consider: What other literary works, genres, or tropes does this
  text reference or evoke? How does it situate itself within broader cultural
  narratives or discourses? What external symbols, figures, or ideas does
  it draw upon to create meaning?`,
 'subtext':
-`The implicit themes, meanings, and messages beneath the
+`Subtext: The implicit themes, meanings, and messages beneath the
  surface of the text. Examine: What unspoken assumptions, values, or beliefs
  underlie the explicit content? What deeper conflicts, tensions, or power
  dynamics are at play? How do the characters, actions, and settings implicitly
  comment on larger issues? What does the text suggest about the human condition
  or the nature of reality?`,
 'architext':
-`The deep structural patterns, archetypes, and mythic
+`Architext: The deep structural patterns, archetypes, and mythic
  elements that shape the text at a fundamental level. Analyze: What universal
  human experiences, relationships, or developmental processes are evoked?
  How does the story's structure mirror classical archetypical patterns like
@@ -61,7 +61,7 @@ const lenses: Record<ObliqueTextLens, string> = {
  appear? How does the text enact deep, primal narratives of transformation,
  initiation, death-rebirth, etc.?`,
 'psychotext':
-`The underlying emotional dynamics, psychological motivations,
+`Psychotext: The underlying emotional dynamics, psychological motivations,
  and internal states that drive the characters and inform the narrative. What
  conscious and unconscious emotions, desires, or fears shape the characters'
  actions, choices, and relationships? How do the characters' psychological
@@ -102,9 +102,14 @@ export const createObliqueConversation = (
     .map(formatPost)
     .join('\n');
 
+  const promptText = obliquePrompt(userMessage, threadHistory);
+
+  console.log('Prompt text:', promptText);
+  console.log('User message:', userMessage);
+
   return [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: obliquePrompt(userMessage, threadHistory) },
+    { role: 'user', content: promptText },
   ];
 };
 

@@ -98,7 +98,9 @@ export class BlueskyClient {
       throw new Error('Not authenticated. Call authenticate() first.');
     }
 
-    const response = await this.agent.listNotifications({ limit });
+    const response = await this.agent.api.app.bsky.notification.listNotifications({ 
+      limit
+    });
 
     // Filter for notifications that have associated posts (mentions, replies, quotes, likes, reposts)
     let notifications = response.data.notifications

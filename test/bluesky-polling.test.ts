@@ -8,6 +8,7 @@ describe('Bluesky Polling Module', () => {
     addClass: jest.fn().mockReturnThis(),
     removeClass: jest.fn().mockReturnThis(),
     prop: jest.fn().mockReturnThis(),
+    val: jest.fn().mockReturnThis(),
   }));
 
   beforeEach(() => {
@@ -57,5 +58,44 @@ describe('Bluesky Polling Module', () => {
     expect(mockJQuery).toHaveBeenCalledWith('#polling-status');
     
     jest.useRealTimers();
+  });
+
+  it('should create poll interval change handler function', async () => {
+    const { createHandlePollIntervalChange } = await import('../src/bluesky-polling.js');
+    const handleIntervalChange = createHandlePollIntervalChange();
+    
+    expect(typeof handleIntervalChange).toBe('function');
+  });
+
+  it('should validate poll interval input values', async () => {
+    const { createHandlePollIntervalChange } = await import('../src/bluesky-polling.js');
+    const handleIntervalChange = createHandlePollIntervalChange();
+    
+    // Mock jQuery to return different values for val() calls
+    const mockVal = jest.fn();
+    const mockJQueryInstance = {
+      val: mockVal,
+      text: jest.fn().mockReturnThis(),
+      addClass: jest.fn().mockReturnThis(),
+      removeClass: jest.fn().mockReturnThis(),
+      prop: jest.fn().mockReturnThis(),
+    };
+    
+    mockJQuery.mockReturnValue(mockJQueryInstance);
+
+    // Test with invalid value (too low)
+    mockVal.mockReturnValue('5');
+    handleIntervalChange();
+    expect(mockVal).toHaveBeenCalledTimes(2); // Once to get value, once to set corrected value
+    expect(mockVal).toHaveBeenNthCalledWith(2, '10'); // Second call should set the corrected value
+
+    // Reset mock
+    mockVal.mockClear();
+
+    // Test with invalid value (too high)
+    mockVal.mockReturnValue('4000');
+    handleIntervalChange();
+    expect(mockVal).toHaveBeenCalledTimes(2); // Once to get value, once to set corrected value
+    expect(mockVal).toHaveBeenNthCalledWith(2, '3600'); // Second call should set the corrected value
   });
 });

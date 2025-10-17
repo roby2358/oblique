@@ -78,6 +78,7 @@ const updatePollingStatus = (nextCheckTime?: Date) => {
   if (isPolling) {
     $('#toggle-polling').text('Stop Polling').addClass('active');
     $('#polling-status').removeClass('hidden');
+    $('#poll-interval').prop('disabled', true); // Disable input when polling
     if (nextCheckTime) {
       const timeStr = nextCheckTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       $('#next-check').text(`Next check: ${timeStr}`);
@@ -85,6 +86,7 @@ const updatePollingStatus = (nextCheckTime?: Date) => {
   } else {
     $('#toggle-polling').text('Start Polling').removeClass('active');
     $('#polling-status').addClass('hidden');
+    $('#poll-interval').prop('disabled', false); // Enable input when not polling
   }
 };
 
@@ -234,12 +236,24 @@ export const checkNotifications = async () => {
   enableCheckButton();
 };
 
+// Helper function to get poll interval from UI
+const getPollIntervalSeconds = (): number => {
+  const input = $('#poll-interval');
+  const value = parseInt(input.val() as string, 10);
+  // Validate and return default if invalid
+  if (isNaN(value) || value < 10 || value > 3600) {
+    return 60; // Default to 60 seconds
+  }
+  return value;
+};
+
 // Polling control functions
 const startPolling = () => {
   if (isPolling) return;
   
   isPolling = true;
-  const POLLING_INTERVAL_MS = 60 * 1000; // 1 minute
+  const pollIntervalSeconds = getPollIntervalSeconds();
+  const POLLING_INTERVAL_MS = pollIntervalSeconds * 1000;
   
   const scheduleNextCheck = () => {
     const nextCheckTime = new Date(Date.now() + POLLING_INTERVAL_MS);
@@ -284,3 +298,18 @@ export const getPollingState = () => ({
   isPolling,
   hasInterval: pollingInterval !== null
 });
+
+// Export poll interval change handler
+export const createHandlePollIntervalChange = () => {
+  return () => {
+    const input = $('#poll-interval');
+    const value = parseInt(input.val() as string, 10);
+    
+    // Validate input
+    if (isNaN(value) || value < 10) {
+      input.val('10'); // Set minimum value
+    } else if (value > 3600) {
+      input.val('3600'); // Set maximum value
+    }
+  };
+};

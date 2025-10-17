@@ -89,6 +89,11 @@
               <input type="checkbox" id="mark-as-seen" checked>
               Mark as seen
             </label>
+            <label class="input-label">
+              Poll interval:
+              <input type="number" id="poll-interval" min="10" max="3600" value="60" class="poll-interval-input">
+              <span class="input-suffix">seconds</span>
+            </label>
           </div>
           <div id="polling-status" class="polling-status hidden">
             <span id="polling-indicator">●</span>

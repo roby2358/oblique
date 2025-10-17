@@ -5,7 +5,7 @@ import { updateQueuePanel } from './queuePanel.js';
 import { updateWaitingPanel } from './waitingPanel.js';
 import { createHandleSendMessage } from './chatPanel.js';
 import { createHandleCheckBluesky } from './bluesky-panel.js';
-import { createHandleTogglePolling } from './bluesky-polling.js';
+import { createHandleTogglePolling, createHandlePollIntervalChange } from './bluesky-polling.js';
 import { createHandleConfigure } from './configurePanel.js';
 
 // jQuery is loaded via CDN in index.html
@@ -95,6 +95,7 @@ $(document).ready(() => {
   const handleSendMessage = createHandleSendMessage();
   const handleCheckBluesky = createHandleCheckBluesky();
   const handleTogglePolling = createHandleTogglePolling();
+  const handlePollIntervalChange = createHandlePollIntervalChange();
   const handleConfigure = createHandleConfigure();
 
   // Event listeners
@@ -120,6 +121,9 @@ $(document).ready(() => {
   $('#check-bluesky').on('click', handleCheckBluesky);
 
   $('#toggle-polling').on('click', handleTogglePolling);
+
+  $('#poll-interval').on('change', handlePollIntervalChange);
+  $('#poll-interval').on('blur', handlePollIntervalChange);
 
   $('#refresh-observer').on('click', () => updateObserverPanel());
 

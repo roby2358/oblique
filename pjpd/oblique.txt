@@ -1,3 +1,8 @@
+Priority:   70
+Status: ToDo
+ID: panel-ui-r6ze
+Create new panel component that displays inputs and outputs in a side-by-side layout for better visualization and comparison
+---
 Priority:   60
 Status: ToDo
 ID: alt-notif-tin4
@@ -47,6 +52,16 @@ Priority:   30
 Status: ToDo
 ID: log-zgkr
 Add better logging for troubleshooting
+---
+Priority:    0
+Status: Done
+ID: like-first-ni5b
+Implement automatic liking functionality where Oblique likes a post before replying to it, simulating the heart button click behavior
+---
+Priority:    0
+Status: Done
+ID: preview-fps7
+Implement post preview functionality that displays post content before sending reply to allow review and editing
 ---
 Priority:    0
 Status: Done

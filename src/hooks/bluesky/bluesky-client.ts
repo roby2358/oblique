@@ -23,6 +23,36 @@ export class BlueskyClient {
     this.authenticated = true;
   }
 
+  async like(postUri: string): Promise<{ uri: string; cid: string }> {
+    if (!this.authenticated) {
+      throw new Error('Not authenticated. Call authenticate() first.');
+    }
+
+    const likeData = {
+      subject: {
+        uri: postUri,
+        cid: '', // CID is optional for likes
+      },
+      createdAt: new Date().toISOString(),
+    };
+
+    console.log('Liking post on Bluesky:', JSON.stringify(likeData, null, 2));
+
+    // Use the AT Protocol createRecord method directly
+    const response = await this.agent.api.com.atproto.repo.createRecord({
+      repo: this.config.handle,
+      collection: 'app.bsky.feed.like',
+      record: likeData,
+    });
+
+    console.log('Like response:', { uri: response.data.uri, cid: response.data.cid });
+
+    return {
+      uri: response.data.uri,
+      cid: response.data.cid,
+    };
+  }
+
   async post(post: BlueskyPost): Promise<{ uri: string; cid: string }> {
     if (!this.authenticated) {
       throw new Error('Not authenticated. Call authenticate() first.');

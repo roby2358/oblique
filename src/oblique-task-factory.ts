@@ -235,6 +235,10 @@ export const createPostReplyTask = (
         // Get reply threading info for the notification
         const replyTo = blueskyClient.notificationReplyTo(originalNotification);
 
+        // Like the original post first
+        console.log(`Liking post ${originalNotification.uri} before replying...`);
+        await blueskyClient.like(originalNotification.uri);
+
         // Post the reply to Bluesky
         const result = await blueskyClient.post({
           text: replyText,

@@ -28,10 +28,24 @@ export class BlueskyClient {
       throw new Error('Not authenticated. Call authenticate() first.');
     }
 
+    // First, fetch the post to get its CID
+    let postCid = '';
+    try {
+      const postResponse = await this.agent.api.com.atproto.repo.getRecord({
+        repo: postUri.split('/')[2], // Extract repo from URI (e.g., did:plc:...)
+        collection: 'app.bsky.feed.post',
+        rkey: postUri.split('/')[4], // Extract record key from URI
+      });
+      postCid = postResponse.data.cid || '';
+    } catch (error) {
+      console.warn('Could not fetch post CID, proceeding with empty CID:', error);
+      // Continue with empty CID - some AT Protocol implementations allow this
+    }
+
     const likeData = {
       subject: {
         uri: postUri,
-        cid: '', // CID is optional for likes
+        cid: postCid,
       },
       createdAt: new Date().toISOString(),
     };

@@ -16,7 +16,12 @@ describe('BlueskyClient like functionality', () => {
 
   it('should like a post successfully', async () => {
     const postUri = 'at://did:plc:test/app.bsky.feed.post/test123';
-    const mockResponse = {
+    const mockPostResponse = {
+      data: {
+        cid: 'post-cid-123',
+      },
+    };
+    const mockLikeResponse = {
       data: {
         uri: 'at://did:plc:test/app.bsky.feed.like/like123',
         cid: 'test-cid-123',
@@ -24,13 +29,17 @@ describe('BlueskyClient like functionality', () => {
     };
 
     // Mock the agent's API
+    const mockGetRecord = jest.fn() as any;
     const mockCreateRecord = jest.fn() as any;
-    mockCreateRecord.mockResolvedValue(mockResponse);
+    mockGetRecord.mockResolvedValue(mockPostResponse);
+    mockCreateRecord.mockResolvedValue(mockLikeResponse);
+    
     const mockAgent = {
       api: {
         com: {
           atproto: {
             repo: {
+              getRecord: mockGetRecord,
               createRecord: mockCreateRecord,
             },
           },
@@ -41,13 +50,19 @@ describe('BlueskyClient like functionality', () => {
 
     const result = await client.like(postUri);
 
+    expect(mockGetRecord).toHaveBeenCalledWith({
+      repo: 'did:plc:test',
+      collection: 'app.bsky.feed.post',
+      rkey: 'test123',
+    });
+
     expect(mockCreateRecord).toHaveBeenCalledWith({
       repo: 'test.bsky.social',
       collection: 'app.bsky.feed.like',
       record: {
         subject: {
           uri: postUri,
-          cid: '',
+          cid: 'post-cid-123',
         },
         createdAt: expect.any(String),
       },
@@ -92,20 +107,29 @@ describe('BlueskyClient like functionality', () => {
 
   it('should include proper timestamp in like data', async () => {
     const postUri = 'at://did:plc:test/app.bsky.feed.post/test123';
-    const mockResponse = {
+    const mockPostResponse = {
+      data: {
+        cid: 'post-cid-123',
+      },
+    };
+    const mockLikeResponse = {
       data: {
         uri: 'at://did:plc:test/app.bsky.feed.like/like123',
         cid: 'test-cid-123',
       },
     };
 
+    const mockGetRecord = jest.fn() as any;
     const mockCreateRecord = jest.fn() as any;
-    mockCreateRecord.mockResolvedValue(mockResponse);
+    mockGetRecord.mockResolvedValue(mockPostResponse);
+    mockCreateRecord.mockResolvedValue(mockLikeResponse);
+    
     const mockAgent = {
       api: {
         com: {
           atproto: {
             repo: {
+              getRecord: mockGetRecord,
               createRecord: mockCreateRecord,
             },
           },
@@ -123,5 +147,54 @@ describe('BlueskyClient like functionality', () => {
 
     expect(createdAt.getTime()).toBeGreaterThanOrEqual(beforeCall.getTime());
     expect(createdAt.getTime()).toBeLessThanOrEqual(afterCall.getTime());
+  });
+
+  it('should handle CID fetch failure gracefully', async () => {
+    const postUri = 'at://did:plc:test/app.bsky.feed.post/test123';
+    const mockLikeResponse = {
+      data: {
+        uri: 'at://did:plc:test/app.bsky.feed.like/like123',
+        cid: 'test-cid-123',
+      },
+    };
+
+    const mockGetRecord = jest.fn() as any;
+    const mockCreateRecord = jest.fn() as any;
+    mockGetRecord.mockRejectedValue(new Error('Post not found'));
+    mockCreateRecord.mockResolvedValue(mockLikeResponse);
+    
+    const mockAgent = {
+      api: {
+        com: {
+          atproto: {
+            repo: {
+              getRecord: mockGetRecord,
+              createRecord: mockCreateRecord,
+            },
+          },
+        },
+      },
+    };
+    (client as any).agent = mockAgent;
+
+    const result = await client.like(postUri);
+
+    // Should still succeed with empty CID
+    expect(mockCreateRecord).toHaveBeenCalledWith({
+      repo: 'test.bsky.social',
+      collection: 'app.bsky.feed.like',
+      record: {
+        subject: {
+          uri: postUri,
+          cid: '',
+        },
+        createdAt: expect.any(String),
+      },
+    });
+
+    expect(result).toEqual({
+      uri: 'at://did:plc:test/app.bsky.feed.like/like123',
+      cid: 'test-cid-123',
+    });
   });
 });

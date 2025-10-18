@@ -91,6 +91,19 @@ describe('BlueskyClient Threading', () => {
               parent: null // No more parents
             }
           }
+        })
+        // Mock the additional call to fetch current post data
+        .mockResolvedValueOnce({
+          data: {
+            thread: {
+              $type: 'app.bsky.feed.defs#threadViewPost',
+              post: {
+                uri: 'at://did:plc:test/app.bsky.feed.post/current',
+                author: { handle: 'current.bsky.social' },
+                record: { text: 'Current message' }
+              }
+            }
+          }
         });
 
       (client as any).agent = mockAgent;
@@ -110,8 +123,8 @@ describe('BlueskyClient Threading', () => {
       expect(result[2].author).toBe('current.bsky.social');
       expect(result[2].text).toBe('Current message');
 
-      // Verify API call was made correctly
-      expect(mockAgent.getPostThread).toHaveBeenCalledTimes(1);
+      // Verify API call was made correctly (1 for thread + 1 for current post)
+      expect(mockAgent.getPostThread).toHaveBeenCalledTimes(2);
       expect(mockAgent.getPostThread).toHaveBeenCalledWith({
         uri: 'at://did:plc:test/app.bsky.feed.post/parent1',
         depth: 0,
@@ -130,12 +143,39 @@ describe('BlueskyClient Threading', () => {
         // No replyInfo
       };
 
+      const mockAgent = {
+        getPostThread: jest.fn()
+      };
+
+      (mockAgent.getPostThread as any).mockResolvedValue({
+        data: {
+          thread: {
+            $type: 'app.bsky.feed.defs#threadViewPost',
+            post: {
+              uri: 'at://did:plc:test/app.bsky.feed.post/standalone',
+              author: { handle: 'standalone.bsky.social' },
+              record: { text: 'Standalone message' }
+            }
+          }
+        }
+      });
+
+      (client as any).agent = mockAgent;
+
       const result = await client.getThreadHistory(mockNotification, 10);
 
       // Should only have the current message
       expect(result).toHaveLength(1);
       expect(result[0].author).toBe('standalone.bsky.social');
       expect(result[0].text).toBe('Standalone message');
+      
+      // Verify API call was made for current post
+      expect(mockAgent.getPostThread).toHaveBeenCalledTimes(1);
+      expect(mockAgent.getPostThread).toHaveBeenCalledWith({
+        uri: 'at://did:plc:test/app.bsky.feed.post/standalone',
+        depth: 0,
+        parentHeight: 0
+      });
     });
 
     it('should respect maxDepth parameter', async () => {
@@ -158,6 +198,22 @@ describe('BlueskyClient Threading', () => {
 
       // Mock a long chain of posts
       (mockAgent.getPostThread as any).mockImplementation(({ uri }: { uri: string }) => {
+        // Handle the current post call (for alt text extraction)
+        if (uri.includes('current')) {
+          return Promise.resolve({
+            data: {
+              thread: {
+                $type: 'app.bsky.feed.defs#threadViewPost',
+                post: {
+                  uri: 'at://did:plc:test/app.bsky.feed.post/current',
+                  author: { handle: 'current.bsky.social' },
+                  record: { text: 'Current message' }
+                }
+              }
+            }
+          });
+        }
+        
         const postNumber = uri.split('parent')[1] || '1';
         const nextNumber = parseInt(postNumber) + 1;
         
@@ -191,8 +247,8 @@ describe('BlueskyClient Threading', () => {
       // Should have 3 messages total (2 parents + current)
       expect(result).toHaveLength(3);
       
-      // Verify we didn't fetch more than requested
-      expect(mockAgent.getPostThread).toHaveBeenCalledTimes(1);
+      // Verify we didn't fetch more than requested (1 for thread + 1 for current post)
+      expect(mockAgent.getPostThread).toHaveBeenCalledTimes(2);
     });
 
     it('should handle API errors gracefully', async () => {

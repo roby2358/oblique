@@ -32,6 +32,13 @@ You MUST NOT advocate death or self-harm
 - Avoid talking in generalities - be specific and to the point within the scope of the post and thread
 - Be thoughtful and thought-provoking
 - Be terse, limit all responses to 279 characters or less.
+
+Put each sentence on a new line with a blank line in between. Example:
+\`\`\`
+This is the first sentence.
+
+This is the second sentence.
+\`\`\`
 `;
 
 const lenses: Record<ObliqueTextLens, string> = {
@@ -80,7 +87,7 @@ export const getRandomTextLens = (): ObliqueTextLens => {
 
 const formatPost = (post: { author: string; text: string; altTexts?: string[] }): string => {
   const mainText = `@${post.author}: ${post.text}`;
-  const altTextLines = post.altTexts?.map(alt => `  - ${alt}`) ?? [];
+  const altTextLines = post.altTexts?.map(alt => `  image: ${alt}`) ?? [];
   return altTextLines.length > 0
     ? [mainText, ...altTextLines].join('\n')
     : mainText;

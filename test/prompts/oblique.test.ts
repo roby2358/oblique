@@ -117,6 +117,27 @@ describe('Oblique Prompts', () => {
       expect(result[1].content).toContain('@user2: Simple post');
     });
 
+    it('should include alt texts in the last post (notification trigger)', () => {
+      const mockThread = [
+        { author: 'user1', text: 'First post', altTexts: [] },
+        { 
+          author: 'user2', 
+          text: 'Last post with image', 
+          altTexts: ['Beautiful sunset', 'Ocean view'] 
+        }
+      ];
+
+      const result = createObliqueConversation(mockThread);
+
+      // The last post should be in the main user message with alt texts
+      expect(result[1].content).toContain('@user2: Last post with image');
+      expect(result[1].content).toContain('  - Beautiful sunset');
+      expect(result[1].content).toContain('  - Ocean view');
+      
+      // Thread history should contain the first post without alt texts
+      expect(result[1].content).toContain('@user1: First post');
+    });
+
   });
 });
 

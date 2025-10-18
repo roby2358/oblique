@@ -213,12 +213,51 @@ export class BlueskyClient {
     }
     
     // If this is a reply, get the thread from the parent post
-    // If not a reply, just return the current message
+    // If not a reply, just return the current message with alt texts
     if (!message.replyInfo?.parent?.uri) {
-      return [{
-        author: message.author,
-        text: message.text,
-      }];
+      try {
+        const currentPostResponse = await this.agent.getPostThread({ 
+          uri: message.uri,
+          depth: 0,  // Only get the post itself, not its replies
+          parentHeight: 0  // Don't fetch parent posts
+        });
+        
+        if (currentPostResponse.data.thread && (currentPostResponse.data.thread as any).$type === 'app.bsky.feed.defs#threadViewPost') {
+          const threadNode = currentPostResponse.data.thread as any;
+          const post = threadNode.post;
+          
+          if (post && post.record) {
+            // Extract alt text from images if present
+            const altTexts: string[] = [];
+            if (post.record.embed?.images) {
+              for (const image of post.record.embed.images) {
+                if (image.alt) {
+                  altTexts.push(image.alt);
+                }
+              }
+            }
+            
+            return [{
+              author: message.author,
+              text: message.text,
+              altTexts: altTexts.length > 0 ? altTexts : undefined,
+            }];
+          }
+        }
+        
+        // Fallback to basic message without alt texts
+        return [{
+          author: message.author,
+          text: message.text,
+        }];
+      } catch (error) {
+        console.error('Error fetching current post data:', error);
+        // Fallback to basic message without alt texts
+        return [{
+          author: message.author,
+          text: message.text,
+        }];
+      }
     }
 
     try {
@@ -276,10 +315,56 @@ export class BlueskyClient {
       const thread = postsInOrder.reverse();
       
       // Add the current message at the end (newest)
-      thread.push({
-        author: message.author,
-        text: message.text,
-      });
+      // We need to fetch the full post data to get alt texts
+      try {
+        const currentPostResponse = await this.agent.getPostThread({ 
+          uri: message.uri,
+          depth: 0,  // Only get the post itself, not its replies
+          parentHeight: 0  // Don't fetch parent posts
+        });
+        
+        if (currentPostResponse.data.thread && (currentPostResponse.data.thread as any).$type === 'app.bsky.feed.defs#threadViewPost') {
+          const threadNode = currentPostResponse.data.thread as any;
+          const post = threadNode.post;
+          
+          if (post && post.record) {
+            // Extract alt text from images if present
+            const altTexts: string[] = [];
+            if (post.record.embed?.images) {
+              for (const image of post.record.embed.images) {
+                if (image.alt) {
+                  altTexts.push(image.alt);
+                }
+              }
+            }
+            
+            thread.push({
+              author: message.author,
+              text: message.text,
+              altTexts: altTexts.length > 0 ? altTexts : undefined,
+            });
+          } else {
+            // Fallback to basic message without alt texts
+            thread.push({
+              author: message.author,
+              text: message.text,
+            });
+          }
+        } else {
+          // Fallback to basic message without alt texts
+          thread.push({
+            author: message.author,
+            text: message.text,
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching current post data:', error);
+        // Fallback to basic message without alt texts
+        thread.push({
+          author: message.author,
+          text: message.text,
+        });
+      }
       
       return thread;
       

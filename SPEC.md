@@ -251,7 +251,7 @@ Complete conversation
 
 ### Configuration File (`config.json`)
 
-Oblique uses a single `config.json` file as the source of truth for all configuration. No localStorage or other storage mechanisms are used.
+Oblique uses a single `config.json` file as the source of truth for all configuration.
 
 ```json
 {

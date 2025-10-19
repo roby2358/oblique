@@ -112,8 +112,8 @@ describe('Oblique Prompts', () => {
       const result = createObliqueConversation(mockThread);
 
       expect(result[1].content).toContain('@user1: Post with image');
-      expect(result[1].content).toContain('  - Image description');
-      expect(result[1].content).toContain('  - Another alt text');
+      expect(result[1].content).toContain('  image: Image description');
+      expect(result[1].content).toContain('  image: Another alt text');
       expect(result[1].content).toContain('@user2: Simple post');
     });
 
@@ -131,8 +131,8 @@ describe('Oblique Prompts', () => {
 
       // The last post should be in the main user message with alt texts
       expect(result[1].content).toContain('@user2: Last post with image');
-      expect(result[1].content).toContain('  - Beautiful sunset');
-      expect(result[1].content).toContain('  - Ocean view');
+      expect(result[1].content).toContain('  image: Beautiful sunset');
+      expect(result[1].content).toContain('  image: Ocean view');
       
       // Thread history should contain the first post without alt texts
       expect(result[1].content).toContain('@user1: First post');

@@ -8,33 +8,40 @@ import type { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
 import { createObliqueConversation } from './prompts/oblique.js';
 import { nextTask, createSucceededTask, createDeadTask, newReadyTask, newWaitingTask } from './drakidion/task-factories.js';
 
+// Single source of truth for reply length limits
+const MAX_BLUESKY_REPLY_CHARS = 299;
+// Punctuation considered safe boundaries for truncation (omit when cutting)
+const OBLIQUE_TRUNCATION_PUNCTUATION = new Set(['.', '!', '?', ',', ':', ';', '—', '–', '…', '(', '\n']);
+
 /**
  * Intelligently truncate text by finding the last punctuation mark
- * If no punctuation found, truncate to maxLength
+ * If no punctuation found, truncate to MAX_OBLIQUE_REPLY_CHARS
+ * Omits the final punctuation when truncating
  */
-const truncateAtLastPunctuation = (text: string, maxLength: number = 279): string => {
-  if (text.length <= maxLength) {
+const truncateAtLastPunctuation = (text: string): string => {
+  if (text.length <= MAX_BLUESKY_REPLY_CHARS) {
     return text;
   }
 
-  // Find the last occurrence of common punctuation marks
-  const punctuationMarks = ['.', '!', '?', ',', ':', ';'];
-  let lastPunctuationIndex = maxLength;
-  
-  for (const mark of punctuationMarks) {
-    const index = text.lastIndexOf(mark, maxLength);
-    if (index > lastPunctuationIndex) {
-      lastPunctuationIndex = index;
+  // Extended punctuation marks set and backward scan within limit
+  const limit = Math.min(MAX_BLUESKY_REPLY_CHARS - 1, text.length - 1);
+  for (let i = limit; i >= 0; i--) {
+    const ch = text[i];
+    if (OBLIQUE_TRUNCATION_PUNCTUATION.has(ch)) {
+      if (i > 0) {
+        return text.substring(0, i);
+      }
+      break;
     }
   }
   
-  // Truncate before the punctuation mark, or at maxLength if no punctuation found
-  return text.substring(0, lastPunctuationIndex);
+  // If no punctuation found, just truncate to maxLength
+  return text.substring(0, MAX_BLUESKY_REPLY_CHARS);
 };
 
 /**
  * Generate LLM response with retry logic for length constraints
- * Retries up to 5 times if response is longer than 280 characters
+ * Retries up to 5 times if response is longer than 300 characters
  */
 const generateLLMResponseWithRetry = async (
   llmClient: LLMClient,
@@ -53,7 +60,7 @@ const generateLLMResponseWithRetry = async (
     });
     
     // Check if response is within character limit
-    if (response.content.length < 280) {
+    if (response.content.length < 300) {
       return { conversation, response };
     }
     
@@ -61,7 +68,7 @@ const generateLLMResponseWithRetry = async (
     
     // If this is the last attempt, intelligently truncate the response
     if (attempts >= maxAttempts) {
-      const truncatedContent = truncateAtLastPunctuation(response.content, 279);
+      const truncatedContent = truncateAtLastPunctuation(response.content);
       console.log(`Max attempts reached, intelligently truncating: "${truncatedContent}"`);
       return { 
         conversation, 
@@ -321,8 +328,16 @@ export const createObliqueMessageTask = (
     maxTokens: 1000,
   })
     .then(response => {
+      // Apply truncation logic to ensure response is within character limit
+      let content = response.content;
+      if (content.length >= 300) {
+        console.log(`Response too long (${content.length} chars), truncating...`);
+        content = truncateAtLastPunctuation(content);
+        console.log(`Truncated to ${content.length} chars: "${content}"`);
+      }
+      
       // Create succeeded task and call onComplete with successor task
-      const succeededTask = createObliqueMessageSucceededTask(task, response.content);
+      const succeededTask = createObliqueMessageSucceededTask(task, content);
       onComplete(task.taskId, succeededTask);
     })
     .catch(error => {

@@ -1,6 +1,19 @@
 // Configuration management module
-import { DEFAULT_CONFIG } from './utils/index.js';
 import { deepMerge } from './utils/deep-merge.js';
+
+// Default configuration values
+export const DEFAULT_CONFIG = {
+  openrouter: {
+    apiKey: '',
+    model: 'anthropic/claude-3.5-haiku',
+    baseUrl: 'https://openrouter.ai/api/v1/chat/completions'
+  },
+  bluesky: {
+    handle: '',
+    password: ''
+  },
+  ignoreList: []
+} as const;
 
 // Hold config at module level
 let config: any = {};

@@ -4,20 +4,6 @@
 export { generateSafeBase32 } from './safebase32';
 import { generateSafeBase32 } from './safebase32';
 
-// Default configuration values
-export const DEFAULT_CONFIG = {
-  openrouter: {
-    apiKey: '',
-    model: 'anthropic/claude-3.5-haiku',
-    baseUrl: 'https://openrouter.ai/api/v1/chat/completions'
-  },
-  bluesky: {
-    handle: '',
-    password: ''
-  },
-  ignoreList: []
-} as const;
-
 /**
  * Generate a DRAKIDION taskId (24-character safe-base32 string)
  * @returns 24-character safe-base32 taskId

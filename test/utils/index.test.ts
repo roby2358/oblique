@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG } from '../../src/utils/index.js';
+import { DEFAULT_CONFIG } from '../../src/config.js';
 
 // Mock fetch for config.json
 const mockFetch = (url: string) => {

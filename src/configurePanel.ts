@@ -1,7 +1,6 @@
 // Configure Panel - UI functions for handling configuration
 import { addMessage, initializeOrchestrator } from './panels.js';
 import { getConfig } from './config.js';
-import { DEFAULT_CONFIG } from './utils/index.js';
 
 declare const $: any;
 
@@ -19,8 +18,8 @@ export const createHandleConfigure = () => {
     const config = getConfig();
     config.openrouter = {
       apiKey,
-      model: model || DEFAULT_CONFIG.openrouter.model,
-      baseUrl: config.openrouter?.baseUrl || DEFAULT_CONFIG.openrouter.baseUrl
+      model: model,
+      baseUrl: config.openrouter?.baseUrl.openrouter.baseUrl
     };
     
     addMessage('✅ Configuration updated. Reinitializing orchestrator...', 'system');

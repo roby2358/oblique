@@ -1,3 +1,8 @@
+Priority:   80
+Status: ToDo
+ID: model-rot-gdrc
+Rotate the model and introduce a daily gender rotation that posts to Bluesky with the current configuration
+---
 Priority:   70
 Status: ToDo
 ID: panel-ui-r6ze

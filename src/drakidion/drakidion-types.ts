@@ -77,10 +77,10 @@ export interface TaskQueue {
 }
 
 /**
- * WaitingMap - maps correlationId to taskId for tasks with status='waiting'
+ * WaitingSet - set of taskIds for tasks with status='waiting'
  */
-export interface WaitingMap {
-  correlations: Map<string, string>; // correlationId -> taskId
+export interface WaitingSet {
+  waitingTaskIds: Set<string>;
 }
 
 /**
@@ -89,7 +89,7 @@ export interface WaitingMap {
 export interface OrchestratorState {
   taskMap: TaskMap;
   taskQueue: TaskQueue;
-  waitingMap: WaitingMap;
+  waitingSet: WaitingSet;
   isRunning: boolean;
 }
 

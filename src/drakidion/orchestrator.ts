@@ -2,7 +2,7 @@
 import type { DrakidionTask, OrchestratorState } from './drakidion-types.js';
 import * as TaskMapOps from './task-map.js';
 import * as TaskQueueOps from './task-queue.js';
-import * as WaitingMapOps from './waiting-map.js';
+import * as WaitingSetOps from './waiting-set.js';
 
 /**
  * Create a new Orchestrator state
@@ -10,14 +10,14 @@ import * as WaitingMapOps from './waiting-map.js';
 export const createOrchestrator = (): OrchestratorState => ({
   taskMap: TaskMapOps.createTaskMap(),
   taskQueue: TaskQueueOps.createTaskQueue(),
-  waitingMap: WaitingMapOps.createWaitingMap(),
+  waitingSet: WaitingSetOps.createWaitingSet(),
   isRunning: false,
 });
 
 /**
  * Add a task to the orchestrator
  * The task is added to taskMap, and if status is 'ready', also added to taskQueue
- * If status is 'waiting', it's added to waitingMap using taskId as the key
+ * If status is 'waiting', it's added to waitingSet
  */
 export const addTask = (
   state: OrchestratorState, 
@@ -30,8 +30,8 @@ export const addTask = (
   if (task.status === 'ready') {
     TaskQueueOps.enqueue(state.taskQueue, task.taskId);
   } else if (task.status === 'waiting') {
-    // For waiting tasks, use taskId as the correlation key
-    WaitingMapOps.addCorrelation(state.waitingMap, task.taskId, task.taskId);
+    // Add to waiting set
+    WaitingSetOps.addWaitingTask(state.waitingSet, task.taskId);
   }
   
   return state;
@@ -51,8 +51,8 @@ export const transitionTask = (
     TaskQueueOps.remove(state.taskQueue, oldTaskId);
   }
   
-  // Remove old task from waitingMap if it was there
-  WaitingMapOps.removeByTaskId(state.waitingMap, oldTaskId);
+  // Remove old task from waitingSet if it was there
+  WaitingSetOps.removeWaitingTask(state.waitingSet, oldTaskId);
   
   // Add new task
   return addTask(state, newTask);
@@ -187,7 +187,7 @@ export const startLoop = (
 
 /**
  * Resume a waiting task by taskId with a successor task
- * Finds the task in waitingMap, removes it, and transitions to successor
+ * Finds the task in waitingSet, removes it, and transitions to successor
  */
 export const resumeWaitingTask = (
   state: OrchestratorState,
@@ -199,12 +199,12 @@ export const resumeWaitingTask = (
   
   if (!task) {
     console.warn(`Task ${taskId} not found in taskMap`);
-    WaitingMapOps.removeCorrelation(state.waitingMap, taskId);
+    WaitingSetOps.removeWaitingTask(state.waitingSet, taskId);
     return state;
   }
   
-  // Remove from waitingMap
-  WaitingMapOps.removeCorrelation(state.waitingMap, taskId);
+  // Remove from waitingSet
+  WaitingSetOps.removeWaitingTask(state.waitingSet, taskId);
   
   // Transition to successor task
   return transitionTask(state, taskId, successorTask);
@@ -223,12 +223,12 @@ export const errorWaitingTask = (
   
   if (!task) {
     console.warn(`Task ${taskId} not found in taskMap`);
-    WaitingMapOps.removeCorrelation(state.waitingMap, taskId);
+    WaitingSetOps.removeWaitingTask(state.waitingSet, taskId);
     return state;
   }
   
-  // Remove from waitingMap
-  WaitingMapOps.removeCorrelation(state.waitingMap, taskId);
+  // Remove from waitingSet
+  WaitingSetOps.removeWaitingTask(state.waitingSet, taskId);
   
   // Transition to successor task
   return transitionTask(state, taskId, successorTask);
@@ -240,7 +240,7 @@ export const errorWaitingTask = (
 export const getStatus = (state: OrchestratorState) => ({
   isRunning: state.isRunning,
   queueSize: TaskQueueOps.size(state.taskQueue),
-  waitingSize: WaitingMapOps.size(state.waitingMap),
+  waitingSize: WaitingSetOps.size(state.waitingSet),
   totalTasks: TaskMapOps.size(state.taskMap),
 });
 

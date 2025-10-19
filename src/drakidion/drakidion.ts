@@ -9,7 +9,7 @@ export type {
   TaskFactory,
   TaskMap,
   TaskQueue,
-  WaitingMap,
+  WaitingSet,
   OrchestratorState,
 } from './drakidion-types.js';
 
@@ -19,8 +19,8 @@ export * as TaskMapOps from './task-map.js';
 // TaskQueue operations
 export * as TaskQueueOps from './task-queue.js';
 
-// WaitingMap operations
-export * as WaitingMapOps from './waiting-map.js';
+// WaitingSet operations
+export * as WaitingSetOps from './waiting-set.js';
 
 // Orchestrator
 export * as Orchestrator from './orchestrator.js';

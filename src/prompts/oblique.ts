@@ -41,7 +41,7 @@ The second sentence.
 \`\`\`
 `;
 
-const lenses: Record<ObliqueTextLens, string> = {
+const lenses: { [key in ObliqueTextLens]: string } = {
   'supertext':
 `Supertext: The intertextual elements and cultural allusions present
  in the work. Consider: What other literary works, genres, or tropes does this
@@ -81,8 +81,51 @@ const lenses: Record<ObliqueTextLens, string> = {
 
 const lensKeys = Object.keys(lenses) as ObliqueTextLens[];
 
+const models: { [key in string]: string } = {
+  'openai/gpt-5': 'OpenAI: GPT-5',
+  'openai/gpt-4o': 'OpenAI: GPT-4o',
+  'openai/o3-mini': 'OpenAI: o3 Mini',
+  'openai/gpt-5-mini': 'OpenAI: GPT-5 Mini',
+  'anthropic/claude-sonnet-4.5': 'Anthropic: Claude Sonnet 4.5',
+  'deepseek/deepseek-v3.2-exp': 'DeepSeek: DeepSeek V3.2 Exp',
+  'qwen/qwen3-235b-a22b-2507': 'Qwen: Qwen3 235B A22B Instruct 2507',
+  'qwen/qwen3-235b-a22b-thinking-2507': 'Qwen: Qwen3 235B A22B Thinking 2507',
+  'meta-llama/llama-3.3-70b-instruct': 'Meta: Llama 3.3 70B Instruct',
+  'meta-llama/llama-4-maverick:free': 'Meta: Llama 4 Maverick',
+  'meta-llama/llama-3.1-405b-instruct': 'Meta: Llama 3.1 405B Instruct',
+  'mistralai/mistral-large-2411': 'Mistral: Mistral Large 2411',
+  'mistralai/mixtral-8x22b': 'Mistral: Mixtral 8x22B Instruct',
+  'gryphe/mythomax-l2-13b': 'MythoMax 13B',
+  'deepcogito/cogito-v2-preview-llama-405b': 'Deep Cogito: Cogito V2 Preview Llama 405B',
+  'moonshotai/kimi-k2': 'MoonshotAI: Kimi K2 0711',
+}
+
+const genders = ['male', 'female', 'non-binary', 'genderfluid', 'agender',
+   'bigender', 'genderqueer', 'pangender', 'two-spirit', 'x-gender'];
+
+const pickOne = <T>(array: T[]): T => {
+  return array[Math.floor(Math.random() * array.length)];
+};
+
+const pickDailyCircularOne = <T>(array: T[]): T => {
+  return array[dailyCircularKey(array.length)];
+};
+
 export const getRandomTextLens = (): ObliqueTextLens => {
-  return lensKeys[Math.floor(Math.random() * lensKeys.length)];
+  return pickOne(lensKeys);
+};
+
+const dailyCircularKey = (count: number, now = new Date()): number => {
+  const daysSinceEpoch = Math.floor(now.getTime() / 1000 / 86400);
+  return daysSinceEpoch % count;
+};
+
+export const getDailyModel = (): string => {
+  return pickDailyCircularOne(Object.keys(models));
+};
+
+const getDailyGender = (): string => {
+  return pickDailyCircularOne(genders);
 };
 
 const formatPost = (post: { author: string; text: string; altTexts?: string[] }): string => {
@@ -119,10 +162,13 @@ export const createObliqueConversation = (
 
 export const obliquePrompt = (userMessage: string, threadHistory: string): string => {
   const focus = lenses[getRandomTextLens()];
+  const gender = getDailyGender();
   const promptText =
   `Reply through the chosen lens:
 
   "${focus}"
+
+  You are ${gender}. Reply in a ${gender} voice.
 
   Thread history:
 

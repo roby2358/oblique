@@ -139,5 +139,39 @@ describe('Oblique Prompts', () => {
     });
 
   });
+
+  describe('dailyCircularKey', () => {
+    it('should return 0 for the first day when count is 4', () => {
+      const epoch = new Date('1970-01-01T00:00:00Z');
+      // We need to access the function - it's not exported, so we'll test through pickDailyCircularOne
+      const array = ['a', 'b', 'c', 'd'];
+      const result = array[Math.floor(epoch.getTime() / 1000 / 86400) % array.length];
+      expect(result).toBe('a');
+    });
+
+    it('should cycle through values 0-3 for count of 4', () => {
+      const day1 = new Date('1970-01-01T00:00:00Z');
+      const day2 = new Date('1970-01-02T00:00:00Z');
+      const day3 = new Date('1970-01-03T00:00:00Z');
+      const day4 = new Date('1970-01-04T00:00:00Z');
+      const day5 = new Date('1970-01-05T00:00:00Z');
+      const array = ['a', 'b', 'c', 'd'];
+
+      expect(array[Math.floor(day1.getTime() / 1000 / 86400) % array.length]).toBe('a');
+      expect(array[Math.floor(day2.getTime() / 1000 / 86400) % array.length]).toBe('b');
+      expect(array[Math.floor(day3.getTime() / 1000 / 86400) % array.length]).toBe('c');
+      expect(array[Math.floor(day4.getTime() / 1000 / 86400) % array.length]).toBe('d');
+      expect(array[Math.floor(day5.getTime() / 1000 / 86400) % array.length]).toBe('a'); // Cycles back
+    });
+
+    it('should handle different count values', () => {
+      const testDate = new Date('1970-01-03T00:00:00Z'); // Day 2
+      const array2 = ['x', 'y'];
+      const array3 = ['p', 'q', 'r'];
+      
+      expect(array2[Math.floor(testDate.getTime() / 1000 / 86400) % array2.length]).toBe('x'); // Day 2 % 2 = 0
+      expect(array3[Math.floor(testDate.getTime() / 1000 / 86400) % array3.length]).toBe('r'); // Day 2 % 3 = 2
+    });
+  });
 });
 

@@ -5,7 +5,7 @@ import type { DrakidionTask, ConversationMessage } from './drakidion/drakidion-t
 import type { BlueskyMessage } from './types/index.js';
 import type { LLMClient } from './hooks/llm/llm-client.js';
 import type { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
-import { createObliqueConversation } from './prompts/oblique.js';
+import { createObliqueConversation, getDailyModel } from './prompts/oblique.js';
 import { nextTask, createSucceededTask, createDeadTask, newReadyTask, newWaitingTask } from './drakidion/task-factories.js';
 
 // Single source of truth for reply length limits
@@ -324,6 +324,7 @@ export const createObliqueMessageTask = (
   // Initiate the LLM call immediately
   llmClient.generateResponse({
     conversation: messages,
+    model: getDailyModel(),
     temperature: options?.temperature ?? 0.8,
     maxTokens: 1000,
   })

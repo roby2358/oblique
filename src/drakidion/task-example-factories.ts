@@ -3,6 +3,7 @@
 import type { DrakidionTask, ConversationMessage } from './drakidion-types.js';
 import type { LLMClient } from '../hooks/llm/llm-client.js';
 import { generateTaskId } from '../utils/index.js';
+import { getDailyModel } from '../prompts/oblique.js';
 
 /**
  * Succeeded version of LLM task
@@ -105,6 +106,7 @@ export const createLLMTask = (
   // Initiate the LLM call immediately
   llmClient.generateResponse({
     conversation: messages,
+    model: getDailyModel(),
     temperature: options?.temperature ?? 0.8,
   })
     .then(response => {

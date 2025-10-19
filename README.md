@@ -80,9 +80,9 @@ You MUST provide an OpenRouter API key to use Oblique. There are two configurati
 - Enter your OpenRouter API key (get one at https://openrouter.ai/keys)
 - Optionally change the model
 - Click "Save Configuration"
-- Your API key is stored in browser localStorage
+- Configuration is updated in memory and takes effect immediately
 
-**Configuration Priority:** `config.json` → localStorage → defaults
+**Configuration:** All settings are managed via `config.json` file and runtime updates
 
 ### Production Build
 

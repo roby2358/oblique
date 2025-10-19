@@ -1,5 +1,6 @@
 // Browser entry point
-import { loadConfig, setConfig, initializeOrchestrator } from './panels.js';
+import { initializeOrchestrator } from './panels.js';
+import { initializeConfig, getConfig } from './config.js';
 import { updateObserverPanel } from './orchestratorPanel.js';
 import { updateQueuePanel } from './queuePanel.js';
 import { updateWaitingPanel } from './waitingPanel.js';
@@ -14,22 +15,8 @@ declare const $: any;
 
 // Load configuration and initialize
 const startup = async () => {
-  const config = await loadConfig();
-  setConfig(config);
-  
-  // Load saved config into inputs (prioritize config.json over localStorage)
-  $('#api-key').val(
-    config.openrouter?.apiKey 
-    || localStorage.getItem('openrouter_api_key') 
-    || ''
-  );
-  $('#model').val(
-    config.openrouter?.model 
-    || localStorage.getItem('openrouter_model') 
-    || 'anthropic/claude-3.5-haiku'
-  );
-  
-  initializeOrchestrator();
+  await initializeConfig();
+  initializeOrchestrator(getConfig());
 };
 
 const switchToPanel = (panelId: string) => {

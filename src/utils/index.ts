@@ -4,6 +4,20 @@
 export { generateSafeBase32 } from './safebase32';
 import { generateSafeBase32 } from './safebase32';
 
+// Default configuration values
+export const DEFAULT_CONFIG = {
+  openrouter: {
+    apiKey: '',
+    model: 'anthropic/claude-3.5-haiku',
+    baseUrl: 'https://openrouter.ai/api/v1/chat/completions'
+  },
+  bluesky: {
+    handle: '',
+    password: ''
+  },
+  ignoreList: []
+} as const;
+
 /**
  * Generate a DRAKIDION taskId (24-character safe-base32 string)
  * @returns 24-character safe-base32 taskId
@@ -36,9 +50,3 @@ export const generateId = (): string => {
 export const wait = (ms: number): Promise<void> => {
   return new Promise(resolve => setTimeout(resolve, ms));
 };
-
-export const truncate = (str: string, maxLength: number): string => {
-  if (str.length <= maxLength) return str;
-  return str.substring(0, maxLength - 3) + '...';
-};
-

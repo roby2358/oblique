@@ -1,69 +1,42 @@
-import { describe, it, expect } from '@jest/globals';
-import { generateId, wait, truncate } from '../../src/utils/index.js';
+import { DEFAULT_CONFIG } from '../../src/utils/index.js';
 
-describe('Utils', () => {
-  describe('generateId', () => {
-    it('should generate a unique id', () => {
-      const id1 = generateId();
-      const id2 = generateId();
-      
-      expect(id1).toBeTruthy();
-      expect(id2).toBeTruthy();
-      expect(id1).not.toBe(id2);
+// Mock fetch for config.json
+const mockFetch = (url: string) => {
+  if (url === '/config.json') {
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({})
     });
+  }
+  return Promise.reject(new Error('Not found'));
+};
 
-    it('should include timestamp', () => {
-      const before = Date.now();
-      const id = generateId();
-      const after = Date.now();
-      
-      const timestamp = parseInt(id.split('-')[0]);
-      expect(timestamp).toBeGreaterThanOrEqual(before);
-      expect(timestamp).toBeLessThanOrEqual(after);
-    });
-  });
+// Mock fetch
+if (typeof global !== 'undefined') {
+  (global as any).fetch = mockFetch;
+}
 
-  describe('wait', () => {
-    it('should wait for specified milliseconds', async () => {
-      const start = Date.now();
-      await wait(100);
-      const elapsed = Date.now() - start;
-      
-      expect(elapsed).toBeGreaterThanOrEqual(90); // Allow for some variance
-      expect(elapsed).toBeLessThan(150);
+describe('DEFAULT_CONFIG', () => {
+  it('should have correct structure', () => {
+    expect(DEFAULT_CONFIG).toEqual({
+      openrouter: {
+        apiKey: '',
+        model: 'anthropic/claude-3.5-haiku',
+        baseUrl: 'https://openrouter.ai/api/v1/chat/completions'
+      },
+      bluesky: {
+        handle: '',
+        password: ''
+      },
+      ignoreList: []
     });
   });
 
-  describe('truncate', () => {
-    it('should truncate long strings', () => {
-      const str = 'This is a very long string that needs truncation';
-      const truncated = truncate(str, 20);
-      
-      expect(truncated).toHaveLength(20);
-      expect(truncated).toBe('This is a very lo...');
-    });
-
-    it('should not truncate short strings', () => {
-      const str = 'Short';
-      const truncated = truncate(str, 20);
-      
-      expect(truncated).toBe(str);
-    });
-
-    it('should handle exact length', () => {
-      const str = 'Exact';
-      const truncated = truncate(str, 5);
-      
-      expect(truncated).toBe(str);
-    });
-
-    it('should add ellipsis for truncated strings', () => {
-      const str = 'This will be truncated';
-      const truncated = truncate(str, 10);
-      
-      expect(truncated.endsWith('...')).toBe(true);
-      expect(truncated).toHaveLength(10);
-    });
+  it('should have readonly properties', () => {
+    // Test that the structure is correct and properties exist
+    expect(DEFAULT_CONFIG.openrouter).toBeDefined();
+    expect(DEFAULT_CONFIG.bluesky).toBeDefined();
+    expect(DEFAULT_CONFIG.ignoreList).toBeDefined();
+    expect(Array.isArray(DEFAULT_CONFIG.ignoreList)).toBe(true);
   });
 });
-

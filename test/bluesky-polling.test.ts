@@ -22,7 +22,13 @@ describe('Bluesky Polling Module', () => {
       getOrchestratorState: jest.fn(),
       setOrchestratorState: jest.fn(),
       updateStatus: jest.fn(),
-      getConfig: jest.fn(),
+    }));
+
+    // Mock the index module for getConfig
+    jest.doMock('../src/config.js', () => ({
+      getConfig: jest.fn(() => ({
+        ignoreList: []
+      })),
     }));
 
     // Mock the orchestrator module

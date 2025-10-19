@@ -251,28 +251,56 @@ Complete conversation
 
 ### Configuration File (`config.json`)
 
+Oblique uses a single `config.json` file as the source of truth for all configuration. No localStorage or other storage mechanisms are used.
+
 ```json
 {
-  "openRouterApiKey": "sk-or-v1-...",
-  "openRouterModel": "anthropic/claude-3.5-haiku",
-  "openRouterBaseUrl": "https://openrouter.ai/api/v1/chat/completions"
+  "openrouter": {
+    "apiKey": "sk-or-v1-...",
+    "model": "anthropic/claude-3.5-haiku",
+    "baseUrl": "https://openrouter.ai/api/v1/chat/completions"
+  },
+  "bluesky": {
+    "handle": "your-handle.bsky.social",
+    "password": "your-app-password"
+  },
+  "ignoreList": ["user1", "user2"]
 }
 ```
 
-### System Configuration
+### Configuration Loading
+
+Configuration is loaded once at startup using `loadConfigWithFallbacks()`:
 
 ```typescript
-const system = await createAgent({
-  storage: createMemoryStorage(),
-  llmClient: createOpenRouterClient({
-    apiKey: config.openRouterApiKey,
-    model: config.openRouterModel
-  }),
-  autoSave: true,
-});
+// Load config.json at startup
+const config = await loadConfigWithFallbacks();
+
+// Pass config to orchestrator
+initializeOrchestrator(config);
 ```
 
-**Note:** The function name `createAgent` MUST be updated to reflect the conversation-based model (e.g., `createSystem` or `createConversationManager`).
+### Runtime Configuration Updates
+
+The configure panel allows updating configuration at runtime by modifying the in-memory config object:
+
+```typescript
+// Update config object directly
+const config = getConfig();
+config.openrouter = {
+  apiKey: newApiKey,
+  model: newModel,
+  baseUrl: config.openrouter?.baseUrl || 'https://openrouter.ai/api/v1/chat/completions'
+};
+
+// Reinitialize with updated config
+initializeOrchestrator(config);
+```
+
+**Configuration Sources:**
+- **Primary**: `config.json` file
+- **Fallback**: Default values if `config.json` doesn't exist
+- **Runtime**: In-memory updates via configure panel
 
 ## Testing
 
@@ -353,10 +381,10 @@ Web-based interface built with Vite for interacting with Oblique.
 
 **Key Features:**
 - Modern, responsive UI
-- Configuration via JSON file or UI
+- Configuration via `config.json` file and runtime updates
 - Real-time system status display (queue size, pending tasks)
 - Conversation history view
-- LocalStorage persistence for user preferences
+- Runtime configuration updates via configure panel
 
 **Status Display SHOULD Include:**
 - Number of tasks in queue

@@ -4,6 +4,7 @@ import { getBlueskyClient, getLLMClient, getOrchestratorState, setOrchestratorSt
 import { createProcessNotificationTask } from './oblique-task-factory.js';
 import * as Orchestrator from './drakidion/orchestrator.js';
 import type { BlueskyMessage } from './types/index.js';
+import { getConfig } from './config.js';
 
 declare const $: any;
 
@@ -13,13 +14,8 @@ let isPolling = false;
 
 // Get the ignore list from config or return empty array
 const getIgnoreList = (): string[] => {
-  try {
-    // Try to get from config, fallback to empty array
-    const config = JSON.parse(localStorage.getItem('oblique-config') || '{}');
-    return config.ignoreList || [];
-  } catch {
-    return [];
-  }
+  const config = getConfig();
+  return config.ignoreList;
 };
 
 // Check if a single notification should be responded to based on response rules

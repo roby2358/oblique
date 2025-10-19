@@ -24,14 +24,12 @@ export interface Config {
 let orchestratorState: OrchestratorState;
 let llmClient: LLMClient | undefined;
 let blueskyClient: BlueskyClient | undefined;
-let config: Config = {};
 let stopOrchestrator: (() => void) | undefined;
 
 // State getters
 export const getOrchestratorState = () => orchestratorState;
 export const getLLMClient = () => llmClient;
 export const getBlueskyClient = () => blueskyClient;
-export const getConfig = () => config;
 export const getStopOrchestrator = () => stopOrchestrator;
 
 // State setters
@@ -43,22 +41,6 @@ export const setLLMClient = (client: LLMClient | undefined) => {
 };
 export const setBlueskyClient = (client: BlueskyClient | undefined) => {
   blueskyClient = client;
-};
-export const setConfig = (newConfig: Config) => {
-  config = newConfig;
-};
-
-// Load configuration from config.json
-export const loadConfig = async (): Promise<Config> => {
-  try {
-    const response = await fetch('/config.json');
-    if (response.ok) {
-      return await response.json();
-    }
-  } catch (error) {
-    console.warn('Could not load config.json, using defaults');
-  }
-  return {};
 };
 
 // Add a message to the chat
@@ -95,21 +77,16 @@ export const updateStatus = () => {
 };
 
 // Initialize the orchestrator
-export const initializeOrchestrator = () => {
+export const initializeOrchestrator = (config: any) => {
   // Stop existing orchestrator if running
   if (stopOrchestrator) {
     stopOrchestrator();
   }
 
-  // Priority: config.json -> localStorage -> defaults
-  const apiKey = config.openrouter?.apiKey 
-    || localStorage.getItem('openrouter_api_key') 
-    || '';
-  const model = config.openrouter?.model 
-    || localStorage.getItem('openrouter_model') 
-    || 'anthropic/claude-3.5-haiku';
-  const baseUrl = config.openrouter?.baseUrl 
-    || 'https://openrouter.ai/api/v1/chat/completions';
+  // Config is passed in as parameter
+  const apiKey = config.openrouter?.apiKey;
+  const model = config.openrouter?.model;
+  const baseUrl = config.openrouter?.baseUrl;
   
   llmClient = apiKey ? createOpenRouterClient({
     apiKey,
@@ -121,8 +98,8 @@ export const initializeOrchestrator = () => {
   orchestratorState = Orchestrator.createOrchestrator();
 
   // Initialize Bluesky client if configured
-  const blueskyHandle = config.bluesky?.handle || '';
-  const blueskyPassword = config.bluesky?.password || '';
+  const blueskyHandle = config.bluesky?.handle;
+  const blueskyPassword = config.bluesky?.password;
   if (blueskyHandle && blueskyPassword) {
     blueskyClient = new BlueskyClient({
       handle: blueskyHandle,

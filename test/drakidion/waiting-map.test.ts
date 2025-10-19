@@ -1,118 +1,122 @@
-// Tests for WaitingMap
-import * as WaitingMapOps from '../../src/drakidion/waiting-map.js';
+// Tests for WaitingSet
+import * as WaitingSetOps from '../../src/drakidion/waiting-map.js';
 
-describe('WaitingMap', () => {
-  describe('createWaitingMap', () => {
-    it('should create an empty waiting map', () => {
-      const map = WaitingMapOps.createWaitingMap();
-      expect(WaitingMapOps.size(map)).toBe(0);
+describe('WaitingSet', () => {
+  describe('createWaitingSet', () => {
+    it('should create an empty waiting set', () => {
+      const set = WaitingSetOps.createWaitingSet();
+      expect(WaitingSetOps.size(set)).toBe(0);
     });
   });
   
-  describe('addCorrelation', () => {
-    it('should add a correlation', () => {
-      const map = WaitingMapOps.createWaitingMap();
+  describe('addWaitingTask', () => {
+    it('should add a taskId to the waiting set', () => {
+      const set = WaitingSetOps.createWaitingSet();
       
-      WaitingMapOps.addCorrelation(map, 'xcorr1', 'task1');
+      WaitingSetOps.addWaitingTask(set, 'task1');
       
-      expect(WaitingMapOps.hasCorrelation(map, 'xcorr1')).toBe(true);
-      expect(WaitingMapOps.size(map)).toBe(1);
+      expect(WaitingSetOps.isWaiting(set, 'task1')).toBe(true);
+      expect(WaitingSetOps.size(set)).toBe(1);
     });
     
-    it('should replace existing correlation with same correlationId', () => {
-      const map = WaitingMapOps.createWaitingMap();
+    it('should not add duplicate taskIds', () => {
+      const set = WaitingSetOps.createWaitingSet();
       
-      WaitingMapOps.addCorrelation(map, 'xcorr1', 'task1');
-      WaitingMapOps.addCorrelation(map, 'xcorr1', 'task2');
+      WaitingSetOps.addWaitingTask(set, 'task1');
+      WaitingSetOps.addWaitingTask(set, 'task1');
       
-      expect(WaitingMapOps.getTaskId(map, 'xcorr1')).toBe('task2');
-      expect(WaitingMapOps.size(map)).toBe(1);
+      expect(WaitingSetOps.isWaiting(set, 'task1')).toBe(true);
+      expect(WaitingSetOps.size(set)).toBe(1);
     });
   });
   
-  describe('getTaskId', () => {
-    it('should retrieve taskId by correlationId', () => {
-      const map = WaitingMapOps.createWaitingMap();
+  describe('isWaiting', () => {
+    it('should return true for waiting taskIds', () => {
+      const set = WaitingSetOps.createWaitingSet();
       
-      WaitingMapOps.addCorrelation(map, 'xcorr1', 'task1');
+      WaitingSetOps.addWaitingTask(set, 'task1');
       
-      expect(WaitingMapOps.getTaskId(map, 'xcorr1')).toBe('task1');
+      expect(WaitingSetOps.isWaiting(set, 'task1')).toBe(true);
     });
     
-    it('should return undefined for non-existent correlationId', () => {
-      const map = WaitingMapOps.createWaitingMap();
-      expect(WaitingMapOps.getTaskId(map, 'nonexistent')).toBeUndefined();
+    it('should return false for non-waiting taskIds', () => {
+      const set = WaitingSetOps.createWaitingSet();
+      
+      expect(WaitingSetOps.isWaiting(set, 'task1')).toBe(false);
     });
   });
   
-  describe('removeCorrelation', () => {
-    it('should remove a correlation', () => {
-      const map = WaitingMapOps.createWaitingMap();
+  describe('removeWaitingTask', () => {
+    it('should remove a taskId from the waiting set', () => {
+      const set = WaitingSetOps.createWaitingSet();
       
-      WaitingMapOps.addCorrelation(map, 'xcorr1', 'task1');
-      WaitingMapOps.removeCorrelation(map, 'xcorr1');
+      WaitingSetOps.addWaitingTask(set, 'task1');
+      WaitingSetOps.removeWaitingTask(set, 'task1');
       
-      expect(WaitingMapOps.hasCorrelation(map, 'xcorr1')).toBe(false);
-      expect(WaitingMapOps.size(map)).toBe(0);
+      expect(WaitingSetOps.isWaiting(set, 'task1')).toBe(false);
+      expect(WaitingSetOps.size(set)).toBe(0);
+    });
+    
+    it('should handle removing non-existent taskIds gracefully', () => {
+      const set = WaitingSetOps.createWaitingSet();
+      
+      WaitingSetOps.removeWaitingTask(set, 'task1');
+      
+      expect(WaitingSetOps.isWaiting(set, 'task1')).toBe(false);
+      expect(WaitingSetOps.size(set)).toBe(0);
     });
   });
   
-  describe('getAllCorrelationIds', () => {
-    it('should return all correlationIds', () => {
-      const map = WaitingMapOps.createWaitingMap();
+  describe('getAllWaitingTaskIds', () => {
+    it('should return all waiting taskIds', () => {
+      const set = WaitingSetOps.createWaitingSet();
       
-      WaitingMapOps.addCorrelation(map, 'xcorr1', 'task1');
-      WaitingMapOps.addCorrelation(map, 'xcorr2', 'task2');
+      WaitingSetOps.addWaitingTask(set, 'task1');
+      WaitingSetOps.addWaitingTask(set, 'task2');
       
-      const corrIds = WaitingMapOps.getAllCorrelationIds(map);
-      expect(corrIds).toHaveLength(2);
-      expect(corrIds).toContain('xcorr1');
-      expect(corrIds).toContain('xcorr2');
+      const taskIds = WaitingSetOps.getAllWaitingTaskIds(set);
+      expect(taskIds).toHaveLength(2);
+      expect(taskIds).toContain('task1');
+      expect(taskIds).toContain('task2');
+    });
+    
+    it('should return empty array for empty set', () => {
+      const set = WaitingSetOps.createWaitingSet();
+      
+      const taskIds = WaitingSetOps.getAllWaitingTaskIds(set);
+      expect(taskIds).toHaveLength(0);
     });
   });
   
-  describe('getAllCorrelations', () => {
-    it('should return all correlations as [corrId, taskId] pairs', () => {
-      const map = WaitingMapOps.createWaitingMap();
+  describe('size', () => {
+    it('should return correct size', () => {
+      const set = WaitingSetOps.createWaitingSet();
       
-      WaitingMapOps.addCorrelation(map, 'xcorr1', 'task1');
-      WaitingMapOps.addCorrelation(map, 'xcorr2', 'task2');
+      expect(WaitingSetOps.size(set)).toBe(0);
       
-      const correlations = WaitingMapOps.getAllCorrelations(map);
-      expect(correlations).toHaveLength(2);
-      expect(correlations).toContainEqual(['xcorr1', 'task1']);
-      expect(correlations).toContainEqual(['xcorr2', 'task2']);
-    });
-  });
-  
-  describe('removeByTaskId', () => {
-    it('should remove correlations by taskId', () => {
-      const map = WaitingMapOps.createWaitingMap();
+      WaitingSetOps.addWaitingTask(set, 'task1');
+      expect(WaitingSetOps.size(set)).toBe(1);
       
-      WaitingMapOps.addCorrelation(map, 'xcorr1', 'task1');
-      WaitingMapOps.addCorrelation(map, 'xcorr2', 'task1');
-      WaitingMapOps.addCorrelation(map, 'xcorr3', 'task2');
+      WaitingSetOps.addWaitingTask(set, 'task2');
+      expect(WaitingSetOps.size(set)).toBe(2);
       
-      WaitingMapOps.removeByTaskId(map, 'task1');
-      
-      expect(WaitingMapOps.size(map)).toBe(1);
-      expect(WaitingMapOps.hasCorrelation(map, 'xcorr1')).toBe(false);
-      expect(WaitingMapOps.hasCorrelation(map, 'xcorr2')).toBe(false);
-      expect(WaitingMapOps.hasCorrelation(map, 'xcorr3')).toBe(true);
+      WaitingSetOps.removeWaitingTask(set, 'task1');
+      expect(WaitingSetOps.size(set)).toBe(1);
     });
   });
   
   describe('clear', () => {
-    it('should remove all correlations', () => {
-      const map = WaitingMapOps.createWaitingMap();
+    it('should remove all taskIds from the waiting set', () => {
+      const set = WaitingSetOps.createWaitingSet();
       
-      WaitingMapOps.addCorrelation(map, 'xcorr1', 'task1');
-      WaitingMapOps.addCorrelation(map, 'xcorr2', 'task2');
+      WaitingSetOps.addWaitingTask(set, 'task1');
+      WaitingSetOps.addWaitingTask(set, 'task2');
       
-      WaitingMapOps.clear(map);
+      WaitingSetOps.clear(set);
       
-      expect(WaitingMapOps.size(map)).toBe(0);
+      expect(WaitingSetOps.size(set)).toBe(0);
+      expect(WaitingSetOps.isWaiting(set, 'task1')).toBe(false);
+      expect(WaitingSetOps.isWaiting(set, 'task2')).toBe(false);
     });
   });
 });
-

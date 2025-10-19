@@ -212,11 +212,8 @@ describe('Orchestrator', () => {
       
       Orchestrator.addTask(state, task);
       
-      // Get the auto-generated correlationId from waitingMap
-      const correlationIds = state.waitingMap.correlations.keys();
-      const correlationId = Array.from(correlationIds)[0];
-      
-      const newState = Orchestrator.resumeWaitingTask(state, correlationId, successorTask);
+      // Use the taskId directly for resuming
+      const newState = Orchestrator.resumeWaitingTask(state, task.taskId, successorTask);
       
       const status = Orchestrator.getStatus(newState);
       expect(status.waitingSize).toBe(0);
@@ -253,13 +250,10 @@ describe('Orchestrator', () => {
       
       Orchestrator.addTask(state, task);
       
-      // Get the auto-generated correlationId
-      const correlationIds = state.waitingMap.correlations.keys();
-      const correlationId = Array.from(correlationIds)[0];
-      
+      // Use the taskId directly for error handling
       const newState = Orchestrator.errorWaitingTask(
         state,
-        correlationId,
+        task.taskId,
         errorTask
       );
       

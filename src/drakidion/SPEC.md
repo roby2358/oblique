@@ -16,11 +16,15 @@ MUST define a finite set of valid statuses (ready, running, waiting, succeeded, 
 
 MUST ensure all successor tasks in a chain share the same taskId as their predecessor.
 
+MUST use 24-character safe-base32 strings for taskId (a-z + 0-9 excluding l, 1, o, 0).
+
 MUST increment version number for each successor task (version = predecessor.version + 1).
 
 MUST start new task chains at version 1.
 
 MUST preserve createdAt timestamp across all tasks in a chain.
+
+MUST set doneAt timestamp when task reaches terminal states (succeeded, dead, canceled).
 
 SHOULD use helper functions (`newReadyTask`, `newWaitingTask`, `nextTask`) to ensure consistent task creation.
 
@@ -40,17 +44,19 @@ MUST ensure successor tasks created by external callbacks inherit the same taskI
 
 SHOULD use `nextTask(predecessor)` in callback implementations to ensure proper taskId threading.
 
-SHOULD reject or ignore stale async responses that reference tasks no longer in the waitingSet.
+MUST reject or ignore stale async responses that reference tasks no longer in the waitingSet.
+
+MUST remove tasks from waitingSet when they transition to non-waiting states.
 
 ### Error Handling
 
-MUST log all errors and warnings with console.log()
+MUST log all errors and warnings with console.log() or console.error()
 
 ### Concurrency and Coordination
 
 MUST ensure only one worker loop runs at a time per logical user context.
 
-MUST stop with the enclosing tab or window closes (it shouldn't keep running)
+MUST stop when the enclosing tab or window closes (it shouldn't keep running)
 
 ## Non-Goals
 

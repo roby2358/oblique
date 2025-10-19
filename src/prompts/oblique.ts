@@ -94,14 +94,37 @@ const models: { [key in string]: string } = {
   'meta-llama/llama-4-maverick:free': 'Meta: Llama 4 Maverick',
   'meta-llama/llama-3.1-405b-instruct': 'Meta: Llama 3.1 405B Instruct',
   'mistralai/mistral-large-2411': 'Mistral: Mistral Large 2411',
-  'mistralai/mixtral-8x22b': 'Mistral: Mixtral 8x22B Instruct',
   'gryphe/mythomax-l2-13b': 'MythoMax 13B',
   'deepcogito/cogito-v2-preview-llama-405b': 'Deep Cogito: Cogito V2 Preview Llama 405B',
   'moonshotai/kimi-k2': 'MoonshotAI: Kimi K2 0711',
 }
 
-const genders = ['male', 'female', 'non-binary', 'genderfluid', 'agender',
-   'bigender', 'genderqueer', 'pangender', 'two-spirit', 'x-gender'];
+const genders = [
+  'male',
+  'male',
+  'male',
+  'male',
+  'male',
+  'male',
+  'male',
+  'male',
+  'female',
+  'female',
+  'female',
+  'female',
+  'female',
+  'female',
+  'female',
+  'female',
+  'female',
+  'non-binary',
+  'genderfluid',
+  'agender',
+  'bigender',
+  'genderqueer',
+  'pangender',
+  'two-spirit',
+  'x-gender'];
 
 const pickOne = <T>(array: T[]): T => {
   return array[Math.floor(Math.random() * array.length)];

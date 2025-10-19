@@ -28,10 +28,10 @@ const truncateAtLastPunctuation = (text: string): string => {
   for (let i = limit; i >= 0; i--) {
     const ch = text[i];
     if (OBLIQUE_TRUNCATION_PUNCTUATION.has(ch)) {
-      if (i > 0) {
-        return text.substring(0, i);
+      if (i < 1) {
+        break;
       }
-      break;
+      return text.substring(0, i);
     }
   }
   

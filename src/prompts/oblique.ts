@@ -35,9 +35,9 @@ You MUST NOT advocate death or self-harm
 
 Put each sentence on a new line with a blank line in between. Example:
 \`\`\`
-This is the first sentence.
+The first sentence.
 
-This is the second sentence.
+The second sentence.
 \`\`\`
 `;
 
@@ -120,17 +120,17 @@ export const createObliqueConversation = (
 export const obliquePrompt = (userMessage: string, threadHistory: string): string => {
   const focus = lenses[getRandomTextLens()];
   const promptText =
-  `Reply to this message:
-
-  "${userMessage}"
-
-  Reply through the chosen lens:
+  `Reply through the chosen lens:
 
   "${focus}"
 
   Thread history:
 
   "${threadHistory}"
+
+  Reply to this message:
+
+  "${userMessage}"
   `;
 
   return promptText;

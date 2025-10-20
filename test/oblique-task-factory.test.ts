@@ -117,8 +117,9 @@ describe('createSendToLLMTask quote post handling', () => {
     } as any;
 
     mockBlueskyClient = {
-      getQuotedPostContent: jest.fn(),
-      getThreadHistory: jest.fn()
+      getQuotedHistory: jest.fn(),
+      getThreadHistory: jest.fn(),
+      getHistory: jest.fn()
     } as any;
 
     mockOnWaitingTaskComplete = jest.fn();
@@ -135,7 +136,7 @@ describe('createSendToLLMTask quote post handling', () => {
     };
   });
 
-  it('should use getQuotedPostContent for quote notifications', async () => {
+  it('should use getQuotedHistory for quote notifications', async () => {
     const quoteNotification: BlueskyMessage = {
       uri: 'at://did:plc:test/app.bsky.feed.post/quote123',
       cid: 'bafyquote123',
@@ -150,7 +151,7 @@ describe('createSendToLLMTask quote post handling', () => {
       text: 'This is the original quoted post content'
     }];
 
-    (mockBlueskyClient.getQuotedPostContent as jest.MockedFunction<any>).mockResolvedValue(mockQuotedContent);
+    (mockBlueskyClient.getHistory as jest.MockedFunction<any>).mockResolvedValue(mockQuotedContent);
     (mockLLMClient.generateResponse as jest.MockedFunction<any>).mockResolvedValue({
       content: 'Test LLM response',
       model: 'test-model'
@@ -167,8 +168,7 @@ describe('createSendToLLMTask quote post handling', () => {
     // Wait for async operations to complete
     await new Promise(resolve => setTimeout(resolve, 10));
 
-    expect(mockBlueskyClient.getQuotedPostContent).toHaveBeenCalledWith(quoteNotification);
-    expect(mockBlueskyClient.getThreadHistory).not.toHaveBeenCalled();
+    expect(mockBlueskyClient.getHistory).toHaveBeenCalledWith(quoteNotification);
   });
 
   it('should use getThreadHistory for non-quote notifications', async () => {
@@ -186,7 +186,7 @@ describe('createSendToLLMTask quote post handling', () => {
       text: 'Hello @oblique.yuwakisa.com'
     }];
 
-    (mockBlueskyClient.getThreadHistory as jest.MockedFunction<any>).mockResolvedValue(mockThreadHistory);
+    (mockBlueskyClient.getHistory as jest.MockedFunction<any>).mockResolvedValue(mockThreadHistory);
     (mockLLMClient.generateResponse as jest.MockedFunction<any>).mockResolvedValue({
       content: 'Test LLM response',
       model: 'test-model'
@@ -203,8 +203,7 @@ describe('createSendToLLMTask quote post handling', () => {
     // Wait for async operations to complete
     await new Promise(resolve => setTimeout(resolve, 10));
 
-    expect(mockBlueskyClient.getThreadHistory).toHaveBeenCalledWith(mentionNotification, 25);
-    expect(mockBlueskyClient.getQuotedPostContent).not.toHaveBeenCalled();
+    expect(mockBlueskyClient.getHistory).toHaveBeenCalledWith(mentionNotification);
   });
 
   it('should fallback to quote post text when quoted content cannot be fetched', async () => {
@@ -217,7 +216,7 @@ describe('createSendToLLMTask quote post handling', () => {
       reason: 'quote',
     };
 
-    (mockBlueskyClient.getQuotedPostContent as jest.MockedFunction<any>).mockResolvedValue(null);
+    (mockBlueskyClient.getHistory as jest.MockedFunction<any>).mockResolvedValue(null);
     (mockLLMClient.generateResponse as jest.MockedFunction<any>).mockResolvedValue({
       content: 'Test LLM response',
       model: 'test-model'
@@ -234,7 +233,6 @@ describe('createSendToLLMTask quote post handling', () => {
     // Wait for async operations to complete
     await new Promise(resolve => setTimeout(resolve, 10));
 
-    expect(mockBlueskyClient.getQuotedPostContent).toHaveBeenCalledWith(quoteNotification);
-    expect(mockBlueskyClient.getThreadHistory).not.toHaveBeenCalled();
+    expect(mockBlueskyClient.getHistory).toHaveBeenCalledWith(quoteNotification);
   });
 });

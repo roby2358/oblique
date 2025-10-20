@@ -187,19 +187,16 @@ export const createObliqueConversation = (
   thread: Array<{ author: string; text: string; altTexts?: string[] }>
 ): { role: string; content: string }[] => {
 
+  // Map all posts first
+  const formattedPosts = thread.map(formatPost);
+  
   // Split the last post from the rest of the thread
-  const lastPost = thread[thread.length - 1];
-  const previousPosts = thread.slice(0, -1);
-
-  const userMessage = formatPost(lastPost);
-  const threadHistory = previousPosts
-    .map(formatPost)
-    .join('\n');
+  const userMessage = formattedPosts[formattedPosts.length - 1];
+  const threadHistory = formattedPosts.slice(0, -1).join('\n');
 
   const promptText = obliquePrompt(userMessage, threadHistory);
 
   console.log('Prompt text:', promptText);
-  console.log('User message:', userMessage);
 
   return [
     { role: 'system', content: systemPrompt },

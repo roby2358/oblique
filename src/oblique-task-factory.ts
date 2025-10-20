@@ -86,7 +86,7 @@ const generateLLMResponseWithRetry = async (
  * This is a READY task that creates a WAITING task for LLM response
  * Starts a new task chain (taskId generated, version 1)
  */
-export const createProcessNotificationTask = (
+export const createReplyTask = (
   notification: BlueskyMessage,
   llmClient: LLMClient,
   blueskyClient: BlueskyClient,
@@ -102,14 +102,13 @@ export const createProcessNotificationTask = (
     ...newReadyTask(description),
     work: "<thinking>",
     process: async () => {
-      // Create and return the LLM task as successor (same taskId, version 2)
+      // When we process this task, we create a new SendToLLMTask (waiting task)
       return createSendToLLMTask(
         notification,
         llmClient,
         blueskyClient,
         onWaitingTaskComplete,
-        // Pass predecessor task for threading
-        task
+        nextTask(task)
       );
     },
   };
@@ -144,23 +143,21 @@ export const createSendToLLMTask = (
   llmClient: LLMClient,
   blueskyClient: BlueskyClient,
   onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void,
-  predecessor: DrakidionTask
+  baseTask: Partial<DrakidionTask>
 ): DrakidionTask => {
   const description = `Oblique: ${notification.text.substring(0, 40)}${notification.text.length > 40 ? '...' : ''}`;
   
   // Create waiting task as successor (inherits taskId, increments version)
   const task: DrakidionTask = {
-    ...nextTask(predecessor),
+    ...baseTask,
     status: 'waiting',
     description,
     work: 'Waiting for LLM response...',
-    conversation: predecessor.conversation,
-  };
+    conversation: baseTask.conversation || [],
+  } as DrakidionTask;
   
-  // Choose the appropriate method based on notification type
-  const getHistoryPromise = notification.reason === 'quote' 
-    ? blueskyClient.getQuotedPostContent(notification)
-    : blueskyClient.getThreadHistory(notification, 25);
+  // Get the unified message history
+  const getHistoryPromise = blueskyClient.getHistory(notification);
 
   // Fetch the thread history and create conversation
   getHistoryPromise
@@ -174,7 +171,7 @@ export const createSendToLLMTask = (
         response.content,
         blueskyClient,
         conversation,
-        task // Pass the waiting task as predecessor
+        nextTask(task) // Pass the base task properties
       );
       
       // Notify that waiting task is complete with the actual successor
@@ -233,12 +230,12 @@ export const createPostReplyTask = (
   replyText: string,
   blueskyClient: BlueskyClient,
   conversation: ConversationMessage[] | undefined,
-  predecessor: DrakidionTask
+  baseTask: Partial<DrakidionTask>
 ): DrakidionTask => {
   const description = `Post reply to @${originalNotification.author}`;
 
   const task: DrakidionTask = {
-    ...nextTask(predecessor),
+    ...baseTask,
     description,
     work: replyText,
     conversation,
@@ -264,7 +261,7 @@ export const createPostReplyTask = (
         return createPostReplyDeadTask(task, error);
       }
     },
-  };
+  } as DrakidionTask;
 
   return task;
 };

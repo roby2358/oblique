@@ -26,7 +26,7 @@ describe('BlueskyClient', () => {
     (client as any).authenticated = true;
   });
 
-  describe('getQuotedPostContent', () => {
+  describe('getQuotedHistory', () => {
     it('should return quoted post content when post exists', async () => {
       const quoteNotification: BlueskyMessage = {
         uri: 'at://did:plc:test/app.bsky.feed.post/quoted123',
@@ -74,7 +74,7 @@ describe('BlueskyClient', () => {
       
       (client as any).agent = mockAgent;
 
-      const result = await client.getQuotedPostContent(quoteNotification);
+      const result = await client.getQuotedHistory(quoteNotification);
       
       expect(result).toEqual([
         {
@@ -153,7 +153,7 @@ describe('BlueskyClient', () => {
       });
       (client as any).agent = mockAgent;
 
-      const result = await client.getQuotedPostContent(quoteNotification);
+      const result = await client.getQuotedHistory(quoteNotification);
       
       expect(result).toEqual([
         {
@@ -188,7 +188,7 @@ describe('BlueskyClient', () => {
       });
       (client as any).agent = mockAgent;
 
-      const result = await client.getQuotedPostContent(quoteNotification);
+      const result = await client.getQuotedHistory(quoteNotification);
       
       expect(result).toEqual([{
         author: 'quoter.bsky.social',
@@ -212,7 +212,7 @@ describe('BlueskyClient', () => {
       (mockAgent.getPostThread as any).mockRejectedValue(new Error('API Error'));
       (client as any).agent = mockAgent;
 
-      const result = await client.getQuotedPostContent(quoteNotification);
+      const result = await client.getQuotedHistory(quoteNotification);
       
       expect(result).toEqual([{
         author: 'quoter.bsky.social',
@@ -276,7 +276,7 @@ describe('BlueskyClient', () => {
       });
       (client as any).agent = mockAgent;
 
-      const result = await client.getQuotedPostContent(quoteNotification);
+      const result = await client.getQuotedHistory(quoteNotification);
       
       expect(result).toEqual([
         {
@@ -339,7 +339,7 @@ describe('BlueskyClient', () => {
       });
       (client as any).agent = mockAgent;
 
-      const result = await client.getQuotedPostContent(quoteNotification);
+      const result = await client.getQuotedHistory(quoteNotification);
       
       expect(result).toEqual([
         {
@@ -365,7 +365,7 @@ describe('BlueskyClient', () => {
 
       (client as any).authenticated = false;
 
-      await expect(client.getQuotedPostContent(quoteNotification)).rejects.toThrow(
+      await expect(client.getQuotedHistory(quoteNotification)).rejects.toThrow(
         'Not authenticated. Call authenticate() first.'
       );
     });

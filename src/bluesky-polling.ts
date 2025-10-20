@@ -1,7 +1,7 @@
 // Bluesky Polling Module - Handles automatic notification polling
 import type { DrakidionTask } from './drakidion/drakidion-types.js';
 import { getBlueskyClient, getLLMClient, getOrchestratorState, setOrchestratorState, updateStatus } from './panels.js';
-import { createProcessNotificationTask } from './oblique-task-factory.js';
+import { createReplyTask } from './oblique-task-factory.js';
 import * as Orchestrator from './drakidion/orchestrator.js';
 import type { BlueskyMessage } from './types/index.js';
 import { getConfig } from './config.js';
@@ -63,6 +63,23 @@ const enableCheckButton = () => {
   $('#check-bluesky').prop('disabled', false).text('Check');
 };
 
+const escapeHtml = (text: string): string => {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+};
+
+const renderNotificationAsHtml = (notif: BlueskyMessage): string => {
+  const date = new Date(notif.createdAt).toLocaleString();
+  return `
+    <div class="bluesky-post">
+      <div class="post-author">@${notif.author}</div>
+      <div class="post-text">${escapeHtml(notif.text)}</div>
+      <div class="post-date">${date}</div>
+    </div>
+  `;
+};
+
 // Polling UI functions
 const updatePollingStatus = (nextCheckTime?: Date) => {
   if (isPolling) {
@@ -110,19 +127,11 @@ const updateCountdown = (nextCheckTime: Date) => {
   updateTimer();
 };
 
-// Process a single notification to determine if it should be responded to
-const processNotification = async (
+// Determine if a notification should be responded to
+const checkIfShouldRespond = async (
   notif: BlueskyMessage,
-  markAsSeen: boolean,
-  blueskyClient: any,
-  llmClient: any,
-  onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void,
-  orchestratorState: any
-): Promise<{ taskCreated: boolean; orchestratorState: any }> => {
-  if (markAsSeen) {
-    await blueskyClient.markNotificationsAsSeen();
-  }
-
+  blueskyClient: any
+): Promise<boolean> => {
   // Check if anyone has replied to this post (for non-direct mentions)
   let hasReplies = false;
   
@@ -138,21 +147,8 @@ const processNotification = async (
 
   const shouldRespond = shouldRespondToNotification(notif, hasReplies);
   console.log(`Should respond: ${shouldRespond}`);
-
-  if (!shouldRespond) {
-    return { taskCreated: false, orchestratorState };
-  }
-
-  // Happy path: create and add task
-  const task = createProcessNotificationTask(
-    notif,
-    llmClient,
-    blueskyClient,
-    onWaitingTaskComplete
-  );
   
-  const updatedOrchestratorState = Orchestrator.addTask(orchestratorState, task);
-  return { taskCreated: true, orchestratorState: updatedOrchestratorState };
+  return shouldRespond;
 };
 
 // Main notification checking logic (shared between manual and polling)
@@ -193,22 +189,7 @@ export const checkNotifications = async () => {
     }
 
     // Display notifications
-    const escapeHtml = (text: string): string => {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    };
-
-    const postsHtml = notifications.map((notif: BlueskyMessage) => {
-      const date = new Date(notif.createdAt).toLocaleString();
-      return `
-        <div class="bluesky-post">
-          <div class="post-author">@${notif.author}</div>
-          <div class="post-text">${escapeHtml(notif.text)}</div>
-          <div class="post-date">${date}</div>
-        </div>
-      `;
-    }).join('');
+    const postsHtml = notifications.map(renderNotificationAsHtml).join('');
     $('#bluesky-posts').html(postsHtml);
 
     // Filter notifications based on response rules and create tasks
@@ -216,22 +197,29 @@ export const checkNotifications = async () => {
     const onWaitingTaskComplete = createOnWaitingTaskComplete(orchestratorState, setOrchestratorState, updateStatus);
     const markAsSeen = $('#mark-as-seen').prop('checked');
 
+    // Mark notifications as seen if requested (do this once for all notifications)
+    if (markAsSeen && notifications.length > 0) {
+      await blueskyClient.markNotificationsAsSeen();
+    }
+
     // Iterate through each notification and check if we should respond
     for (const notif of notifications) {
-      const result = await processNotification(
-        notif,
-        markAsSeen,
-        blueskyClient,
-        llmClient,
-        onWaitingTaskComplete,
-        orchestratorState
-      );
+      const shouldRespond = await checkIfShouldRespond(notif, blueskyClient);
       
-      if (result.taskCreated) {
-        tasksCreated++;
+      if (!shouldRespond) {
+        continue;
       }
       
-      orchestratorState = result.orchestratorState;
+      // Create and add task
+      const task = createReplyTask(
+        notif,
+        llmClient,
+        blueskyClient,
+        onWaitingTaskComplete
+      );
+      
+      orchestratorState = Orchestrator.addTask(orchestratorState, task);
+      tasksCreated++;
     }
 
     // Update the global state

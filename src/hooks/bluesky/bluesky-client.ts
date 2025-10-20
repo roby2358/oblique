@@ -214,28 +214,6 @@ export class BlueskyClient {
     return post.record.text;
   }
 
-  /**
-   * Extracts quoted post text from a quote post embed.
-   * Returns the quoted post's text and author, or null if not a quote post.
-   */
-  private getQuotedPostText(post: any): { author: string; text: string; altTexts?: string[] } | null {
-    if (!post?.embed?.record?.value) {
-      return null;
-    }
-    
-    const quotedPost = post.embed.record.value;
-    const quotedAuthor = post.embed.record.author?.handle;
-    
-    if (!quotedPost?.text || !quotedAuthor) {
-      return null;
-    }
-    
-    return {
-      author: quotedAuthor,
-      text: quotedPost.text,
-      altTexts: undefined,
-    };
-  }
 
   /**
    * Extracts alt texts from images in a post record.
@@ -258,26 +236,20 @@ export class BlueskyClient {
 
   /**
    * Extracts post data from a thread node, including alt texts from images.
-   * For quote posts, extracts the quoted content instead of the quote post's own text.
    * Returns the post's author, text, and alt texts (if any).
+   * For quote posts, the quoted content is treated as history/context, not as the main content.
    */
-  private extractPostData(threadNode: any): { author: string; text: string; altTexts?: string[] } | null {
-    if (!threadNode || threadNode.$type !== 'app.bsky.feed.defs#threadViewPost') {
+  private extractPostData(node: any): { author: string; text: string; altTexts?: string[] } | null {
+    if (!node || node.$type !== 'app.bsky.feed.defs#threadViewPost') {
       return null;
     }
     
-    const post = threadNode.post;
+    const post = node.post;
     if (!post || !post.record) {
       return null;
     }
     
-    // Check if this is a quote post
-    const quotedPost = this.getQuotedPostText(post);
-    if (quotedPost) {
-      return quotedPost;
-    }
-    
-    // Regular post - extract normal content
+    // Extract the actual post content (text + alt texts)
     const postText = this.getPostText(post);
     const altTexts = this.getAltTexts(post);
     
@@ -322,10 +294,16 @@ export class BlueskyClient {
    * Returns an array with the quoted post's content as history and the quote post's text as the main message.
    * Falls back to the notification's own content if the quoted post cannot be fetched.
    */
-  async getQuotedPostContent(notification: BlueskyMessage): Promise<Array<{ author: string; text: string; altTexts?: string[] }>> {
+  async getQuotedHistory(notification: BlueskyMessage): Promise<Array<{ author: string; text: string; altTexts?: string[] }>> {
     if (!this.authenticated) {
       throw new Error('Not authenticated. Call authenticate() first.');
     }
+
+    // Fallback to the notification's own content when quote post cannot be fetched
+    const fallback = [{
+      author: notification.author,
+      text: notification.text,
+    }];
 
     try {
       // First, get the quote post to find the quoted post's URI
@@ -336,22 +314,14 @@ export class BlueskyClient {
       });
       
       if (!quotePostResponse.data.thread || (quotePostResponse.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
-        // Fallback to the notification's own content
-        return [{
-          author: notification.author,
-          text: notification.text,
-        }];
+        return fallback;
       }
       
       const quotePost = quotePostResponse.data.thread.post as any;
       
       // Check if this is actually a quote post and get the quoted post's URI
       if (!quotePost?.embed?.record?.uri) {
-        // Not a quote post, fallback to the notification's own content
-        return [{
-          author: notification.author,
-          text: notification.text,
-        }];
+        return fallback;
       }
       
       const quotedPostUri = quotePost.embed.record.uri;
@@ -364,42 +334,89 @@ export class BlueskyClient {
       });
       
       if (!quotedPostResponse.data.thread || (quotedPostResponse.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
-        // Fallback to the notification's own content
-        return [{
-          author: notification.author,
-          text: notification.text,
-        }];
+        return fallback;
       }
       
       const quotedPostData = this.extractPostData(quotedPostResponse.data.thread);
-      if (quotedPostData) {
-        // Extract alt texts from the quote post itself
-        const quotePostAltTexts = this.getAltTexts(quotePost);
-        
-        // Return both the quoted content (as history) and the quote post's text (as main message)
-        return [
-          quotedPostData, // This becomes the thread history
-          {
-            author: notification.author,
-            text: notification.text, // This becomes the main message to reply to
-            altTexts: quotePostAltTexts, // Include alt texts from the quote post
-          }
-        ];
-      } else {
-        // Fallback to the notification's own content
-        return [{
+      if (!quotedPostData) {
+        return fallback;
+      }
+      
+      // Extract alt texts from the quote post itself
+      const quotePostAltTexts = this.getAltTexts(quotePost);
+      
+      // Return both the quoted content (as history) and the quote post's text (as main message)
+      const history = [
+        quotedPostData,
+        {
           author: notification.author,
           text: notification.text,
-        }];
-      }
-    } catch (error) {
+          altTexts: quotePostAltTexts,
+        }
+      ];
+      console.log('Quote Post History:', history);
+      return history;
+  } catch (error) {
       console.error('Error fetching quoted post content:', error);
-      // Fallback to the notification's own content
-      return [{
-        author: notification.author,
-        text: notification.text,
-      }];
+      return fallback;
     }
+  }
+
+  /**
+   * Fetches the history for a single post (non-reply messages).
+   * Returns an array with the post data including alt texts from images.
+   */
+  private async getOnePostHistory(message: BlueskyMessage): Promise<Array<{ author: string; text: string; altTexts?: string[] }>> {
+    // Fallback to basic message without alt texts
+    const basicFallback = [{
+      author: message.author,
+      text: message.text,
+    }];
+
+    try {
+      const currentPostResponse = await this.agent.getPostThread({ 
+        uri: message.uri,
+        depth: 0,  // Only get the post itself, not its replies
+        parentHeight: 0  // Don't fetch parent posts
+      });
+      
+      if (!currentPostResponse.data.thread || (currentPostResponse.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
+        return basicFallback;
+      }
+      
+      const postData = this.extractPostData(currentPostResponse.data.thread);
+      if (!postData) {
+        return basicFallback;
+      }
+      
+      return [{
+        author: message.author,
+        text: message.text,
+        altTexts: postData.altTexts,
+      }];
+    } catch (error) {
+      console.error('Error fetching current post data:', error);
+      return basicFallback;
+    }
+  }
+
+  /**
+   * Determines the type of history to fetch and builds a unified history list.
+   * Returns an array of messages with the most recent post last.
+   */
+  async getHistory(notification: BlueskyMessage): Promise<Array<{ author: string; text: string; altTexts?: string[] }>> {
+    // Quote posts: history is the quoted post content
+    if (notification.reason === 'quote') {
+      return this.getQuotedHistory(notification);
+    }
+    
+    // New posts (no reply info): just the single post
+    if (!notification.replyInfo?.parent?.uri) {
+      return this.getOnePostHistory(notification);
+    }
+    
+    // Threaded posts: history is the thread
+    return this.getThreadHistory(notification, 25);
   }
 
   /**
@@ -411,43 +428,18 @@ export class BlueskyClient {
       throw new Error('Not authenticated. Call authenticate() first.');
     }
     
+    // Fallback to basic message without alt texts
+    const basicFallback = [{
+      author: message.author,
+      text: message.text,
+    }];
+    
     console.log('Message:', message);
-
 
     // If this is a reply, get the thread from the parent post
     // If not a reply, just return the current message with alt texts
     if (!message.replyInfo?.parent?.uri) {
-      try {
-        const currentPostResponse = await this.agent.getPostThread({ 
-          uri: message.uri,
-          depth: 0,  // Only get the post itself, not its replies
-          parentHeight: 0  // Don't fetch parent posts
-        });
-        
-        if (currentPostResponse.data.thread && (currentPostResponse.data.thread as any).$type === 'app.bsky.feed.defs#threadViewPost') {
-          const postData = this.extractPostData(currentPostResponse.data.thread);
-          if (postData) {
-            return [{
-              author: message.author,
-              text: message.text,
-              altTexts: postData.altTexts,
-            }];
-          }
-        }
-        
-        // Fallback to basic message without alt texts
-        return [{
-          author: message.author,
-          text: message.text,
-        }];
-      } catch (error) {
-        console.error('Error fetching current post data:', error);
-        // Fallback to basic message without alt texts
-        return [{
-          author: message.author,
-          text: message.text,
-        }];
-      }
+      return await this.getOnePostHistory(message);
     }
 
     try {
@@ -458,10 +450,7 @@ export class BlueskyClient {
       });
       
       if (!response.data.thread || (response.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
-        return [{
-          author: message.author,
-          text: message.text,
-        }];
+        return basicFallback;
       }
       
       // Extract all posts from the thread (this will be in oldest-to-newest order)
@@ -476,47 +465,33 @@ export class BlueskyClient {
           parentHeight: 0  // Don't fetch parent posts
         });
         
-        if (currentPostResponse.data.thread && (currentPostResponse.data.thread as any).$type === 'app.bsky.feed.defs#threadViewPost') {
-          const postData = this.extractPostData(currentPostResponse.data.thread);
-          if (postData) {
-            // Use the extracted post data but override with the message's author and text
-            thread.push({
-              author: message.author,
-              text: message.text,
-              altTexts: postData.altTexts,
-            });
-          } else {
-            // Fallback to basic message without alt texts
-            thread.push({
-              author: message.author,
-              text: message.text,
-            });
-          }
-        } else {
-          // Fallback to basic message without alt texts
-          thread.push({
-            author: message.author,
-            text: message.text,
-          });
+        if (!currentPostResponse.data.thread || (currentPostResponse.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
+          thread.push(basicFallback[0]);
+          return thread;
         }
-      } catch (error) {
-        console.error('Error fetching current post data:', error);
-        // Fallback to basic message without alt texts
+        
+        const postData = this.extractPostData(currentPostResponse.data.thread);
+        if (!postData) {
+          thread.push(basicFallback[0]);
+          return thread;
+        }
+        
+        // Use the extracted post data but override with the message's author and text
         thread.push({
           author: message.author,
           text: message.text,
+          altTexts: postData.altTexts,
         });
+      } catch (error) {
+        console.error('Error fetching current post data:', error);
+        thread.push(basicFallback[0]);
       }
       
       return thread;
       
     } catch (error) {
       console.error('Error fetching thread:', error);
-      // Return just the current message on error
-      return [{
-        author: message.author,
-        text: message.text,
-      }];
+      return basicFallback;
     }
   }
 }

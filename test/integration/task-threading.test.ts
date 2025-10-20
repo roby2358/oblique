@@ -1,6 +1,6 @@
 // Integration test for taskId threading through task chains
-import { 
-  createProcessNotificationTask,
+import {
+  createReplyTask,
 } from '../../src/oblique-task-factory.js';
 import type { BlueskyMessage } from '../../src/types/index.js';
 import type { LLMClient } from '../../src/hooks/llm/llm-client.js';
@@ -36,6 +36,9 @@ describe('Task ID Threading', () => {
     getThreadHistory: async () => [
       { author: 'testuser.bsky.social', text: 'Hello Oblique!', altTexts: [] }
     ],
+    getHistory: async () => [
+      { author: 'testuser.bsky.social', text: 'Hello Oblique!', altTexts: [] }
+    ],
     isConfigured: () => true,
   } as any);
 
@@ -49,7 +52,7 @@ describe('Task ID Threading', () => {
     };
 
     // Create the initial task
-    const initialTask = createProcessNotificationTask(
+    const initialTask = createReplyTask(
       mockNotification,
       mockLLMClient,
       mockBlueskyClient,
@@ -110,7 +113,7 @@ describe('Task ID Threading', () => {
     };
 
     // Create and process initial task
-    const initialTask = createProcessNotificationTask(
+    const initialTask = createReplyTask(
       mockNotification,
       mockLLMClient,
       mockBlueskyClient,

@@ -57,26 +57,26 @@ const lenses: { [key in ObliqueTextLens]: string } = {
  or the nature of reality?`,
 'architext':
 `Architext: The deep structural patterns, archetypes, and mythic
- elements that shape the text at a fundamental level. Analyze: What universal
- human experiences, relationships, or developmental processes are evoked?
- How does the story's structure mirror classical archetypical patterns like
- the Hero's Journey? What archetypal characters (e.g., Wise Old Man,
- Trickster, Great Mother) or settings (e.g., The Forest, The Underworld)
- appear? How does the text enact deep, primal narratives of transformation,
- initiation, death-rebirth, etc.?`,
+ elements that shape the text at a fundamental level. Analyze across cultural
+ boundaries. What universal human experiences, relationships, or developmental
+ processes are evoked? How does the story's structure mirror classical
+ archetypical patterns? What archetypal characters or settings appear? How
+ does the text enact deep, primal narratives of transformation, initiation,
+ death-rebirth, etc.?`,
 'psychotext':
 `Psychotext: The underlying emotional dynamics, psychological motivations,
  and internal states that drive the characters and inform the narrative. What
  conscious and unconscious emotions, desires, or fears shape the characters'
  actions, choices, and relationships? How do the characters' psychological
  wounds, traumas, or unmet needs influence their behavior and development?
- What anxieties, insecurities, or neuroses underlie the characters' outward
+ What drivers, positive and negative, underly the characters' outward
  personas or social roles? How do the characters' emotional states and
  psychological dynamics reflect or illuminate broader human experiences
- and challenges? What patterns of motivated reasoning, self-deception, or
- defense mechanisms can be observed in the characters' thoughts and actions?
- How do the characters navigate and protect their sense of self, status,
- or identity in the face of conflicts or threats?`,
+ and challenges? What patterns of risk-taking, reward-seeking, motivated
+ reasoning, self-deception, or defense mechanisms can be observed in the
+ characters' thoughts and actions? How do the characters navigate and
+ protect their sense of self, status, or identity in the face of satisfaction,
+ conflicts, threats or other motivations, positive and negative?`,
 };
 
 const lensKeys = Object.keys(lenses) as ObliqueTextLens[];
@@ -159,6 +159,30 @@ const formatPost = (post: { author: string; text: string; altTexts?: string[] })
     : mainText;
 };
 
+export const obliquePrompt = (userMessage: string, threadHistory: string): string => {
+  const focus = lenses[getRandomTextLens()];
+  const gender = getDailyGender();
+  const promptText =
+  `Consider the positive and the negative, the Western and the Eastern, reward
+  and threat. Span cultural and psychological boundaries. Reply through the
+  chosen lens:
+
+  "${focus}"
+
+  You are ${gender}. Reply in a ${gender} voice.
+
+  Thread history:
+
+  "${threadHistory}"
+
+  Reply to this message:
+
+  "${userMessage}"
+  `;
+
+  return promptText;
+};
+
 export const createObliqueConversation = (
   thread: Array<{ author: string; text: string; altTexts?: string[] }>
 ): { role: string; content: string }[] => {
@@ -181,26 +205,4 @@ export const createObliqueConversation = (
     { role: 'system', content: systemPrompt },
     { role: 'user', content: promptText },
   ];
-};
-
-export const obliquePrompt = (userMessage: string, threadHistory: string): string => {
-  const focus = lenses[getRandomTextLens()];
-  const gender = getDailyGender();
-  const promptText =
-  `Reply through the chosen lens:
-
-  "${focus}"
-
-  You are ${gender}. Reply in a ${gender} voice.
-
-  Thread history:
-
-  "${threadHistory}"
-
-  Reply to this message:
-
-  "${userMessage}"
-  `;
-
-  return promptText;
 };

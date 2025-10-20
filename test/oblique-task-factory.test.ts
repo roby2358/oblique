@@ -1,4 +1,9 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { createSendToLLMTask } from '../src/oblique-task-factory.js';
+import type { BlueskyMessage } from '../src/types/index.js';
+import type { LLMClient } from '../src/hooks/llm/llm-client.js';
+import type { BlueskyClient } from '../src/hooks/bluesky/bluesky-client.js';
+import type { DrakidionTask } from '../src/drakidion/drakidion-types.js';
 
 // Test the truncation function by importing the module
 // Since the function is not exported, we'll test it conceptually
@@ -97,5 +102,139 @@ describe('truncateAtLastPunctuation', () => {
     const veryLongText = 'A'.repeat(300);
     const result = truncateAtLastPunctuation(veryLongText);
     expect(result.length).toBe(279);
+  });
+});
+
+describe('createSendToLLMTask quote post handling', () => {
+  let mockLLMClient: LLMClient;
+  let mockBlueskyClient: BlueskyClient;
+  let mockOnWaitingTaskComplete: jest.Mock;
+  let mockPredecessor: DrakidionTask;
+
+  beforeEach(() => {
+    mockLLMClient = {
+      generateResponse: jest.fn()
+    } as any;
+
+    mockBlueskyClient = {
+      getQuotedPostContent: jest.fn(),
+      getThreadHistory: jest.fn()
+    } as any;
+
+    mockOnWaitingTaskComplete = jest.fn();
+
+    mockPredecessor = {
+      taskId: 'test-task-1',
+      version: 1,
+      status: 'ready',
+      description: 'Test predecessor',
+      work: 'Test work',
+      conversation: [{ role: 'user', content: 'Test message' }],
+      createdAt: new Date(),
+      process: async () => ({} as DrakidionTask)
+    };
+  });
+
+  it('should use getQuotedPostContent for quote notifications', async () => {
+    const quoteNotification: BlueskyMessage = {
+      uri: 'at://did:plc:test/app.bsky.feed.post/quote123',
+      cid: 'bafyquote123',
+      author: 'quoter.bsky.social',
+      text: 'test 2 ( @oblique.yuwakisa.com will reply)',
+      createdAt: new Date(),
+      reason: 'quote',
+    };
+
+    const mockQuotedContent = [{
+      author: 'quotedauthor.bsky.social',
+      text: 'This is the original quoted post content'
+    }];
+
+    (mockBlueskyClient.getQuotedPostContent as jest.MockedFunction<any>).mockResolvedValue(mockQuotedContent);
+    (mockLLMClient.generateResponse as jest.MockedFunction<any>).mockResolvedValue({
+      content: 'Test LLM response',
+      model: 'test-model'
+    });
+
+    createSendToLLMTask(
+      quoteNotification,
+      mockLLMClient,
+      mockBlueskyClient,
+      mockOnWaitingTaskComplete,
+      mockPredecessor
+    );
+
+    // Wait for async operations to complete
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    expect(mockBlueskyClient.getQuotedPostContent).toHaveBeenCalledWith(quoteNotification);
+    expect(mockBlueskyClient.getThreadHistory).not.toHaveBeenCalled();
+  });
+
+  it('should use getThreadHistory for non-quote notifications', async () => {
+    const mentionNotification: BlueskyMessage = {
+      uri: 'at://did:plc:test/app.bsky.feed.post/mention123',
+      cid: 'bafymention123',
+      author: 'mentioner.bsky.social',
+      text: 'Hello @oblique.yuwakisa.com',
+      createdAt: new Date(),
+      reason: 'mention',
+    };
+
+    const mockThreadHistory = [{
+      author: 'mentioner.bsky.social',
+      text: 'Hello @oblique.yuwakisa.com'
+    }];
+
+    (mockBlueskyClient.getThreadHistory as jest.MockedFunction<any>).mockResolvedValue(mockThreadHistory);
+    (mockLLMClient.generateResponse as jest.MockedFunction<any>).mockResolvedValue({
+      content: 'Test LLM response',
+      model: 'test-model'
+    });
+
+    createSendToLLMTask(
+      mentionNotification,
+      mockLLMClient,
+      mockBlueskyClient,
+      mockOnWaitingTaskComplete,
+      mockPredecessor
+    );
+
+    // Wait for async operations to complete
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    expect(mockBlueskyClient.getThreadHistory).toHaveBeenCalledWith(mentionNotification, 25);
+    expect(mockBlueskyClient.getQuotedPostContent).not.toHaveBeenCalled();
+  });
+
+  it('should fallback to quote post text when quoted content cannot be fetched', async () => {
+    const quoteNotification: BlueskyMessage = {
+      uri: 'at://did:plc:test/app.bsky.feed.post/quote123',
+      cid: 'bafyquote123',
+      author: 'quoter.bsky.social',
+      text: 'test 2 ( @oblique.yuwakisa.com will reply)',
+      createdAt: new Date(),
+      reason: 'quote',
+    };
+
+    (mockBlueskyClient.getQuotedPostContent as jest.MockedFunction<any>).mockResolvedValue(null);
+    (mockLLMClient.generateResponse as jest.MockedFunction<any>).mockResolvedValue({
+      content: 'Test LLM response',
+      model: 'test-model'
+    });
+
+    createSendToLLMTask(
+      quoteNotification,
+      mockLLMClient,
+      mockBlueskyClient,
+      mockOnWaitingTaskComplete,
+      mockPredecessor
+    );
+
+    // Wait for async operations to complete
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    expect(mockBlueskyClient.getQuotedPostContent).toHaveBeenCalledWith(quoteNotification);
+    expect(mockBlueskyClient.getThreadHistory).not.toHaveBeenCalled();
   });
 });

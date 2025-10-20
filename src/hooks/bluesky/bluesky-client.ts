@@ -204,6 +204,205 @@ export class BlueskyClient {
   }
 
   /**
+   * Extracts the main post text from a post record.
+   * Returns the text content of the post.
+   */
+  private getPostText(post: any): string | null {
+    if (!post?.record?.text) {
+      return null;
+    }
+    return post.record.text;
+  }
+
+  /**
+   * Extracts quoted post text from a quote post embed.
+   * Returns the quoted post's text and author, or null if not a quote post.
+   */
+  private getQuotedPostText(post: any): { author: string; text: string; altTexts?: string[] } | null {
+    if (!post?.embed?.record?.value) {
+      return null;
+    }
+    
+    const quotedPost = post.embed.record.value;
+    const quotedAuthor = post.embed.record.author?.handle;
+    
+    if (!quotedPost?.text || !quotedAuthor) {
+      return null;
+    }
+    
+    return {
+      author: quotedAuthor,
+      text: quotedPost.text,
+      altTexts: undefined,
+    };
+  }
+
+  /**
+   * Extracts alt texts from images in a post record.
+   * Returns an array of alt texts, or undefined if none found.
+   */
+  private getAltTexts(post: any): string[] | undefined {
+    if (!post?.record?.embed?.images) {
+      return undefined;
+    }
+    
+    const altTexts: string[] = [];
+    for (const image of post.record.embed.images) {
+      if (image.alt) {
+        altTexts.push(image.alt);
+      }
+    }
+    
+    return altTexts.length > 0 ? altTexts : undefined;
+  }
+
+  /**
+   * Extracts post data from a thread node, including alt texts from images.
+   * For quote posts, extracts the quoted content instead of the quote post's own text.
+   * Returns the post's author, text, and alt texts (if any).
+   */
+  private extractPostData(threadNode: any): { author: string; text: string; altTexts?: string[] } | null {
+    if (!threadNode || threadNode.$type !== 'app.bsky.feed.defs#threadViewPost') {
+      return null;
+    }
+    
+    const post = threadNode.post;
+    if (!post || !post.record) {
+      return null;
+    }
+    
+    // Check if this is a quote post
+    const quotedPost = this.getQuotedPostText(post);
+    if (quotedPost) {
+      return quotedPost;
+    }
+    
+    // Regular post - extract normal content
+    const postText = this.getPostText(post);
+    const altTexts = this.getAltTexts(post);
+    
+    if (!postText) {
+      return null;
+    }
+    
+    return {
+      author: post.author.handle,
+      text: postText,
+      altTexts,
+    };
+  }
+
+  /**
+   * Recursively extracts all posts from a thread structure.
+   * Returns an array of posts in chronological order (oldest first).
+   */
+  private extractPostsFromThread(threadNode: any): Array<{ author: string; text: string; altTexts?: string[] }> {
+    const postsInOrder: Array<{ author: string; text: string; altTexts?: string[] }> = [];
+    
+    const traverse = (node: any): void => {
+      const postData = this.extractPostData(node);
+      if (postData) {
+        postsInOrder.push(postData);
+      }
+      
+      // Recursively extract from parent
+      if (node?.parent) {
+        traverse(node.parent);
+      }
+    };
+    
+    traverse(threadNode);
+    
+    // Reverse to get oldest-to-newest order
+    return postsInOrder.reverse();
+  }
+
+  /**
+   * Fetches the content of a quoted post using its URI.
+   * Returns an array with the quoted post's content as history and the quote post's text as the main message.
+   * Falls back to the notification's own content if the quoted post cannot be fetched.
+   */
+  async getQuotedPostContent(notification: BlueskyMessage): Promise<Array<{ author: string; text: string; altTexts?: string[] }>> {
+    if (!this.authenticated) {
+      throw new Error('Not authenticated. Call authenticate() first.');
+    }
+
+    try {
+      // First, get the quote post to find the quoted post's URI
+      const quotePostResponse = await this.agent.getPostThread({ 
+        uri: notification.uri,
+        depth: 0,  // Only get the post itself, not its replies
+        parentHeight: 0  // Don't fetch parent posts
+      });
+      
+      if (!quotePostResponse.data.thread || (quotePostResponse.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
+        // Fallback to the notification's own content
+        return [{
+          author: notification.author,
+          text: notification.text,
+        }];
+      }
+      
+      const quotePost = quotePostResponse.data.thread.post as any;
+      
+      // Check if this is actually a quote post and get the quoted post's URI
+      if (!quotePost?.embed?.record?.uri) {
+        // Not a quote post, fallback to the notification's own content
+        return [{
+          author: notification.author,
+          text: notification.text,
+        }];
+      }
+      
+      const quotedPostUri = quotePost.embed.record.uri;
+      
+      // Now fetch the actual quoted post
+      const quotedPostResponse = await this.agent.getPostThread({ 
+        uri: quotedPostUri,
+        depth: 0,  // Only get the post itself, not its replies
+        parentHeight: 0  // Don't fetch parent posts
+      });
+      
+      if (!quotedPostResponse.data.thread || (quotedPostResponse.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
+        // Fallback to the notification's own content
+        return [{
+          author: notification.author,
+          text: notification.text,
+        }];
+      }
+      
+      const quotedPostData = this.extractPostData(quotedPostResponse.data.thread);
+      if (quotedPostData) {
+        // Extract alt texts from the quote post itself
+        const quotePostAltTexts = this.getAltTexts(quotePost);
+        
+        // Return both the quoted content (as history) and the quote post's text (as main message)
+        return [
+          quotedPostData, // This becomes the thread history
+          {
+            author: notification.author,
+            text: notification.text, // This becomes the main message to reply to
+            altTexts: quotePostAltTexts, // Include alt texts from the quote post
+          }
+        ];
+      } else {
+        // Fallback to the notification's own content
+        return [{
+          author: notification.author,
+          text: notification.text,
+        }];
+      }
+    } catch (error) {
+      console.error('Error fetching quoted post content:', error);
+      // Fallback to the notification's own content
+      return [{
+        author: notification.author,
+        text: notification.text,
+      }];
+    }
+  }
+
+  /**
    * Fetches the thread history for a message, going back up to maxDepth posts.
    * Returns an array of messages in chronological order (oldest first).
    */
@@ -212,6 +411,9 @@ export class BlueskyClient {
       throw new Error('Not authenticated. Call authenticate() first.');
     }
     
+    console.log('Message:', message);
+
+
     // If this is a reply, get the thread from the parent post
     // If not a reply, just return the current message with alt texts
     if (!message.replyInfo?.parent?.uri) {
@@ -223,24 +425,12 @@ export class BlueskyClient {
         });
         
         if (currentPostResponse.data.thread && (currentPostResponse.data.thread as any).$type === 'app.bsky.feed.defs#threadViewPost') {
-          const threadNode = currentPostResponse.data.thread as any;
-          const post = threadNode.post;
-          
-          if (post && post.record) {
-            // Extract alt text from images if present
-            const altTexts: string[] = [];
-            if (post.record.embed?.images) {
-              for (const image of post.record.embed.images) {
-                if (image.alt) {
-                  altTexts.push(image.alt);
-                }
-              }
-            }
-            
+          const postData = this.extractPostData(currentPostResponse.data.thread);
+          if (postData) {
             return [{
               author: message.author,
               text: message.text,
-              altTexts: altTexts.length > 0 ? altTexts : undefined,
+              altTexts: postData.altTexts,
             }];
           }
         }
@@ -274,45 +464,8 @@ export class BlueskyClient {
         }];
       }
       
-      const postsInOrder: Array<{ author: string; text: string; altTexts?: string[] }> = [];
-      
-      // The API should return the thread with parent posts already included
-      // We need to traverse the thread structure to extract all posts
-      const extractPostsFromThread = (threadNode: any): void => {
-        if (!threadNode || threadNode.$type !== 'app.bsky.feed.defs#threadViewPost') {
-          return;
-        }
-        
-        const post = threadNode.post;
-        if (post && post.record) {
-          // Extract alt text from images if present
-          const altTexts: string[] = [];
-          if (post.record.embed?.images) {
-            for (const image of post.record.embed.images) {
-              if (image.alt) {
-                altTexts.push(image.alt);
-              }
-            }
-          }
-          
-          postsInOrder.push({
-            author: post.author.handle,
-            text: post.record.text,
-            altTexts: altTexts.length > 0 ? altTexts : undefined,
-          });
-        }
-        
-        // Recursively extract from parent
-        if (threadNode.parent) {
-          extractPostsFromThread(threadNode.parent);
-        }
-      };
-      
-      // Extract all posts from the thread (this will be in newest-to-oldest order)
-      extractPostsFromThread(response.data.thread);
-      
-      // Reverse to get oldest-to-newest order
-      const thread = postsInOrder.reverse();
+      // Extract all posts from the thread (this will be in oldest-to-newest order)
+      const thread = this.extractPostsFromThread(response.data.thread);
       
       // Add the current message at the end (newest)
       // We need to fetch the full post data to get alt texts
@@ -324,24 +477,13 @@ export class BlueskyClient {
         });
         
         if (currentPostResponse.data.thread && (currentPostResponse.data.thread as any).$type === 'app.bsky.feed.defs#threadViewPost') {
-          const threadNode = currentPostResponse.data.thread as any;
-          const post = threadNode.post;
-          
-          if (post && post.record) {
-            // Extract alt text from images if present
-            const altTexts: string[] = [];
-            if (post.record.embed?.images) {
-              for (const image of post.record.embed.images) {
-                if (image.alt) {
-                  altTexts.push(image.alt);
-                }
-              }
-            }
-            
+          const postData = this.extractPostData(currentPostResponse.data.thread);
+          if (postData) {
+            // Use the extracted post data but override with the message's author and text
             thread.push({
               author: message.author,
               text: message.text,
-              altTexts: altTexts.length > 0 ? altTexts : undefined,
+              altTexts: postData.altTexts,
             });
           } else {
             // Fallback to basic message without alt texts

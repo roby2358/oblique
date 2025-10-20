@@ -183,6 +183,8 @@ export const checkNotifications = async () => {
     // Get unread notifications only (unreadOnly = true by default)
     const notifications = await blueskyClient.getNotifications(3, true);
 
+    console.log('Notifications:', notifications);
+    
     // Guard condition: exit early if no notifications
     if (notifications.length === 0) {
       $('#bluesky-posts').html('<p>No new notifications.</p>');

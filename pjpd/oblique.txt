@@ -8,6 +8,11 @@ Status: ToDo
 ID: panel-ui-r6ze
 Create new panel component that displays inputs and outputs in a side-by-side layout for better visualization and comparison
 ---
+Priority:   70
+Status: ToDo
+ID: refactor-c2cs
+Refactor createSendToLLMTask to move notification handling logic higher up in the call stack and pass only the final prompt to the function instead of raw notification data
+---
 Priority:   60
 Status: ToDo
 ID: alt-notif-tin4

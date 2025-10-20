@@ -157,8 +157,13 @@ export const createSendToLLMTask = (
     conversation: predecessor.conversation,
   };
   
+  // Choose the appropriate method based on notification type
+  const getHistoryPromise = notification.reason === 'quote' 
+    ? blueskyClient.getQuotedPostContent(notification)
+    : blueskyClient.getThreadHistory(notification, 25);
+
   // Fetch the thread history and create conversation
-  blueskyClient.getThreadHistory(notification, 25)
+  getHistoryPromise
     .then(thread => createObliqueConversation(thread))
     .then(conversation => generateLLMResponseWithRetry(llmClient, conversation))
     .then(({ conversation, response }) => {

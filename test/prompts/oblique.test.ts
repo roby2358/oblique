@@ -16,7 +16,7 @@ describe('Oblique Prompts', () => {
       
       expect(prompt).toContain(userMessage);
       expect(prompt).toContain(threadHistory);
-      expect(prompt).toContain('Reply through the chosen lens');
+      expect(prompt).toContain('Consider the positive and the negative');
     });
 
     it('should include thread history section', () => {

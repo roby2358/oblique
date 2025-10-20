@@ -12,26 +12,20 @@ declare const $: any;
 let pollingInterval: NodeJS.Timeout | null = null;
 let isPolling = false;
 
-// Get the ignore list from config or return empty array
-const getIgnoreList = (): string[] => {
-  const config = getConfig();
-  return config.ignoreList;
-};
-
 // Check if a single notification should be responded to based on response rules
 const shouldRespondToNotification = (
   notification: BlueskyMessage,
-  ignoreList: string[],
   hasReplies: boolean = false
 ): boolean => {
   // Rule 1: Check if author is in ignore list
-  if (ignoreList.includes(notification.author)) {
+  const config = getConfig();
+  if (config.ignoreList.includes(notification.author)) {
     console.log(`Skipping @${notification.author}: Author is in ignore list`);
     return false;
   }
 
-  // Rule 2: Don't reply to quote posts
-  if (notification.reason === 'quote') {
+  // Rule 2: Don't reply to quote posts unless the handle is in the text
+  if (notification.reason === 'quote' && !notification.text.includes(config.bluesky.handle)) {
     console.log(`Skipping @${notification.author}: This is a quote post`);
     return false;
   }
@@ -122,7 +116,6 @@ const processNotification = async (
   markAsSeen: boolean,
   blueskyClient: any,
   llmClient: any,
-  ignoreList: string[],
   onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void,
   orchestratorState: any
 ): Promise<{ taskCreated: boolean; orchestratorState: any }> => {
@@ -143,7 +136,7 @@ const processNotification = async (
     }
   }
 
-  const shouldRespond = shouldRespondToNotification(notif, ignoreList, hasReplies);
+  const shouldRespond = shouldRespondToNotification(notif, hasReplies);
   console.log(`Should respond: ${shouldRespond}`);
 
   if (!shouldRespond) {
@@ -217,7 +210,6 @@ export const checkNotifications = async () => {
     $('#bluesky-posts').html(postsHtml);
 
     // Filter notifications based on response rules and create tasks
-    const ignoreList = getIgnoreList();
     let tasksCreated = 0;
     const onWaitingTaskComplete = createOnWaitingTaskComplete(orchestratorState, setOrchestratorState, updateStatus);
     const markAsSeen = $('#mark-as-seen').prop('checked');
@@ -229,7 +221,6 @@ export const checkNotifications = async () => {
         markAsSeen,
         blueskyClient,
         llmClient,
-        ignoreList,
         onWaitingTaskComplete,
         orchestratorState
       );

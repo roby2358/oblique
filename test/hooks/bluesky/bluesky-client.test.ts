@@ -371,6 +371,283 @@ describe('BlueskyClient', () => {
     });
   });
 
+  describe('getOnePostHistory', () => {
+    it('should return post data with alt texts when post exists', async () => {
+      const mockAgent = {
+        getPostThread: jest.fn()
+      };
+      
+      (mockAgent.getPostThread as any).mockResolvedValue({
+        data: {
+          thread: {
+            $type: 'app.bsky.feed.defs#threadViewPost',
+            post: {
+              author: { handle: 'testuser.bsky.social' },
+              record: { 
+                text: 'Hello Oblique!',
+                embed: {
+                  images: [
+                    { alt: 'Test image description' }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      });
+      
+      (client as any).agent = mockAgent;
+
+      const result = await (client as any).getOnePostHistory(mockNotification);
+      
+      expect(result).toEqual([{
+        author: 'testuser.bsky.social',
+        text: 'Hello Oblique!',
+        altTexts: ['Test image description']
+      }]);
+      expect(mockAgent.getPostThread).toHaveBeenCalledWith({ 
+        uri: mockNotification.uri,
+        depth: 0,
+        parentHeight: 0
+      });
+    });
+
+    it('should include quoted post content when post quotes another post', async () => {
+      const mockAgent = {
+        getPostThread: jest.fn()
+      };
+      
+      // Mock the first call to get the current post
+      (mockAgent.getPostThread as any).mockResolvedValueOnce({
+        data: {
+          thread: {
+            $type: 'app.bsky.feed.defs#threadViewPost',
+            post: {
+              author: { handle: 'quoter.bsky.social' },
+              record: { text: 'This is a quote post' },
+              embed: {
+                record: {
+                  uri: 'at://did:plc:test/app.bsky.feed.post/quoted123'
+                }
+              }
+            }
+          }
+        }
+      });
+      
+      // Mock the second call to get the quoted post
+      (mockAgent.getPostThread as any).mockResolvedValueOnce({
+        data: {
+          thread: {
+            $type: 'app.bsky.feed.defs#threadViewPost',
+            post: {
+              author: { handle: 'quotedauthor.bsky.social' },
+              record: { text: 'This is the quoted post content' }
+            }
+          }
+        }
+      });
+      
+      (client as any).agent = mockAgent;
+
+      const result = await (client as any).getOnePostHistory(mockNotification);
+      
+      expect(result).toEqual([
+        {
+          author: 'quotedauthor.bsky.social',
+          text: 'This is the quoted post content'
+        },
+        {
+          author: 'testuser.bsky.social',
+          text: 'Hello Oblique!'
+        }
+      ]);
+      expect(mockAgent.getPostThread).toHaveBeenCalledTimes(2);
+      expect(mockAgent.getPostThread).toHaveBeenNthCalledWith(1, { 
+        uri: mockNotification.uri,
+        depth: 0,
+        parentHeight: 0
+      });
+      expect(mockAgent.getPostThread).toHaveBeenNthCalledWith(2, { 
+        uri: 'at://did:plc:test/app.bsky.feed.post/quoted123',
+        depth: 0,
+        parentHeight: 0
+      });
+    });
+
+    it('should include quoted post content with alt texts when both posts have images', async () => {
+      const mockAgent = {
+        getPostThread: jest.fn()
+      };
+      
+      // Mock the first call to get the current post with images
+      (mockAgent.getPostThread as any).mockResolvedValueOnce({
+        data: {
+          thread: {
+            $type: 'app.bsky.feed.defs#threadViewPost',
+            post: {
+              author: { handle: 'quoter.bsky.social' },
+              record: { 
+                text: 'This is a quote post',
+                embed: {
+                  images: [
+                    { alt: 'Quote post image' }
+                  ]
+                }
+              },
+              embed: {
+                record: {
+                  uri: 'at://did:plc:test/app.bsky.feed.post/quoted123'
+                }
+              }
+            }
+          }
+        }
+      });
+      
+      // Mock the second call to get the quoted post with images
+      (mockAgent.getPostThread as any).mockResolvedValueOnce({
+        data: {
+          thread: {
+            $type: 'app.bsky.feed.defs#threadViewPost',
+            post: {
+              author: { handle: 'quotedauthor.bsky.social' },
+              record: { 
+                text: 'This is the quoted post content',
+                embed: {
+                  images: [
+                    { alt: 'Quoted post image 1' },
+                    { alt: 'Quoted post image 2' }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      });
+      
+      (client as any).agent = mockAgent;
+
+      const result = await (client as any).getOnePostHistory(mockNotification);
+      
+      expect(result).toEqual([
+        {
+          author: 'quotedauthor.bsky.social',
+          text: 'This is the quoted post content',
+          altTexts: ['Quoted post image 1', 'Quoted post image 2']
+        },
+        {
+          author: 'testuser.bsky.social',
+          text: 'Hello Oblique!',
+          altTexts: ['Quote post image']
+        }
+      ]);
+    });
+
+    it('should fallback to basic message when post does not exist', async () => {
+      const mockAgent = {
+        getPostThread: jest.fn()
+      };
+      
+      (mockAgent.getPostThread as any).mockResolvedValue({
+        data: {
+          thread: null
+        }
+      });
+      
+      (client as any).agent = mockAgent;
+
+      const result = await (client as any).getOnePostHistory(mockNotification);
+      
+      expect(result).toEqual([{
+        author: 'testuser.bsky.social',
+        text: 'Hello Oblique!'
+      }]);
+    });
+
+    it('should fallback to basic message when API call fails', async () => {
+      const mockAgent = {
+        getPostThread: jest.fn()
+      };
+      
+      (mockAgent.getPostThread as any).mockRejectedValue(new Error('API Error'));
+      
+      (client as any).agent = mockAgent;
+
+      const result = await (client as any).getOnePostHistory(mockNotification);
+      
+      expect(result).toEqual([{
+        author: 'testuser.bsky.social',
+        text: 'Hello Oblique!'
+      }]);
+    });
+
+    it('should continue with current post if quoted post fetch fails', async () => {
+      const mockAgent = {
+        getPostThread: jest.fn()
+      };
+      
+      // Mock the first call to get the current post (with quote)
+      (mockAgent.getPostThread as any).mockResolvedValueOnce({
+        data: {
+          thread: {
+            $type: 'app.bsky.feed.defs#threadViewPost',
+            post: {
+              author: { handle: 'quoter.bsky.social' },
+              record: { text: 'This is a quote post' },
+              embed: {
+                record: {
+                  uri: 'at://did:plc:test/app.bsky.feed.post/quoted123'
+                }
+              }
+            }
+          }
+        }
+      });
+      
+      // Mock the second call to get the quoted post (fails)
+      (mockAgent.getPostThread as any).mockRejectedValueOnce(new Error('Quoted post not found'));
+      
+      (client as any).agent = mockAgent;
+
+      const result = await (client as any).getOnePostHistory(mockNotification);
+      
+      expect(result).toEqual([{
+        author: 'testuser.bsky.social',
+        text: 'Hello Oblique!'
+      }]);
+    });
+
+    it('should not fetch quoted post if embed.record.uri is not present', async () => {
+      const mockAgent = {
+        getPostThread: jest.fn()
+      };
+      
+      (mockAgent.getPostThread as any).mockResolvedValue({
+        data: {
+          thread: {
+            $type: 'app.bsky.feed.defs#threadViewPost',
+            post: {
+              author: { handle: 'testuser.bsky.social' },
+              record: { text: 'Hello Oblique!' }
+              // No embed.record.uri
+            }
+          }
+        }
+      });
+      
+      (client as any).agent = mockAgent;
+
+      const result = await (client as any).getOnePostHistory(mockNotification);
+      
+      expect(result).toEqual([{
+        author: 'testuser.bsky.social',
+        text: 'Hello Oblique!'
+      }]);
+      expect(mockAgent.getPostThread).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('hasRepliesToPost', () => {
     it('should return true when post has direct replies', async () => {
       const mockAgent = {

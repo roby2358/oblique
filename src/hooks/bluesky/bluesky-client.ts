@@ -306,6 +306,8 @@ export class BlueskyClient {
     }];
 
     try {
+      console.log('Getting quoted history for notification:', notification);
+
       // First, get the quote post to find the quoted post's URI
       const quotePostResponse = await this.agent.getPostThread({ 
         uri: notification.uri,
@@ -313,12 +315,16 @@ export class BlueskyClient {
         parentHeight: 0  // Don't fetch parent posts
       });
       
+      console.log('Quote post response:', quotePostResponse);
+
       if (!quotePostResponse.data.thread || (quotePostResponse.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
         return fallback;
       }
       
       const quotePost = quotePostResponse.data.thread.post as any;
       
+      console.log('Quote post response:', quotePostResponse);
+
       // Check if this is actually a quote post and get the quoted post's URI
       if (!quotePost?.embed?.record?.uri) {
         return fallback;
@@ -332,6 +338,8 @@ export class BlueskyClient {
         depth: 0,  // Only get the post itself, not its replies
         parentHeight: 0  // Don't fetch parent posts
       });
+      
+      console.log('Quoted post response:', quotedPostResponse);
       
       if (!quotedPostResponse.data.thread || (quotedPostResponse.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
         return fallback;
@@ -365,13 +373,15 @@ export class BlueskyClient {
   /**
    * Fetches the history for a single post (non-reply messages).
    * Returns an array with the post data including alt texts from images.
+   * If the post quotes another post, includes the quoted post's text as history.
    */
   private async getOnePostHistory(message: BlueskyMessage): Promise<Array<{ author: string; text: string; altTexts?: string[] }>> {
-    // Fallback to basic message without alt texts
     const basicFallback = [{
       author: message.author,
       text: message.text,
     }];
+
+    const history = [];    
 
     try {
       const currentPostResponse = await this.agent.getPostThread({ 
@@ -389,11 +399,41 @@ export class BlueskyClient {
         return basicFallback;
       }
       
-      return [{
+      const post = currentPostResponse.data.thread.post as any;
+      
+      // Check if this post quotes another post
+      if (post?.embed?.record?.uri) {
+        const quotedPostUri = post.embed.record.uri;
+        
+        try {
+          // Fetch the quoted post
+          const quotedPostResponse = await this.agent.getPostThread({ 
+            uri: quotedPostUri,
+            depth: 0,  // Only get the post itself, not its replies
+            parentHeight: 0  // Don't fetch parent posts
+          });
+          
+          if (quotedPostResponse.data.thread && (quotedPostResponse.data.thread as any).$type === 'app.bsky.feed.defs#threadViewPost') {
+            const quotedPostData = this.extractPostData(quotedPostResponse.data.thread);
+            if (quotedPostData) {
+              // Add quoted post to history
+              history.push(quotedPostData);
+            }
+          }
+        } catch (quoteError) {
+          console.error('Error fetching quoted post:', quoteError);
+          // Continue with just the current post if quoted post fetch fails
+        }
+      }
+      
+      // Add current post to history
+      history.push({
         author: message.author,
         text: message.text,
         altTexts: postData.altTexts,
-      }];
+      });
+      
+      return history;
     } catch (error) {
       console.error('Error fetching current post data:', error);
       return basicFallback;

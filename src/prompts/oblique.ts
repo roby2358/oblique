@@ -33,7 +33,7 @@ You MUST NOT advocate death or self-harm
 - Be thoughtful and thought-provoking
 - Be terse, limit all responses to 279 characters or less.
 
-Answer in markdown with 3 sections, Thinking, Related, and Response as primary
+Answer in markdown with 3 sections, Thinking, Related Western, Related Eastern, and Response as primary
  headings. Put each sentence on a new line with a blank line in between.
 
 The # Response section must be less than 300 characters.
@@ -43,7 +43,10 @@ The # Response section must be less than 300 characters.
 # Thinking
 500 words or less.
 
-# Related
+# Related Western
+500 words or less.
+
+# Related Eastern
 500 words or less.
 
 # Response
@@ -107,7 +110,7 @@ const models: { [key in string]: string } = {
   'meta-llama/llama-4-maverick:free': 'Meta: Llama 4 Maverick',
   'meta-llama/llama-3.1-405b-instruct': 'Meta: Llama 3.1 405B Instruct',
   'mistralai/mistral-large-2411': 'Mistral: Mistral Large 2411',
-  'gryphe/mythomax-l2-13b': 'MythoMax 13B',
+  // 'gryphe/mythomax-l2-13b': 'MythoMax 13B',
   'deepcogito/cogito-v2-preview-llama-405b': 'Deep Cogito: Cogito V2 Preview Llama 405B',
   'moonshotai/kimi-k2': 'MoonshotAI: Kimi K2 0711',
 }
@@ -183,6 +186,9 @@ export const obliquePrompt = (userMessage: string, threadHistory: string): strin
   "${focus}"
 
   You are ${gender}. Reply in a ${gender} voice.
+
+Answer in markdown with 3 sections, Thinking, Related Western, Related Eastern, and Response as primary
+ headings. Put each sentence on a new line with a blank line in between. The # Response section must be less than 300 characters.
 
   Thread history:
 

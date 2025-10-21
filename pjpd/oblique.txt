@@ -18,10 +18,25 @@ Status: ToDo
 ID: alt-notif-tin4
 Investigate and fix issue with alt text not appearing correctly in notification handling
 ---
+Priority:   60
+Status: ToDo
+ID: refactor-mcaz
+Refactor createObliqueMessageTask to remove options parameter and use config object instead. Add temperature property to config for LLM configuration.
+---
 Priority:   50
 Status: ToDo
 ID: cleanup-h2ts
 Review and clean up task syntax and formatting to make it easier to work with - standardize descriptions, improve clarity, and ensure consistent formatting across all tasks
+---
+Priority:   50
+Status: ToDo
+ID: extract-resp-juwa
+Extract and trim all text after the "# Response" header from LLM responses. Update response processing logic to parse structured responses and extract only the response content section.
+---
+Priority:   40
+Status: ToDo
+ID: unify-tasks-9sa6
+Remove createObliqueMessageTask function and replace its usage with the same unified approach used by the bot task for consistency and simplification.
 ---
 Priority:   30
 Status: ToDo

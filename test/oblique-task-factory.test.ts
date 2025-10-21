@@ -132,7 +132,7 @@ describe('createSendToLLMTask quote post handling', () => {
       work: 'Test work',
       conversation: [{ role: 'user', content: 'Test message' }],
       createdAt: new Date(),
-      process: async () => ({} as DrakidionTask)
+      process: () => ({} as DrakidionTask)
     };
   });
 

@@ -96,7 +96,7 @@ export const processNextTask = async (
     TaskMapOps.setTask(state.taskMap, runningTask);
     
     // Process the task - calls task.process()
-    const successorTask = await task.process();
+    const successorTask = task.process();
     
     // Transition to successor task
     state = transitionTask(state, taskId, successorTask);

@@ -31,7 +31,7 @@ describe('Orchestrator', () => {
     description: `Mock task ${taskId}`,
     work: `Work for ${taskId}`,
     createdAt: new Date(),
-    process: async () => {
+    process: () => {
       if (processResult) {
         return processResult;
       }
@@ -44,7 +44,7 @@ describe('Orchestrator', () => {
         work: `Completed ${taskId}`,
         createdAt: new Date(),
         doneAt: new Date(),
-        process: async () => {
+        process: () => {
           throw new Error('Task already completed');
         },
       };
@@ -150,7 +150,7 @@ describe('Orchestrator', () => {
         description: 'Error task',
         work: 'Will fail',
         createdAt: new Date(),
-        process: async () => {
+        process: () => {
           throw new Error('Test error');
         },
       };
@@ -194,7 +194,7 @@ describe('Orchestrator', () => {
         description: 'Waiting task',
         work: 'Waiting...',
         createdAt: new Date(),
-        process: async () => task,
+        process: () => task,
       };
       
       const successorTask: DrakidionTask = {
@@ -205,7 +205,7 @@ describe('Orchestrator', () => {
         work: 'Result: test result',
         createdAt: new Date(),
         doneAt: new Date(),
-        process: async () => {
+        process: () => {
           throw new Error('Done');
         },
       };
@@ -232,7 +232,7 @@ describe('Orchestrator', () => {
         description: 'Waiting task with error',
         work: 'Waiting...',
         createdAt: new Date(),
-        process: async () => task,
+        process: () => task,
       };
       
       const errorTask: DrakidionTask = {
@@ -243,7 +243,7 @@ describe('Orchestrator', () => {
         work: 'Error: Test error',
         createdAt: new Date(),
         doneAt: new Date(),
-        process: async () => {
+        process: () => {
           throw new Error('Failed');
         },
       };

@@ -41,8 +41,8 @@ export interface DrakidionTask {
   /** Work product being built (e.g., document, tweet) */
   work: string;
   
-  /** Process function that returns a promise resolving to successor task */
-  process: () => Promise<DrakidionTask>;
+  /** Process function that returns successor task */
+  process: () => DrakidionTask;
   
   /** Optional: Conversation history with LLM */
   conversation?: ConversationMessage[];

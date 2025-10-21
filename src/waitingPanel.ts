@@ -31,8 +31,8 @@ const updateWaitingTaskList = (orchestratorState: OrchestratorState) => {
   const $taskList = $('#waiting-task-list');
   $taskList.empty();
   
-  // Get task IDs from waitingMap
-  const waitingTaskIds = Array.from(orchestratorState.waitingMap.correlations.values());
+  // Get task IDs from waitingSet
+  const waitingTaskIds = Array.from(orchestratorState.waitingSet.waitingTaskIds);
   
   if (waitingTaskIds.length === 0) {
     $taskList.append('<div style="color: var(--text-secondary); padding: 1rem; text-align: center;">No waiting tasks</div>');
@@ -41,7 +41,7 @@ const updateWaitingTaskList = (orchestratorState: OrchestratorState) => {
   
   // Get tasks from taskMap
   waitingTaskIds.forEach(taskId => {
-    const task = TaskMapOps.getTask(orchestratorState.taskMap, taskId);
+    const task = TaskMapOps.getTask(orchestratorState.taskMap, taskId as string);
     
     if (!task) return;
     

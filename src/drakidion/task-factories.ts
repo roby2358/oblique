@@ -19,7 +19,7 @@ export const newReadyTask = (description: string): Omit<DrakidionTask, 'doneAt'>
     description,
     work: '',
     conversation: undefined,
-    process: async (): Promise<DrakidionTask> => {
+    process: (): DrakidionTask => {
       throw new Error('Task process not implemented');
     },
   };
@@ -41,7 +41,7 @@ export const newWaitingTask = (description: string): Omit<DrakidionTask, 'doneAt
     description,
     work: 'Waiting...',
     conversation: undefined,
-    process: async (): Promise<DrakidionTask> => {
+    process: (): DrakidionTask => {
       throw new Error('Waiting tasks should not be processed directly');
     },
   };
@@ -60,7 +60,7 @@ export const nextTask = (task: DrakidionTask): Omit<DrakidionTask, 'doneAt'> => 
     work: task.work,
     conversation: task.conversation,
     createdAt: task.createdAt,
-    process: async () => {
+    process: () => {
       throw new Error('Task already completed');
     },
   };

@@ -9,7 +9,7 @@ describe('TaskMap', () => {
     status,
     description: `Mock task ${taskId}`,
     work: `Work for ${taskId}`,
-    process: async () => createMockTask(taskId, 'succeeded'),
+    process: () => createMockTask(taskId, 'succeeded'),
   });
   
   describe('createTaskMap', () => {

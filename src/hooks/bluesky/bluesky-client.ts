@@ -7,6 +7,12 @@ export interface BlueskyConfig {
   appPassword: string;
 }
 
+export interface BlueskyHistoryEntry {
+  author: string;
+  text: string;
+  altTexts?: string[];
+}
+
 export class BlueskyClient {
   private agent: BskyAgent;
   private authenticated = false;
@@ -239,7 +245,7 @@ export class BlueskyClient {
    * Returns the post's author, text, and alt texts (if any).
    * For quote posts, the quoted content is treated as history/context, not as the main content.
    */
-  private extractPostData(node: any): { author: string; text: string; altTexts?: string[] } | null {
+  private extractPostData(node: any): BlueskyHistoryEntry | null {
     if (!node || node.$type !== 'app.bsky.feed.defs#threadViewPost') {
       return null;
     }
@@ -268,8 +274,8 @@ export class BlueskyClient {
    * Recursively extracts all posts from a thread structure.
    * Returns an array of posts in chronological order (oldest first).
    */
-  private extractPostsFromThread(threadNode: any): Array<{ author: string; text: string; altTexts?: string[] }> {
-    const postsInOrder: Array<{ author: string; text: string; altTexts?: string[] }> = [];
+  private extractPostsFromThread(threadNode: any): BlueskyHistoryEntry[] {
+    const postsInOrder: BlueskyHistoryEntry[] = [];
     
     const traverse = (node: any): void => {
       const postData = this.extractPostData(node);
@@ -294,7 +300,7 @@ export class BlueskyClient {
    * Returns an array with the quoted post's content as history and the quote post's text as the main message.
    * Falls back to the notification's own content if the quoted post cannot be fetched.
    */
-  async getQuotedHistory(notification: BlueskyMessage): Promise<Array<{ author: string; text: string; altTexts?: string[] }>> {
+  async getQuotedHistory(notification: BlueskyMessage): Promise<BlueskyHistoryEntry[]> {
     if (!this.authenticated) {
       throw new Error('Not authenticated. Call authenticate() first.');
     }
@@ -375,7 +381,7 @@ export class BlueskyClient {
    * Returns an array with the post data including alt texts from images.
    * If the post quotes another post, includes the quoted post's text as history.
    */
-  private async getOnePostHistory(message: BlueskyMessage): Promise<Array<{ author: string; text: string; altTexts?: string[] }>> {
+  private async getOnePostHistory(message: BlueskyMessage): Promise<BlueskyHistoryEntry[]> {
     const basicFallback = [{
       author: message.author,
       text: message.text,
@@ -444,7 +450,7 @@ export class BlueskyClient {
    * Determines the type of history to fetch and builds a unified history list.
    * Returns an array of messages with the most recent post last.
    */
-  async getHistory(notification: BlueskyMessage): Promise<Array<{ author: string; text: string; altTexts?: string[] }>> {
+  getHistory(notification: BlueskyMessage): Promise<BlueskyHistoryEntry[]> {
     // Quote posts: history is the quoted post content
     if (notification.reason === 'quote') {
       return this.getQuotedHistory(notification);
@@ -463,7 +469,7 @@ export class BlueskyClient {
    * Fetches the thread history for a message, going back up to maxDepth posts.
    * Returns an array of messages in chronological order (oldest first).
    */
-  async getThreadHistory(message: BlueskyMessage, maxDepth: number): Promise<Array<{ author: string; text: string; altTexts?: string[] }>> {
+  async getThreadHistory(message: BlueskyMessage, maxDepth: number): Promise<BlueskyHistoryEntry[]> {
     if (!this.authenticated) {
       throw new Error('Not authenticated. Call authenticate() first.');
     }

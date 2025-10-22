@@ -4,6 +4,7 @@ import { getBlueskyClient, getLLMClient, getOrchestratorState, setOrchestratorSt
 import { createReplyTask } from './oblique-task-factory.js';
 import * as Orchestrator from './drakidion/orchestrator.js';
 import type { BlueskyMessage } from './types/index.js';
+import type { BlueskyHistoryEntry } from './hooks/bluesky/bluesky-client.js';
 import { getConfig } from './config.js';
 
 declare const $: any;
@@ -12,7 +13,13 @@ declare const $: any;
 let pollingInterval: NodeJS.Timeout | null = null;
 let isPolling = false;
 
-// Check if a single notification should be responded to based on response rules
+/** Check if a single notification should be responded to based on response rules
+ * 
+ * This is the first, quick check to see if the notification should be responded to.
+ * @param notification - The notification to check
+ * @param hasReplies - Whether the notification has already been replied to
+ * @returns Whether the notification should be responded to
+ */
 const shouldRespondToNotification = (
   notification: BlueskyMessage,
   hasReplies: boolean = false
@@ -43,6 +50,41 @@ const shouldRespondToNotification = (
   }
 
   return true;
+};
+
+/**
+ * This is the second check against the whole thread to see if we should respond.
+ * This examines the full conversation context to make more sophisticated decisions.
+ * @param thread - The full thread history
+ * @returns The thread if we should respond, null if we should not
+ */
+export const shouldRespondToThread = (thread: BlueskyHistoryEntry[]): BlueskyHistoryEntry[] | null => {
+  // If thread is empty, don't respond
+  if (!thread || thread.length === 0) {
+    return null;
+  }
+
+  const config = getConfig();
+  
+  // Check if the last message author is in the bot list, count their messages
+  const lastMessage = thread[thread.length - 1];
+  if (config.botList.includes(lastMessage.author)) {
+    const messagesFromLastAuthor = thread.filter(entry => entry.author === lastMessage.author).length;
+    if (messagesFromLastAuthor > 3) {
+      console.log(`Skipping thread: Last message author @${lastMessage.author} has ${messagesFromLastAuthor} messages (> 3 limit)`);
+      return null;
+    }
+  }
+
+  // Check if the thread is too long (avoid very long conversations)
+  if (thread.length > 30) {
+    console.log(`Skipping thread: Thread is too long (${thread.length} messages)`);
+    return null;
+  }
+  
+  // For now, if we get this far, we should respond
+  console.log(`✓ Thread passed thread-level checks (${thread.length} messages)`);
+  return thread;
 };
 
 // Callback functions for task management
@@ -145,10 +187,28 @@ const checkIfShouldRespond = async (
     }
   }
 
-  const shouldRespond = shouldRespondToNotification(notif, hasReplies);
-  console.log(`Should respond: ${shouldRespond}`);
-  
-  return shouldRespond;
+  // First check: notification-level rules
+  const shouldRespondToNotif = shouldRespondToNotification(notif, hasReplies);
+  if (!shouldRespondToNotif) {
+    return false;
+  }
+
+  // Second check: thread-level rules (get full thread history)
+  try {
+    const thread = await blueskyClient.getHistory(notif);
+    const validatedThread = shouldRespondToThread(thread);
+    
+    if (!validatedThread) {
+      return false;
+    }
+    
+    console.log(`✓ Passed both notification and thread-level checks for @${notif.author}`);
+    return true;
+  } catch (error) {
+    console.warn(`Error checking thread history for ${notif.author}:`, error);
+    // If we can't get thread history, fall back to notification-level check
+    return shouldRespondToNotif;
+  }
 };
 
 // Main notification checking logic (shared between manual and polling)

@@ -1,4 +1,5 @@
 // Oblique response generation prompts
+import type { BlueskyHistoryEntry } from '../hooks/bluesky/bluesky-client.js';
 
 
 export type ObliqueTextLens = 'supertext' | 'subtext' | 'architext' | 'psychotext';
@@ -203,8 +204,10 @@ Answer in markdown with 3 sections, Thinking, Related Western, Related Eastern, 
 };
 
 export const createObliqueConversation = (
-  thread: Array<{ author: string; text: string; altTexts?: string[] }>
-): { role: string; content: string }[] => {
+  thread: BlueskyHistoryEntry[] | null
+): { role: string; content: string }[] | null => {
+  // Guard condition: return null if thread is null
+  if (!thread) return null;
 
   // Map all posts first
   const formattedPosts = thread.map(formatPost);

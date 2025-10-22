@@ -7,6 +7,7 @@ import type { LLMClient } from './hooks/llm/llm-client.js';
 import type { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
 import { createObliqueConversation, getDailyModel } from './prompts/oblique.js';
 import { nextTask, createSucceededTask, createDeadTask, newReadyTask, newWaitingTask } from './drakidion/task-factories.js';
+import { shouldRespondToThread } from './bluesky-polling.js';
 
 // Single source of truth for reply length limits
 const MAX_BLUESKY_REPLY_CHARS = 299;
@@ -59,12 +60,17 @@ const extractResponseContent = (content: string): string | null => {
 /**
  * Generate LLM response with retry logic for length constraints
  * Retries up to 5 times if response is longer than 300 characters
+ * Returns null if conversation is null (aborted)
  */
 const generateLLMResponseWithRetry = async (
   llmClient: LLMClient,
-  conversation: ConversationMessage[],
+  conversation: ConversationMessage[] | null,
   maxAttempts: number = 5
-): Promise<{ conversation: ConversationMessage[]; response: { content: string } }> => {
+): Promise<{ conversation: ConversationMessage[]; response: { content: string } } | null> => {
+  // If conversation is null (aborted), return null
+  if (!conversation) {
+    return null;
+  }
   let attempts = 0;
   
   while (attempts < maxAttempts) {
@@ -156,6 +162,37 @@ const createSendToLLMDeadTask = (
 };
 
 /**
+ * Send reply from LLM result
+ * Handles null result case (aborted due to thread checks)
+ */
+const sendReply = (
+  result: { conversation: ConversationMessage[]; response: { content: string } } | null,
+  notification: BlueskyMessage,
+  blueskyClient: BlueskyClient,
+  task: DrakidionTask,
+  onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void
+): void => {
+  if (!result) {
+    console.log('Task creation aborted due to thread-level checks');
+    return;
+  }
+  
+  const { conversation, response } = result;
+  console.log('LLM response:', response.content);
+
+  const postTask = createPostReplyTask(
+    notification,
+    response.content,
+    blueskyClient,
+    conversation,
+    nextTask(task) // Pass the base task properties
+  );
+  
+  // Notify that waiting task is complete with the actual successor
+  onWaitingTaskComplete(task.taskId, postTask);
+};
+
+/**
  * Step 2: Create a task to send message to LLM
  * This is a WAITING task that creates a READY task when response arrives
  * Successor task (inherits taskId from predecessor, version = predecessor.version + 1)
@@ -181,24 +218,12 @@ export const createSendToLLMTask = (
   // Get the unified message history
   const getHistoryPromise = blueskyClient.getHistory(notification);
 
-  // Fetch the thread history and create conversation
+  // Fetch the thread history and create conversation with thread-level checks
   getHistoryPromise
+    .then(thread => shouldRespondToThread(thread))
     .then(thread => createObliqueConversation(thread))
     .then(conversation => generateLLMResponseWithRetry(llmClient, conversation))
-    .then(({ conversation, response }) => {
-      console.log('LLM response:', response.content);
-
-      const postTask = createPostReplyTask(
-        notification,
-        response.content,
-        blueskyClient,
-        conversation,
-        nextTask(task) // Pass the base task properties
-      );
-      
-      // Notify that waiting task is complete with the actual successor
-      onWaitingTaskComplete(task.taskId, postTask);
-    })
+    .then(result => sendReply(result, notification, blueskyClient, task, onWaitingTaskComplete))
     .catch(error => {
       // Create dead task
       const deadTask = createSendToLLMDeadTask(task, error);

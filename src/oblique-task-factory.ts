@@ -53,8 +53,8 @@ const extractResponseContent = (content: string): string | null => {
     return null;
   }
   
-  // Extract and trim the captured content
-  return match[1].trim();
+  // Extract and trim the captured content, removing backticks
+  return match[1].trim().replace(/^`+|`+$/g, '');
 };
 
 /**

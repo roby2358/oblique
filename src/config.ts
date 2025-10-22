@@ -12,7 +12,8 @@ export const DEFAULT_CONFIG = {
     handle: '',
     password: ''
   },
-  ignoreList: []
+  ignoreList: [],
+  botList: []
 } as const;
 
 // Hold config at module level

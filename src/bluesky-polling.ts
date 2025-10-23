@@ -53,6 +53,37 @@ const shouldRespondToNotification = (
 };
 
 /**
+ * Check if we should skip a thread based on bot activity in recent messages
+ * Only applies bot count filtering if the last author is a bot
+ * @param thread - The full thread history
+ * @param botList - List of bot usernames to check against
+ * @returns true if we should skip the thread, false if we should continue
+ */
+const shouldSkipThreadForBotActivity = (thread: BlueskyHistoryEntry[], botList: string[]): boolean => {
+  // Check the last 4 authors in the thread
+  const lastFourMessages = thread.slice(-4);
+  const lastFourAuthors = lastFourMessages.map(entry => entry.author.replace('@', ''));
+  const lastAuthor = lastFourAuthors[lastFourAuthors.length - 1];
+  const isLastAuthorBot = botList.includes(lastAuthor);
+
+  console.log(`Last 4 authors: ${lastFourAuthors.join(', ')}`);
+  console.log(`Last message author: ${lastAuthor} bot? ${isLastAuthorBot}`);
+
+  // Only check bot count if the last author is a bot
+  if (isLastAuthorBot) {
+    const messagesFromLastAuthor = lastFourAuthors.filter(author => author === lastAuthor).length;
+    console.log(`Messages from last author (${lastAuthor}) in last 4: ${messagesFromLastAuthor}`);
+
+    if (messagesFromLastAuthor > 2) {
+      console.log(`Skipping thread: Last author ${lastAuthor} has ${messagesFromLastAuthor} messages in last 4 (> 2 limit)`);
+      return true;
+    }
+  }
+
+  return false;
+};
+
+/**
  * This is the second check against the whole thread to see if we should respond.
  * This examines the full conversation context to make more sophisticated decisions.
  * @param thread - The full thread history
@@ -66,18 +97,13 @@ export const shouldRespondToThread = (thread: BlueskyHistoryEntry[]): BlueskyHis
 
   const config = getConfig();
   
-  // Check if the last message author is in the bot list, count their messages
-  const lastMessage = thread[thread.length - 1];
-  if (config.botList.includes(lastMessage.author)) {
-    const messagesFromLastAuthor = thread.filter(entry => entry.author === lastMessage.author).length;
-    if (messagesFromLastAuthor > 3) {
-      console.log(`Skipping thread: Last message author @${lastMessage.author} has ${messagesFromLastAuthor} messages (> 3 limit)`);
-      return null;
-    }
+  // Check if we should skip due to bot activity
+  if (shouldSkipThreadForBotActivity(thread, config.botList)) {
+    return null;
   }
 
   // Check if the thread is too long (avoid very long conversations)
-  if (thread.length > 30) {
+  if (thread.length > 25) {
     console.log(`Skipping thread: Thread is too long (${thread.length} messages)`);
     return null;
   }

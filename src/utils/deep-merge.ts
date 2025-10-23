@@ -1,20 +1,20 @@
 /**
  * Deep merge utility for objects
- * Recursively merges config objects into defaults, preserving nested structures
- * @param defaults The default object to merge into
- * @param config The configuration object to merge from
+ * Recursively merges values objects into target, preserving nested structures
+ * @param target The target object to merge into
+ * @param values The values object to merge from
  * @returns The merged object
  */
-export const deepMerge = (defaults: any, config: any): any => {
-  for (const key in config) {
-    if (config[key] !== null && typeof config[key] === 'object' && !Array.isArray(config[key])) {
+export const deepMerge = (target: any, values: any): any => {
+  for (const key in values) {
+    if (values[key] !== null && typeof values[key] === 'object' && !Array.isArray(values[key])) {
       // Recursively merge nested objects
-      defaults[key] = deepMerge(defaults[key] || {}, config[key]);
+      target[key] = deepMerge(target[key] || {}, values[key]);
     } else {
       // Assign primitive values, arrays, or null directly
-      defaults[key] = config[key];
+      target[key] = values[key];
     }
   }
   
-  return defaults;
+  return target;
 };

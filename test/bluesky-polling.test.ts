@@ -27,7 +27,8 @@ describe('Bluesky Polling Module', () => {
     // Mock the index module for getConfig
     jest.doMock('../src/config.js', () => ({
       getConfig: jest.fn(() => ({
-        ignoreList: []
+        ignoreList: [],
+        botList: []
       })),
     }));
 

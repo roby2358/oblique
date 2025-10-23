@@ -56,17 +56,19 @@ const shouldRespondToNotification = (
  * Check if we should skip a thread based on bot activity in recent messages
  * Only applies bot count filtering if the last author is a bot
  * @param thread - The full thread history
- * @param botList - List of bot usernames to check against
  * @returns true if we should skip the thread, false if we should continue
  */
-const shouldSkipThreadForBotActivity = (thread: BlueskyHistoryEntry[], botList: string[]): boolean => {
+const shouldSkipThreadForBotActivity = (thread: BlueskyHistoryEntry[]): boolean => {
+  const config = getConfig();
+  const botList = config.botList;
   // Check the last 4 authors in the thread
   const lastFourMessages = thread.slice(-4);
   const lastFourAuthors = lastFourMessages.map(entry => entry.author.replace('@', ''));
   const lastAuthor = lastFourAuthors[lastFourAuthors.length - 1];
   const isLastAuthorBot = botList.includes(lastAuthor);
 
-  console.log(`Last 4 authors: ${lastFourAuthors.join(', ')}`);
+  console.log(`Last 4 authors: ${lastFourAuthors.join('|')}`);
+  console.log(`All bots: ${botList.join('|')}`);
   console.log(`Last message author: ${lastAuthor} bot? ${isLastAuthorBot}`);
 
   // Only check bot count if the last author is a bot
@@ -74,7 +76,7 @@ const shouldSkipThreadForBotActivity = (thread: BlueskyHistoryEntry[], botList: 
     const messagesFromLastAuthor = lastFourAuthors.filter(author => author === lastAuthor).length;
     console.log(`Messages from last author (${lastAuthor}) in last 4: ${messagesFromLastAuthor}`);
 
-    if (messagesFromLastAuthor > 2) {
+    if (messagesFromLastAuthor >= 2) {
       console.log(`Skipping thread: Last author ${lastAuthor} has ${messagesFromLastAuthor} messages in last 4 (> 2 limit)`);
       return true;
     }
@@ -95,10 +97,8 @@ export const shouldRespondToThread = (thread: BlueskyHistoryEntry[]): BlueskyHis
     return null;
   }
 
-  const config = getConfig();
-  
   // Check if we should skip due to bot activity
-  if (shouldSkipThreadForBotActivity(thread, config.botList)) {
+  if (shouldSkipThreadForBotActivity(thread)) {
     return null;
   }
 

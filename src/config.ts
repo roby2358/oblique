@@ -29,16 +29,19 @@ export const loadConfigWithFallbacks = async (): Promise<Record<string, any>> =>
   const result = structuredClone(DEFAULT_CONFIG);
   try {
     const response = await fetch('/config.json');
-    if (response.ok) {
-      const configJson = await response.json();
-      
-      // Deep merge config.json with defaults
-      return deepMerge(result, configJson);
-    } else {
+
+    if (!response.ok) {
       console.warn(`Could not load config.json (${response.status}), using defaults`);
+      return result;
     }
+
+    const configJson = await response.json();
+    
+    deepMerge(result, configJson);
+    console.log(`config with defaults: ${JSON.stringify(result, null, 2)}`);
+    return result;
   } catch (error) {
-    console.warn('Could not load config.json, using defaults');
+    console.warn('Could not load config.json, using defaults:', error);
   }
 
   return result;

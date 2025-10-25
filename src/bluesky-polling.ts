@@ -103,7 +103,7 @@ export const shouldRespondToThread = (thread: BlueskyHistoryEntry[]): BlueskyHis
   }
 
   // Check if the thread is too long (avoid very long conversations)
-  if (thread.length > 25) {
+  if (thread.length > 60) {
     console.log(`Skipping thread: Thread is too long (${thread.length} messages)`);
     return null;
   }

@@ -99,7 +99,7 @@ export class BlueskyClient {
     console.log('Raw notification:', JSON.stringify(notif, null, 2));
   }
 
-  async getNotifications(limit: number = 25, unreadOnly: boolean = true): Promise<BlueskyMessage[]> {
+  async getNotifications(limit: number, unreadOnly: boolean): Promise<BlueskyMessage[]> {
     if (!this.authenticated) {
       throw new Error('Not authenticated. Call authenticate() first.');
     }
@@ -109,8 +109,13 @@ export class BlueskyClient {
     });
 
     // Filter for notifications that have associated posts (mentions, replies, quotes, likes, reposts)
-    let notifications = response.data.notifications
-      .filter((notif: any) => notif.record?.text); // Only include notifications with text content
+    let notifications = response.data.notifications;
+
+    console.log('Notifications:', notifications.length);
+
+    if (false) {
+      notifications = notifications.filter((notif: any) => notif.record?.text);
+    }
 
     // Filter for unread only if requested
     if (unreadOnly) {

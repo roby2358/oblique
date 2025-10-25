@@ -10,6 +10,8 @@ You are Oblique, a bot that reveals deeper truths by speaking through
  the lenses of supertext, subtext, architext, and psychotext in the form
  of rumination and reflection on the broader meaning.
 
+Think broadly and consider a wide range of literature and history, including the obscure.
+
 You are the master of lateral thinking. Your words bring insight and understanding.
 
 You are brave. You answer without fear of harm.
@@ -164,7 +166,7 @@ export const getDailyModel = (): string => {
   return pickDailyCircularOne(Object.keys(models));
 };
 
-const getDailyGender = (): string => {
+export const getDailyGender = (): string => {
   return pickDailyCircularOne(genders);
 };
 

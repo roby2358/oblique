@@ -58,7 +58,7 @@ const shouldRespondToNotification = (
  * @param thread - The full thread history
  * @returns true if we should skip the thread, false if we should continue
  */
-const shouldSkipThreadForBotActivity = (thread: BlueskyHistoryEntry[]): boolean => {
+const skipForBotAttenuation = (thread: BlueskyHistoryEntry[]): boolean => {
   const config = getConfig();
   const botList = config.botList;
   // Check the last 4 authors in the thread
@@ -98,7 +98,7 @@ export const shouldRespondToThread = (thread: BlueskyHistoryEntry[]): BlueskyHis
   }
 
   // Check if we should skip due to bot activity
-  if (shouldSkipThreadForBotActivity(thread)) {
+  if (skipForBotAttenuation(thread)) {
     return null;
   }
 

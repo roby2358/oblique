@@ -21,6 +21,36 @@ export class BlueskyClient {
     this.agent = new BskyAgent({ service: 'https://bsky.social' });
   }
 
+  /**
+   * Checks if an error is a NotFoundError (post deleted or not found).
+   * This is a common, expected occurrence and should be handled gracefully.
+   */
+  private isNotFoundError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+    return (
+      error.name === 'NotFoundError' || 
+      error.message.includes('Post not found') ||
+      error.message.includes('not found')
+    );
+  }
+
+  /**
+   * Messages errors gracefully, logging NotFoundError as debug and other errors as warnings.
+   * @param error - The error to message
+   * @param contextUri - The URI or identifier that was being accessed
+   * @param contextType - The type of context (e.g., "Post", "Quoted post", "Thread post")
+   * @param warningMessage - The warning message to log for non-NotFound errors
+   */
+  private messageNotFoundError(error: unknown, contextUri: string, contextType: string, warningMessage: string): void {
+    if (this.isNotFoundError(error)) {
+      console.debug(`${contextType} not found (likely deleted): ${contextUri}`);
+    } else {
+      console.warn(warningMessage, error);
+    }
+  }
+
   async authenticate(): Promise<void> {
     await this.agent.login({
       identifier: this.config.handle,
@@ -209,7 +239,8 @@ export class BlueskyClient {
       // The replies array contains direct replies to this post
       return !!(thread.replies && thread.replies.length > 0);
     } catch (error) {
-      console.error('Error checking for replies to post:', error);
+      // Handle deleted/missing posts gracefully - this is a normal occurrence
+      this.messageNotFoundError(error, message.uri, 'Post', 'Error checking for replies to post:');
       return false;
     }
   }
@@ -376,7 +407,8 @@ export class BlueskyClient {
       console.log('Quote Post History:', history);
       return history;
   } catch (error) {
-      console.error('Error fetching quoted post content:', error);
+      // Handle deleted/missing posts gracefully
+      this.messageNotFoundError(error, notification.uri, 'Quoted post', 'Error fetching quoted post content:');
       return fallback;
     }
   }
@@ -432,7 +464,8 @@ export class BlueskyClient {
             }
           }
         } catch (quoteError) {
-          console.error('Error fetching quoted post:', quoteError);
+          // Handle deleted/missing quoted posts gracefully
+          this.messageNotFoundError(quoteError, quotedPostUri, 'Quoted post', 'Error fetching quoted post:');
           // Continue with just the current post if quoted post fetch fails
         }
       }
@@ -446,7 +479,8 @@ export class BlueskyClient {
       
       return history;
     } catch (error) {
-      console.error('Error fetching current post data:', error);
+      // Handle deleted/missing posts gracefully
+      this.messageNotFoundError(error, message.uri, 'Post', 'Error fetching current post data:');
       return basicFallback;
     }
   }
@@ -534,14 +568,17 @@ export class BlueskyClient {
           altTexts: postData.altTexts,
         });
       } catch (error) {
-        console.error('Error fetching current post data:', error);
+        // Handle deleted/missing posts gracefully
+        this.messageNotFoundError(error, message.uri, 'Current post', 'Error fetching current post data:');
         thread.push(basicFallback[0]);
       }
       
       return thread;
       
     } catch (error) {
-      console.error('Error fetching thread:', error);
+      // Handle deleted/missing posts gracefully
+      const parentUri = message.replyInfo?.parent?.uri || 'unknown';
+      this.messageNotFoundError(error, parentUri, 'Thread post', 'Error fetching thread:');
       return basicFallback;
     }
   }

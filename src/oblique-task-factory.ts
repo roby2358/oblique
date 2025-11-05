@@ -16,6 +16,15 @@ const OBLIQUE_TRUNCATION_PUNCTUATION = new Set(['.', '!', '?', ',', ':', ';', 'â
 // Regex to extract content after "# Response" header
 const RESPONSE_HEADER_REGEX = /# Response\s*\n?(.*)/s;
 
+const FALLBACK_NOTIFICATION_TEXT = '(no text provided)';
+
+const coalesceText = (text: unknown, fallback: string): string => {
+  if (typeof text === 'string' && text.length > 0) {
+    return text;
+  }
+  return fallback;
+};
+
 /**
  * Intelligently truncate text by finding the last punctuation mark
  * If no punctuation found, truncate to MAX_OBLIQUE_REPLY_CHARS
@@ -121,10 +130,11 @@ export const createReplyTask = (
   onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void
 ): DrakidionTask => {
   const description = `Notification from @${notification.author}`;
+  const notificationText = coalesceText(notification?.text, FALLBACK_NOTIFICATION_TEXT);
 
   const task: DrakidionTask = {
     // This is where we need to build the conversation
-    conversation: [{ role: 'user', content: notification.text }],
+    conversation: [{ role: 'user', content: notificationText }],
 
     // Starts new chain: fresh taskId, version 1
     ...newReadyTask(description),
@@ -204,7 +214,8 @@ export const createSendToLLMTask = (
   onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void,
   baseTask: Partial<DrakidionTask>
 ): DrakidionTask => {
-  const description = `Oblique: ${notification.text.substring(0, 40)}${notification.text.length > 40 ? '...' : ''}`;
+  const notificationText = coalesceText(notification?.text, FALLBACK_NOTIFICATION_TEXT);
+  const description = `Oblique: ${notificationText.substring(0, 40)}${notificationText.length > 40 ? '...' : ''}`;
   
   // Create waiting task as successor (inherits taskId, increments version)
   const task: DrakidionTask = {

@@ -235,4 +235,26 @@ describe('createSendToLLMTask quote post handling', () => {
 
     expect(mockBlueskyClient.getHistory).toHaveBeenCalledWith(quoteNotification);
   });
+
+  it('should use fallback preview when notification text is missing', () => {
+    const incompleteNotification = {
+      uri: 'at://did:plc:test/app.bsky.feed.post/empty123',
+      cid: 'bafyempty123',
+      author: 'missingtext.bsky.social',
+      createdAt: new Date(),
+      reason: 'mention'
+    } as unknown as BlueskyMessage;
+
+    (mockBlueskyClient.getHistory as jest.MockedFunction<any>).mockResolvedValue([]);
+
+    const task = createSendToLLMTask(
+      incompleteNotification,
+      mockLLMClient,
+      mockBlueskyClient,
+      mockOnWaitingTaskComplete,
+      mockPredecessor
+    );
+
+    expect(task.description).toBe('Oblique: (no text provided)');
+  });
 });

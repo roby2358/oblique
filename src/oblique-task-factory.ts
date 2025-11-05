@@ -118,6 +118,23 @@ const generateLLMResponseWithRetry = async (
   throw new Error('Unexpected error in retry logic');
 };
 
+
+/**
+ * Dead version of LLM task (on error)
+ */
+const createSendToLLMDeadTask = (
+  task: DrakidionTask,
+  error: any
+): DrakidionTask => {
+  const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+
+  return {
+    ...createDeadTask(task),
+    work: `Error: ${errorMsg}`,
+    conversation: task.conversation,
+  };
+};
+
 /**
  * Step 1: Create a task to process a Bluesky notification
  * This is a READY task that creates a WAITING task for LLM response
@@ -152,23 +169,6 @@ export const createReplyTask = (
   };
 
   return task;
-};
-
-
-/**
- * Dead version of LLM task (on error)
- */
-const createSendToLLMDeadTask = (
-  task: DrakidionTask,
-  error: any
-): DrakidionTask => {
-  const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-
-  return {
-    ...createDeadTask(task),
-    work: `Error: ${errorMsg}`,
-    conversation: task.conversation,
-  };
 };
 
 /**

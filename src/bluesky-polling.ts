@@ -17,22 +17,29 @@ let isPolling = false;
  * 
  * This is the first, quick check to see if the notification should be responded to.
  * @param notification - The notification to check
- * @param hasReplies - Whether the notification has already been replied to
+ * @param postData - The post thread data from getSinglePost
  * @returns Whether the notification should be responded to
  */
-const shouldRespondToNotification = (
+export const shouldRespondToNotification = (
   notification: BlueskyMessage,
-  hasReplies: boolean = false
+  postData: any
 ): boolean => {
   // Rule 1: Check if author is in ignore list
-  const config = getConfig();
-  if (config.ignoreList.includes(notification.author)) {
+  const config = getConfig() ?? {};
+  const ignoreList: string[] = Array.isArray(config.ignoreList) ? config.ignoreList : [];
+  const configuredHandle = typeof config.bluesky?.handle === 'string' ? config.bluesky.handle : '';
+
+  if (ignoreList.includes(notification.author)) {
     console.log(`Skipping @${notification.author}: Author is in ignore list`);
     return false;
   }
 
   // Rule 2: Don't reply to quote posts unless the handle is in the text
-  if (notification.reason === 'quote' && !notification.text.includes(config.bluesky.handle)) {
+  if (
+    notification.reason === 'quote' &&
+    configuredHandle &&
+    !notification.text.includes(configuredHandle)
+  ) {
     console.log(`Skipping @${notification.author}: This is a quote post`);
     return false;
   }
@@ -44,9 +51,22 @@ const shouldRespondToNotification = (
   }
   
   // Rule 4: If it's not a direct mention, check if anyone has already replied
-  if (hasReplies) {
-    console.log(`Skipping @${notification.author}: Someone already replied to this post`);
-    return false;
+  try {
+    if (!postData?.data?.thread || (postData.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
+      // If we can't parse the post data, skip response
+      return false;
+    }
+    
+    const thread = postData.data.thread as any;
+    const hasReplies = !!(thread.replies && thread.replies.length > 0);
+    
+    if (hasReplies) {
+      console.log(`Skipping @${notification.author}: Someone already replied to this post`);
+      return false;
+    }
+  } catch (error) {
+    console.warn(`Error checking replies for ${notification.author}:`, error);
+    // Fall through and allow response when reply check fails
   }
 
   return true;
@@ -195,48 +215,6 @@ const updateCountdown = (nextCheckTime: Date) => {
   updateTimer();
 };
 
-// Determine if a notification should be responded to
-const checkIfShouldRespond = async (
-  notif: BlueskyMessage,
-  blueskyClient: any
-): Promise<boolean> => {
-  // Check if anyone has replied to this post (for non-direct mentions)
-  let hasReplies = false;
-  
-  if (notif.reason !== 'mention') {
-    try {
-      hasReplies = await blueskyClient.hasRepliesToPost(notif);
-    } catch (error) {
-      // assume it's OK
-      console.warn(`Error checking replies for ${notif.author}:`, error);
-      hasReplies = false;
-    }
-  }
-
-  // First check: notification-level rules
-  const shouldRespondToNotif = shouldRespondToNotification(notif, hasReplies);
-  if (!shouldRespondToNotif) {
-    return false;
-  }
-
-  // Second check: thread-level rules (get full thread history)
-  try {
-    const thread = await blueskyClient.getHistory(notif);
-    const validatedThread = shouldRespondToThread(thread);
-    
-    if (!validatedThread) {
-      return false;
-    }
-    
-    console.log(`✓ Passed both notification and thread-level checks for @${notif.author}`);
-    return true;
-  } catch (error) {
-    console.warn(`Error checking thread history for ${notif.author}:`, error);
-    // If we can't get thread history, fall back to notification-level check
-    return shouldRespondToNotif;
-  }
-};
-
 // Main notification checking logic (shared between manual and polling)
 export const checkNotifications = async () => {
   const blueskyClient = getBlueskyClient();
@@ -258,9 +236,7 @@ export const checkNotifications = async () => {
 
   try {
     // Authenticate if not already
-    if (!blueskyClient.isAuthenticated()) {
-      await blueskyClient.authenticate();
-    }
+    await blueskyClient.ensureAuth();
 
     // Get unread notifications only (unreadOnly = true by default)
     const notifications = await blueskyClient.getNotifications(3, true);
@@ -288,9 +264,9 @@ export const checkNotifications = async () => {
 
     // Iterate through each notification and check if we should respond
     for (const notif of notifications) {
-      const shouldRespond = await checkIfShouldRespond(notif, blueskyClient);
+      const postData = await blueskyClient.getSinglePost(notif.uri);
       
-      if (!shouldRespond) {
+      if (!shouldRespondToNotification(notif, postData)) {
         continue;
       }
       

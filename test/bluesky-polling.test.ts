@@ -1,4 +1,5 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import type { BlueskyMessage } from '../src/types/index.js';
 
 // Simple test for the polling functionality
 describe('Bluesky Polling Module', () => {
@@ -11,12 +12,22 @@ describe('Bluesky Polling Module', () => {
     val: jest.fn().mockReturnThis(),
   }));
 
-  beforeEach(() => {
+  let getConfigMock: jest.Mock;
+
+  beforeEach(async () => {
+    jest.resetModules();
     jest.clearAllMocks();
     (global as any).$ = mockJQuery;
-    
-    // Mock the panels module
-    jest.doMock('../src/panels.js', () => ({
+
+    getConfigMock = jest.fn(() => ({
+      ignoreList: [],
+      botList: [],
+      bluesky: {
+        handle: 'oblique.yuwakisa.com',
+      },
+    }));
+
+    await jest.unstable_mockModule('../src/panels.js', () => ({
       getBlueskyClient: jest.fn(),
       getLLMClient: jest.fn(),
       getOrchestratorState: jest.fn(),
@@ -24,24 +35,112 @@ describe('Bluesky Polling Module', () => {
       updateStatus: jest.fn(),
     }));
 
-    // Mock the index module for getConfig
-    jest.doMock('../src/config.js', () => ({
-      getConfig: jest.fn(() => ({
-        ignoreList: [],
-        botList: []
-      })),
+    await jest.unstable_mockModule('../src/config.js', () => ({
+      getConfig: getConfigMock,
     }));
 
-    // Mock the orchestrator module
-    jest.doMock('../src/drakidion/orchestrator.js', () => ({
+    await jest.unstable_mockModule('../src/drakidion/orchestrator.js', () => ({
       resumeWaitingTask: jest.fn(),
       addTask: jest.fn(),
     }));
 
-    // Mock the task factory
-    jest.doMock('../src/oblique-task-factory.js', () => ({
+    await jest.unstable_mockModule('../src/oblique-task-factory.js', () => ({
+      createReplyTask: jest.fn(),
       createProcessNotificationTask: jest.fn(),
     }));
+  });
+
+  const baseNotification: BlueskyMessage = {
+    uri: 'at://example.app/bsky.app/post/1',
+    cid: 'cid-1',
+    author: 'user.test',
+    text: 'Hello there',
+    createdAt: new Date('2025-01-01T00:00:00Z'),
+    reason: 'reply',
+  };
+
+  const createPostData = (hasReplies: boolean = false) => ({
+    data: {
+      thread: {
+        $type: 'app.bsky.feed.defs#threadViewPost',
+        replies: hasReplies ? [{ uri: 'reply-uri' }] : [],
+      },
+    },
+  });
+
+  describe('shouldRespondToNotification', () => {
+    it('skips authors in the ignore list', async () => {
+      getConfigMock.mockReturnValue({
+        ignoreList: ['user.test'],
+        botList: [],
+        bluesky: { handle: 'oblique.yuwakisa.com' },
+      });
+
+      const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
+      const postData = createPostData(false);
+      const result = shouldRespondToNotification(baseNotification, postData);
+      const configResult = getConfigMock.mock.results.at(-1)?.value as any;
+
+      expect(getConfigMock).toHaveBeenCalled();
+      expect(configResult).toBeDefined();
+      expect(result).toBe(false);
+      expect(configResult.ignoreList).toContain('user.test');
+    });
+
+    it('skips quote notifications that do not include the configured handle', async () => {
+      const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
+      const postData = createPostData(false);
+      const notification: BlueskyMessage = {
+        ...baseNotification,
+        reason: 'quote',
+        text: 'Random quote text',
+      };
+
+      const result = shouldRespondToNotification(notification, postData);
+
+      expect(result).toBe(false);
+      expect(getConfigMock).toHaveBeenCalled();
+    });
+
+    it('responds to direct mentions without checking for replies', async () => {
+      const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
+      const postData = createPostData(true); // Has replies, but should still respond to mentions
+      const notification: BlueskyMessage = {
+        ...baseNotification,
+        reason: 'mention',
+      };
+
+      const result = shouldRespondToNotification(notification, postData);
+
+      expect(result).toBe(true);
+    });
+
+    it('skips notifications when an existing reply is detected', async () => {
+      const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
+      const postData = createPostData(true); // Has replies
+
+      const result = shouldRespondToNotification(baseNotification, postData);
+
+      expect(result).toBe(false);
+    });
+
+    it('responds when no replies exist', async () => {
+      const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
+      const postData = createPostData(false); // No replies
+
+      const result = shouldRespondToNotification(baseNotification, postData);
+
+      expect(result).toBe(true);
+    });
+
+    it('skips when post data structure is invalid', async () => {
+      const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
+      const postData = { data: null }; // Invalid structure
+
+      const result = shouldRespondToNotification(baseNotification, postData);
+
+      expect(result).toBe(false); // Should skip response when data is invalid
+    });
   });
 
   it('should create toggle handler function', async () => {

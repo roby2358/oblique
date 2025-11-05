@@ -17,6 +17,9 @@ export interface BlueskyHistoryEntry {
 export class BlueskyClient {
   private agent: BskyAgent;
   private authenticated = false;
+  private tokenExpiresAt: Date | null = null;
+  // Re-authenticate 5 minutes before expiration to be safe
+  private readonly TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
   constructor(private config: BlueskyConfig) {
     this.agent = new BskyAgent({ service: 'https://bsky.social' });
@@ -52,18 +55,118 @@ export class BlueskyClient {
     }
   }
 
+  /**
+   * Returns a default token expiration (1 day from now).
+   */
+  private getDefaultTokenExpiration(reason: string): Date {
+    const expiration = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000);
+    console.log(`${reason}, using 1-day default expiration:`, expiration);
+    return expiration;
+  }
+
+  /**
+   * Parses the expiration date from a JWT token.
+   * Returns null if parsing fails or expiration is not present.
+   */
+  private parseJwtExpiration(accessJwt: string): Date | null {
+    // Guard: JWT must have 3 parts (header.payload.signature)
+    const parts = accessJwt.split('.');
+    if (parts.length !== 3) {
+      console.warn('Invalid JWT token, not 3 parts:');
+      return null;
+    }
+
+    try {
+      const payload = JSON.parse(atob(parts[1]));
+      
+      // Guard: expiration claim must exist
+      if (!payload.exp) {
+        console.warn('No expiration in JWT token:');
+        return null;
+      }
+
+      // JWT exp is in seconds since epoch
+      return new Date(payload.exp * 1000);
+    } catch (error) {
+      console.warn('Could not parse JWT expiration:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Extracts token expiration from the agent's session JWT.
+   * Returns the expiration date if found, otherwise uses a 1-day default.
+   */
+  private extractTokenExpiration(): Date {
+    // Guard: no session available
+    if (!this.agent.session) {
+      return this.getDefaultTokenExpiration('No session data available');
+    }
+
+    const session = this.agent.session as any;
+    const accessJwt = session.accessJwt;
+
+    // Guard: no access JWT in session
+    if (!accessJwt) {
+      return this.getDefaultTokenExpiration('No accessJwt in session');
+    }
+
+    // Try to parse JWT expiration
+    const expiration = this.parseJwtExpiration(accessJwt);
+    if (expiration) {
+      console.log('Token expiration set to:', expiration);
+      return expiration;
+    }
+
+    // Fallback to default
+    return this.getDefaultTokenExpiration('No expiration in token');
+  }
+
   async authenticate(): Promise<void> {
+    // clean the slate
+    this.authenticated = false;
+    this.tokenExpiresAt = null;
+
     await this.agent.login({
       identifier: this.config.handle,
       password: this.config.appPassword,
     });
+
+    // TODO: should check for status
     this.authenticated = true;
+
+    // Extract expiration from session data
+    this.tokenExpiresAt = this.extractTokenExpiration();
+  }
+
+  /**
+   * Checks if the token is expired or about to expire.
+   * Returns true if token is valid, false if it needs refresh.
+   */
+  private isTokenExpired(now: Date = new Date()): boolean {
+    if (!this.tokenExpiresAt) {
+      // No expiration info means we should re-authenticate
+      return true;
+    }
+    
+    const bufferTime = new Date(now.getTime() + this.TOKEN_REFRESH_BUFFER_MS);
+    
+    return this.tokenExpiresAt <= bufferTime;
+  }
+
+  /**
+   * Ensures authentication is valid. Re-authenticates if token is expired or about to expire.
+   * Should be called before any API operation.
+   */
+  async ensureAuth(): Promise<void> {
+    if (!this.authenticated || this.isTokenExpired()) {
+      console.log('Re-authenticating due to expired or missing token');
+      await this.authenticate();
+    }
   }
 
   async like(postUri: string): Promise<{ uri: string; cid: string }> {
-    if (!this.authenticated) {
-      throw new Error('Not authenticated. Call authenticate() first.');
-    }
+    await this.ensureAuth();
 
     // First, fetch the post to get its CID
     let postCid = '';
@@ -105,9 +208,7 @@ export class BlueskyClient {
   }
 
   async post(post: BlueskyPost): Promise<{ uri: string; cid: string }> {
-    if (!this.authenticated) {
-      throw new Error('Not authenticated. Call authenticate() first.');
-    }
+    await this.ensureAuth();
 
     const postData = {
       text: post.text,
@@ -131,9 +232,7 @@ export class BlueskyClient {
   }
 
   async getNotifications(limit: number, unreadOnly: boolean): Promise<BlueskyMessage[]> {
-    if (!this.authenticated) {
-      throw new Error('Not authenticated. Call authenticate() first.');
-    }
+    await this.ensureAuth();
 
     let response;
     try {
@@ -191,9 +290,7 @@ export class BlueskyClient {
   }
 
   async markNotificationsAsSeen(): Promise<void> {
-    if (!this.authenticated) {
-      throw new Error('Not authenticated. Call authenticate() first.');
-    }
+    await this.ensureAuth();
 
     await this.agent.updateSeenNotifications();
   }
@@ -227,23 +324,29 @@ export class BlueskyClient {
   }
 
   /**
+   * Fetches a single post by URI with minimal thread data.
+   * Returns the thread response from the Bluesky API.
+   */
+  async getSinglePost(uri: string): Promise<any> {
+    await this.ensureAuth();
+    
+    return await this.agent.getPostThread({ 
+      uri, 
+      depth: 1,  // Only get direct replies, not nested ones
+      parentHeight: 0  // Don't fetch parent posts
+    });
+  }
+
+  /**
    * Checks if anyone has already replied to the specific post mentioned in a notification.
    * This is used to see if someone beat Oblique to replying to that particular post.
    * Returns true if there are replies to that specific post, false otherwise.
    */
   async hasRepliesToPost(message: BlueskyMessage): Promise<boolean> {
-    if (!this.authenticated) {
-      throw new Error('Not authenticated. Call authenticate() first.');
-    }
-
     try {
       // Get minimal thread data (depth=1) to check for direct replies only
       // This fetches just the post and its direct replies, not the full conversation
-      const response = await this.agent.getPostThread({ 
-        uri: message.uri, 
-        depth: 1,  // Only get direct replies, not nested ones
-        parentHeight: 0  // Don't fetch parent posts
-      });
+      const response = await this.getSinglePost(message.uri);
       
       if (!response.data.thread || (response.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
         return false;
@@ -353,9 +456,7 @@ export class BlueskyClient {
    * Falls back to the notification's own content if the quoted post cannot be fetched.
    */
   async getQuotedHistory(notification: BlueskyMessage): Promise<BlueskyHistoryEntry[]> {
-    if (!this.authenticated) {
-      throw new Error('Not authenticated. Call authenticate() first.');
-    }
+    await this.ensureAuth();
 
     // Fallback to the notification's own content when quote post cannot be fetched
     const fallback = [{
@@ -525,9 +626,7 @@ export class BlueskyClient {
    * Returns an array of messages in chronological order (oldest first).
    */
   async getThreadHistory(message: BlueskyMessage, maxDepth: number): Promise<BlueskyHistoryEntry[]> {
-    if (!this.authenticated) {
-      throw new Error('Not authenticated. Call authenticate() first.');
-    }
+    await this.ensureAuth();
     
     // Fallback to basic message without alt texts
     const basicFallback = [{

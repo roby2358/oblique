@@ -1,5 +1,6 @@
 // Bluesky API client
 import { BskyAgent } from '@atproto/api';
+import { XRPCError } from '@atproto/xrpc';
 import type { BlueskyPost, BlueskyMessage } from '../../types/index.js';
 
 export interface BlueskyConfig {
@@ -134,9 +135,24 @@ export class BlueskyClient {
       throw new Error('Not authenticated. Call authenticate() first.');
     }
 
-    const response = await this.agent.api.app.bsky.notification.listNotifications({ 
-      limit
-    });
+    let response;
+    try {
+      response = await this.agent.api.app.bsky.notification.listNotifications({
+        limit,
+      });
+    } catch (error) {
+      if (error instanceof XRPCError) {
+        console.error('Bluesky notifications request failed', {
+          status: error?.status,
+          code: error?.error,
+          message: error?.message,
+          headers: error?.headers,
+        });
+      } else {
+        console.error('Unexpected Bluesky notifications error', error);
+      }
+      throw error;
+    }
 
     // Filter for notifications that have associated posts (mentions, replies, quotes, likes, reposts)
     let notifications = response.data.notifications;

@@ -1,8 +1,3 @@
-Priority:   80
-Status: ToDo
-ID: model-rot-gdrc
-Rotate the model and introduce a daily gender rotation that posts to Bluesky with the current configuration
----
 Priority:   70
 Status: ToDo
 ID: panel-ui-r6ze
@@ -27,11 +22,6 @@ Priority:   50
 Status: ToDo
 ID: cleanup-h2ts
 Review and clean up task syntax and formatting to make it easier to work with - standardize descriptions, improve clarity, and ensure consistent formatting across all tasks
----
-Priority:   50
-Status: ToDo
-ID: extract-resp-juwa
-Extract and trim all text after the "# Response" header from LLM responses. Update response processing logic to parse structured responses and extract only the response content section.
 ---
 Priority:   40
 Status: ToDo
@@ -77,6 +67,16 @@ Priority:   30
 Status: ToDo
 ID: log-zgkr
 Add better logging for troubleshooting
+---
+Priority:    0
+Status: Done
+ID: extract-resp-juwa
+Extract and trim all text after the "# Response" header from LLM responses. Update response processing logic to parse structured responses and extract only the response content section.
+---
+Priority:    0
+Status: Done
+ID: model-rot-gdrc
+Rotate the model and introduce a daily gender rotation that posts to Bluesky with the current configuration
 ---
 Priority:    0
 Status: Done

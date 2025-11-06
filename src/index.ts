@@ -5,8 +5,7 @@ import { updateObserverPanel } from './orchestratorPanel.js';
 import { updateQueuePanel } from './queuePanel.js';
 import { updateWaitingPanel } from './waitingPanel.js';
 import { createHandleSendMessage } from './chatPanel.js';
-import { createHandleCheckBluesky } from './bluesky-panel.js';
-import { createHandleTogglePolling, createHandlePollIntervalChange } from './bluesky-polling.js';
+import { createHandleCheckBluesky, createHandleTogglePolling, createHandlePollIntervalChange } from './bluesky-panel.js';
 import { createHandleConfigure } from './configurePanel.js';
 
 // jQuery is loaded via CDN in index.html

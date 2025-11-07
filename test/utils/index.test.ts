@@ -28,7 +28,8 @@ describe('DEFAULT_CONFIG', () => {
         handle: '',
         password: ''
       },
-      ignoreList: []
+      ignoreList: [],
+      botList: []
     });
   });
 
@@ -38,5 +39,6 @@ describe('DEFAULT_CONFIG', () => {
     expect(DEFAULT_CONFIG.bluesky).toBeDefined();
     expect(DEFAULT_CONFIG.ignoreList).toBeDefined();
     expect(Array.isArray(DEFAULT_CONFIG.ignoreList)).toBe(true);
+    expect(Array.isArray(DEFAULT_CONFIG.botList)).toBe(true);
   });
 });

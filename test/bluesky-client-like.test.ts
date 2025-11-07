@@ -7,11 +7,49 @@ describe('BlueskyClient like functionality', () => {
     handle: 'test.bsky.social',
     appPassword: 'test-password',
   };
+  let mockGetRecord: any;
+  let mockCreateRecord: any;
+  let mockLogin: any;
+  let mockAgent: any;
 
   beforeEach(() => {
     client = new BlueskyClient(mockConfig);
-    // Mock authenticated state
+    mockGetRecord = jest.fn();
+    mockGetRecord.mockResolvedValue({
+      data: {
+        cid: 'post-cid-default',
+      },
+    } as any);
+    mockCreateRecord = jest.fn();
+    mockCreateRecord.mockResolvedValue({
+      data: {
+        uri: 'at://did:plc:test/app.bsky.feed.like/default',
+        cid: 'like-cid-default',
+      },
+    } as any);
+    mockLogin = jest.fn();
+    mockLogin.mockResolvedValue(undefined as any);
+
+    mockAgent = {
+      login: mockLogin,
+      session: {
+        accessJwt: 'header.payload.signature',
+      },
+      api: {
+        com: {
+          atproto: {
+            repo: {
+              getRecord: mockGetRecord,
+              createRecord: mockCreateRecord,
+            },
+          },
+        },
+      },
+    };
+
+    (client as any).agent = mockAgent;
     (client as any).authenticated = true;
+    (client as any).tokenExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
   });
 
   it('should like a post successfully', async () => {
@@ -29,24 +67,9 @@ describe('BlueskyClient like functionality', () => {
     };
 
     // Mock the agent's API
-    const mockGetRecord = jest.fn() as any;
-    const mockCreateRecord = jest.fn() as any;
-    mockGetRecord.mockResolvedValue(mockPostResponse);
-    mockCreateRecord.mockResolvedValue(mockLikeResponse);
-    
-    const mockAgent = {
-      api: {
-        com: {
-          atproto: {
-            repo: {
-              getRecord: mockGetRecord,
-              createRecord: mockCreateRecord,
-            },
-          },
-        },
-      },
-    };
-    (client as any).agent = mockAgent;
+    mockGetRecord.mockResolvedValue(mockPostResponse as any);
+    mockCreateRecord.mockResolvedValue(mockLikeResponse as any);
+    (client as any).tokenExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     const result = await client.like(postUri);
 
@@ -74,33 +97,22 @@ describe('BlueskyClient like functionality', () => {
     });
   });
 
-  it('should throw error if not authenticated', async () => {
+  it('should propagate authentication errors', async () => {
     (client as any).authenticated = false;
+    (client as any).tokenExpiresAt = new Date(Date.now() - 10 * 60 * 1000);
+    const authError = new Error('Invalid identifier or password');
+    mockLogin.mockRejectedValue(authError as any);
     const postUri = 'at://did:plc:test/app.bsky.feed.post/test123';
 
-    await expect(client.like(postUri)).rejects.toThrow(
-      'Not authenticated. Call authenticate() first.'
-    );
+    await expect(client.like(postUri)).rejects.toThrow('Invalid identifier or password');
+    expect(mockLogin).toHaveBeenCalled();
   });
 
   it('should handle API errors gracefully', async () => {
     const postUri = 'at://did:plc:test/app.bsky.feed.post/test123';
     const apiError = new Error('API Error: Rate limited');
     
-    const mockCreateRecord = jest.fn() as any;
-    mockCreateRecord.mockRejectedValue(apiError);
-    const mockAgent = {
-      api: {
-        com: {
-          atproto: {
-            repo: {
-              createRecord: mockCreateRecord,
-            },
-          },
-        },
-      },
-    };
-    (client as any).agent = mockAgent;
+    mockCreateRecord.mockRejectedValue(apiError as any);
 
     await expect(client.like(postUri)).rejects.toThrow('API Error: Rate limited');
   });
@@ -119,24 +131,8 @@ describe('BlueskyClient like functionality', () => {
       },
     };
 
-    const mockGetRecord = jest.fn() as any;
-    const mockCreateRecord = jest.fn() as any;
-    mockGetRecord.mockResolvedValue(mockPostResponse);
-    mockCreateRecord.mockResolvedValue(mockLikeResponse);
-    
-    const mockAgent = {
-      api: {
-        com: {
-          atproto: {
-            repo: {
-              getRecord: mockGetRecord,
-              createRecord: mockCreateRecord,
-            },
-          },
-        },
-      },
-    };
-    (client as any).agent = mockAgent;
+    mockGetRecord.mockResolvedValue(mockPostResponse as any);
+    mockCreateRecord.mockResolvedValue(mockLikeResponse as any);
 
     const beforeCall = new Date();
     await client.like(postUri);
@@ -158,24 +154,8 @@ describe('BlueskyClient like functionality', () => {
       },
     };
 
-    const mockGetRecord = jest.fn() as any;
-    const mockCreateRecord = jest.fn() as any;
-    mockGetRecord.mockRejectedValue(new Error('Post not found'));
-    mockCreateRecord.mockResolvedValue(mockLikeResponse);
-    
-    const mockAgent = {
-      api: {
-        com: {
-          atproto: {
-            repo: {
-              getRecord: mockGetRecord,
-              createRecord: mockCreateRecord,
-            },
-          },
-        },
-      },
-    };
-    (client as any).agent = mockAgent;
+    mockGetRecord.mockRejectedValue(new Error('Post not found') as any);
+    mockCreateRecord.mockResolvedValue(mockLikeResponse as any);
 
     const result = await client.like(postUri);
 

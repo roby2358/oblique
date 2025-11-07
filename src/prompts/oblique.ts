@@ -190,7 +190,7 @@ export const obliquePrompt = (userMessage: string, threadHistory: string): strin
 
   You are ${gender}. Reply in a ${gender} voice.
 
-Answer in markdown with 3 sections, Thinking, Related Western, Related Eastern, and Response as primary
+Answer in markdown with 6 sections: Thinking, Related Western, Related Eastern, Insight 1, Insight 2, Insight 3, and Response as primary
  headings. Put each sentence on a new line with a blank line in between. The # Response section must be less than 300 characters.
 
   Thread history:

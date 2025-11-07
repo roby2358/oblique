@@ -4,6 +4,7 @@ import type { BlueskyMessage } from '../../../src/types/index.js';
 
 describe('BlueskyClient Threading', () => {
   let client: BlueskyClient;
+  let authenticateSpy: jest.SpiedFunction<BlueskyClient['authenticate']>;
   const mockConfig = {
     handle: 'test.bsky.social',
     appPassword: 'test-password'
@@ -12,9 +13,10 @@ describe('BlueskyClient Threading', () => {
   beforeEach(() => {
     client = new BlueskyClient(mockConfig);
     // Mock the authenticate method to avoid actual API calls
-    jest.spyOn(client, 'authenticate').mockResolvedValue();
+    authenticateSpy = jest.spyOn(client, 'authenticate').mockResolvedValue();
     // Set authenticated to true for testing
     (client as any).authenticated = true;
+    (client as any).tokenExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
   });
 
   describe('getThreadHistory', () => {
@@ -304,8 +306,9 @@ describe('BlueskyClient Threading', () => {
       expect(result[2].author).toBe('current.bsky.social');
     });
 
-    it('should throw error when not authenticated', async () => {
+    it('should reauthenticate when not authenticated', async () => {
       (client as any).authenticated = false;
+      (client as any).tokenExpiresAt = new Date(Date.now() - 10 * 60 * 1000);
 
       const mockNotification: BlueskyMessage = {
         uri: 'at://did:plc:test/app.bsky.feed.post/test',
@@ -316,9 +319,24 @@ describe('BlueskyClient Threading', () => {
         reason: 'mention',
       };
 
-      await expect(client.getThreadHistory(mockNotification, 10)).rejects.toThrow(
-        'Not authenticated. Call authenticate() first.'
-      );
+      const mockGetPostThread: any = jest.fn();
+      mockGetPostThread.mockRejectedValue(new Error('API Error') as any);
+
+      const mockAgent = {
+        getPostThread: mockGetPostThread,
+      };
+
+      (client as any).agent = mockAgent;
+
+      const result = await client.getThreadHistory(mockNotification, 10);
+
+      expect(authenticateSpy).toHaveBeenCalled();
+      expect(result).toEqual([
+        {
+          author: 'test.bsky.social',
+          text: 'Test message',
+        },
+      ]);
     });
   });
 });

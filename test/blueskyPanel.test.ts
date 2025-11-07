@@ -44,14 +44,14 @@ describe('Bluesky Polling Module', () => {
   });
 
   it('should create toggle handler function', async () => {
-    const { createHandleTogglePolling } = await import('../src/bluesky-polling.js');
+    const { createHandleTogglePolling } = await import('../src/bluesky-panel.js');
     const handleToggle = createHandleTogglePolling();
     
     expect(typeof handleToggle).toBe('function');
   });
 
   it('should handle toggle polling state changes', async () => {
-    const { createHandleTogglePolling } = await import('../src/bluesky-polling.js');
+    const { createHandleTogglePolling } = await import('../src/bluesky-panel.js');
     const handleToggle = createHandleTogglePolling();
     
     jest.useFakeTimers();

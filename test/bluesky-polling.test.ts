@@ -143,15 +143,65 @@ describe('Bluesky Polling Module', () => {
     });
   });
 
+  describe('shouldRespondToThread', () => {
+    it('skips threads when the last author is a bot with 4 or more of the last 8 posts', async () => {
+      getConfigMock.mockReturnValue({
+        ignoreList: [],
+        botList: ['bot.alpha'],
+        bluesky: { handle: 'oblique.yuwakisa.com' },
+      });
+
+      const thread = [
+        { author: 'user.one' },
+        { author: 'user.two' },
+        { author: '@bot.alpha' },
+        { author: 'user.three' },
+        { author: '@bot.alpha' },
+        { author: '@bot.alpha' },
+        { author: 'user.four' },
+        { author: '@bot.alpha' },
+      ];
+
+      const { shouldRespondToThread } = await import('../src/bluesky-polling.js');
+      const result = shouldRespondToThread(thread as any);
+
+      expect(result).toBeNull();
+    });
+
+    it('continues threads when the last author bot appears fewer than 4 times in the last 8 posts', async () => {
+      getConfigMock.mockReturnValue({
+        ignoreList: [],
+        botList: ['bot.alpha'],
+        bluesky: { handle: 'oblique.yuwakisa.com' },
+      });
+
+      const thread = [
+        { author: 'user.one' },
+        { author: 'user.two' },
+        { author: '@bot.alpha' },
+        { author: 'user.three' },
+        { author: 'user.four' },
+        { author: '@bot.alpha' },
+        { author: 'user.five' },
+        { author: '@bot.alpha' },
+      ];
+
+      const { shouldRespondToThread } = await import('../src/bluesky-polling.js');
+      const result = shouldRespondToThread(thread as any);
+
+      expect(result).toEqual(thread);
+    });
+  });
+
   it('should create toggle handler function', async () => {
-    const { createHandleTogglePolling } = await import('../src/bluesky-polling.js');
+    const { createHandleTogglePolling } = await import('../src/bluesky-panel.js');
     const handleToggle = createHandleTogglePolling();
     
     expect(typeof handleToggle).toBe('function');
   });
 
   it('should handle toggle polling state changes', async () => {
-    const { createHandleTogglePolling } = await import('../src/bluesky-polling.js');
+    const { createHandleTogglePolling } = await import('../src/bluesky-panel.js');
     const handleToggle = createHandleTogglePolling();
     
     jest.useFakeTimers();
@@ -167,14 +217,14 @@ describe('Bluesky Polling Module', () => {
   });
 
   it('should create poll interval change handler function', async () => {
-    const { createHandlePollIntervalChange } = await import('../src/bluesky-polling.js');
+    const { createHandlePollIntervalChange } = await import('../src/bluesky-panel.js');
     const handleIntervalChange = createHandlePollIntervalChange();
     
     expect(typeof handleIntervalChange).toBe('function');
   });
 
   it('should validate poll interval input values', async () => {
-    const { createHandlePollIntervalChange } = await import('../src/bluesky-polling.js');
+    const { createHandlePollIntervalChange } = await import('../src/bluesky-panel.js');
     const handleIntervalChange = createHandlePollIntervalChange();
     
     // Mock jQuery to return different values for val() calls

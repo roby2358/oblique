@@ -4,6 +4,7 @@ import type { BlueskyMessage } from '../../../src/types/index.js';
 
 describe('BlueskyClient', () => {
   let client: BlueskyClient;
+  let authenticateSpy: jest.SpiedFunction<BlueskyClient['authenticate']>;
   const mockConfig = {
     handle: 'test.bsky.social',
     appPassword: 'test-password'
@@ -21,9 +22,10 @@ describe('BlueskyClient', () => {
   beforeEach(() => {
     client = new BlueskyClient(mockConfig);
     // Mock the authenticate method to avoid actual API calls
-    jest.spyOn(client, 'authenticate').mockResolvedValue();
+    authenticateSpy = jest.spyOn(client, 'authenticate').mockResolvedValue();
     // Set authenticated to true for testing
     (client as any).authenticated = true;
+    (client as any).tokenExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
   });
 
   describe('getQuotedHistory', () => {
@@ -353,7 +355,7 @@ describe('BlueskyClient', () => {
       ]);
     });
 
-    it('should throw error when not authenticated', async () => {
+    it('should reauthenticate when not authenticated', async () => {
       const quoteNotification: BlueskyMessage = {
         uri: 'at://did:plc:test/app.bsky.feed.post/test123',
         cid: 'bafytest123',
@@ -364,10 +366,26 @@ describe('BlueskyClient', () => {
       };
 
       (client as any).authenticated = false;
+      (client as any).tokenExpiresAt = new Date(Date.now() - 10 * 60 * 1000);
 
-      await expect(client.getQuotedHistory(quoteNotification)).rejects.toThrow(
-        'Not authenticated. Call authenticate() first.'
-      );
+      const mockGetPostThread: any = jest.fn();
+      mockGetPostThread.mockRejectedValue(new Error('API Error') as any);
+
+      const mockAgent = {
+        getPostThread: mockGetPostThread,
+      };
+
+      (client as any).agent = mockAgent;
+
+      const result = await client.getQuotedHistory(quoteNotification);
+
+      expect(authenticateSpy).toHaveBeenCalled();
+      expect(result).toEqual([
+        {
+          author: 'quoter.bsky.social',
+          text: 'test quote post',
+        },
+      ]);
     });
   });
 
@@ -714,12 +732,23 @@ describe('BlueskyClient', () => {
       expect(result).toBe(false);
     });
 
-    it('should throw error when not authenticated', async () => {
+    it('should reauthenticate when not authenticated', async () => {
       (client as any).authenticated = false;
+      (client as any).tokenExpiresAt = new Date(Date.now() - 10 * 60 * 1000);
 
-      await expect(client.hasRepliesToPost(mockNotification)).rejects.toThrow(
-        'Not authenticated. Call authenticate() first.'
-      );
+      const mockGetPostThread: any = jest.fn();
+      mockGetPostThread.mockRejectedValue(new Error('AuthMissing') as any);
+
+      const mockAgent = {
+        getPostThread: mockGetPostThread,
+      };
+
+      (client as any).agent = mockAgent;
+
+      const result = await client.hasRepliesToPost(mockNotification);
+
+      expect(authenticateSpy).toHaveBeenCalled();
+      expect(result).toBe(false);
     });
   });
 });

@@ -2,12 +2,20 @@
 import {
   createReplyTask,
 } from '../../src/oblique-task-factory.js';
+import { getConfig } from '../../src/config.js';
 import type { BlueskyMessage } from '../../src/types/index.js';
 import type { LLMClient } from '../../src/hooks/llm/llm-client.js';
 import type { BlueskyClient } from '../../src/hooks/bluesky/bluesky-client.js';
 import type { DrakidionTask } from '../../src/drakidion/drakidion-types.js';
 
 describe('Task ID Threading', () => {
+  beforeEach(() => {
+    const config = getConfig();
+    config.botList = [];
+    config.ignoreList = [];
+    config.bluesky = config.bluesky || { handle: '', password: '' };
+  });
+
   // Mock notification
   const mockNotification: BlueskyMessage = {
     uri: 'at://did:plc:test/app.bsky.feed.post/test123',

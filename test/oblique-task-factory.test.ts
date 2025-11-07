@@ -1,5 +1,6 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { createSendToLLMTask } from '../src/oblique-task-factory.js';
+import { getConfig } from '../src/config.js';
 import type { BlueskyMessage } from '../src/types/index.js';
 import type { LLMClient } from '../src/hooks/llm/llm-client.js';
 import type { BlueskyClient } from '../src/hooks/bluesky/bluesky-client.js';
@@ -112,6 +113,11 @@ describe('createSendToLLMTask quote post handling', () => {
   let mockPredecessor: DrakidionTask;
 
   beforeEach(() => {
+    const config = getConfig();
+    config.botList = [];
+    config.ignoreList = [];
+    config.bluesky = config.bluesky || { handle: '', password: '' };
+
     mockLLMClient = {
       generateResponse: jest.fn()
     } as any;

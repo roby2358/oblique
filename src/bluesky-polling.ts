@@ -77,23 +77,23 @@ export const shouldRespondToNotification = (
 const skipForBotAttenuation = (thread: BlueskyHistoryEntry[]): boolean => {
   const config = getConfig();
   const botList = config.botList;
-  // Check the last 4 authors in the thread
-  const lastFourMessages = thread.slice(-4);
-  const lastFourAuthors = lastFourMessages.map(entry => normalizeHandle(entry.author));
-  const lastAuthor = lastFourAuthors[lastFourAuthors.length - 1];
+  // Check the last 8 authors in the thread
+  const lastEightMessages = thread.slice(-8);
+  const lastEightAuthors = lastEightMessages.map(entry => normalizeHandle(entry.author));
+  const lastAuthor = lastEightAuthors[lastEightAuthors.length - 1];
   const isLastAuthorBot = botList.includes(lastAuthor);
 
   console.log(`All bots: ${botList.join('|')}`);
-  console.log(`Last 4 authors: ${lastFourAuthors.join('|')}`);
+  console.log(`Last 8 authors: ${lastEightAuthors.join('|')}`);
   console.log(`Last message author: ${lastAuthor} bot? ${isLastAuthorBot}`);
 
   // Only check bot count if the last author is a bot
   if (isLastAuthorBot) {
-    const messagesFromLastAuthor = lastFourAuthors.filter(author => author === lastAuthor).length;
-    console.log(`Messages from last author (${lastAuthor}) in last 4: ${messagesFromLastAuthor}`);
+    const messagesFromLastAuthor = lastEightAuthors.filter(author => author === lastAuthor).length;
+    console.log(`Messages from last author (${lastAuthor}) in last 8: ${messagesFromLastAuthor}`);
 
-    if (messagesFromLastAuthor >= 2) {
-      console.log(`Skipping thread: Last author ${lastAuthor} has ${messagesFromLastAuthor} messages in last 4 (> 2 limit)`);
+    if (messagesFromLastAuthor >= 4) {
+      console.log(`Skipping thread: Last author ${lastAuthor} has ${messagesFromLastAuthor} messages in last 8 (>= 4 limit)`);
       return true;
     }
   }

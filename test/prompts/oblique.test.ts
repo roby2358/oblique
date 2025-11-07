@@ -73,6 +73,10 @@ describe('Oblique Prompts', () => {
 
       const result = createObliqueConversation(mockThread);
 
+      if (!result) {
+        throw new Error('Expected conversation to be created');
+      }
+
       expect(result).toHaveLength(2);
       expect(result[0].role).toBe('system');
       expect(result[1].role).toBe('user');
@@ -91,6 +95,10 @@ describe('Oblique Prompts', () => {
       ];
 
       const result = createObliqueConversation(mockThread);
+
+      if (!result) {
+        throw new Error('Expected conversation to be created');
+      }
 
       expect(result).toHaveLength(2);
       expect(result[1].content).toContain('@user1: Only post');
@@ -111,6 +119,10 @@ describe('Oblique Prompts', () => {
 
       const result = createObliqueConversation(mockThread);
 
+      if (!result) {
+        throw new Error('Expected conversation to be created');
+      }
+
       expect(result[1].content).toContain('@user1: Post with image');
       expect(result[1].content).toContain('  image: Image description');
       expect(result[1].content).toContain('  image: Another alt text');
@@ -128,6 +140,10 @@ describe('Oblique Prompts', () => {
       ];
 
       const result = createObliqueConversation(mockThread);
+
+      if (!result) {
+        throw new Error('Expected conversation to be created');
+      }
 
       // The last post should be in the main user message with alt texts
       expect(result[1].content).toContain('@user2: Last post with image');

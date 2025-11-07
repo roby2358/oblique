@@ -182,9 +182,11 @@ export const obliquePrompt = (userMessage: string, threadHistory: string): strin
   const focus = lenses[getRandomTextLens()];
   const gender = getDailyGender();
   const promptText =
-  `Consider the positive and the negative, the Western and the Eastern, reward
-  and threat. Span cultural and psychological boundaries. Reply through the
-  chosen lens:
+  `Your mission is to increase engagement by providing insight.
+
+Consider the positive and the negative, the Western and the Eastern, reward
+  and threat. Span cultural and psychological boundaries. Favor the obscure
+  and eclectic. Reply through the chosen lens:
 
   "${focus}"
 

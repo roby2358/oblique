@@ -101,21 +101,22 @@ const lenses: { [key in ObliqueTextLens]: string } = {
 const lensKeys = Object.keys(lenses) as ObliqueTextLens[];
 
 const models: { [key in string]: string } = {
-  'openai/gpt-5': 'OpenAI: GPT-5',
-  'openai/gpt-4o': 'OpenAI: GPT-4o',
-  'openai/o3-mini': 'OpenAI: o3 Mini',
-  'openai/gpt-5-mini': 'OpenAI: GPT-5 Mini',
   'anthropic/claude-sonnet-4.5': 'Anthropic: Claude Sonnet 4.5',
+  'deepcogito/cogito-v2-preview-llama-405b': 'Deep Cogito: Cogito V2 Preview Llama 405B',
   'deepseek/deepseek-v3.2-exp': 'DeepSeek: DeepSeek V3.2 Exp',
-  'qwen/qwen3-235b-a22b-2507': 'Qwen: Qwen3 235B A22B Instruct 2507',
-  'qwen/qwen3-235b-a22b-thinking-2507': 'Qwen: Qwen3 235B A22B Thinking 2507',
+  'google/gemini-2.5-pro': 'Google: Gemini 2.5 Pro',
+  // 'gryphe/mythomax-l2-13b': 'MythoMax 13B',
+  'openai/gpt-4o': 'OpenAI: GPT-4o',
+  'openai/gpt-5': 'OpenAI: GPT-5',
+  'openai/gpt-5-mini': 'OpenAI: GPT-5 Mini',
+  'meta-llama/llama-3.1-405b-instruct': 'Meta: Llama 3.1 405B Instruct',
   'meta-llama/llama-3.3-70b-instruct': 'Meta: Llama 3.3 70B Instruct',
   'meta-llama/llama-4-maverick:free': 'Meta: Llama 4 Maverick',
-  'meta-llama/llama-3.1-405b-instruct': 'Meta: Llama 3.1 405B Instruct',
-  'mistralai/mistral-large-2411': 'Mistral: Mistral Large 2411',
-  // 'gryphe/mythomax-l2-13b': 'MythoMax 13B',
-  'deepcogito/cogito-v2-preview-llama-405b': 'Deep Cogito: Cogito V2 Preview Llama 405B',
   'moonshotai/kimi-k2': 'MoonshotAI: Kimi K2 0711',
+  'openai/o3-mini': 'OpenAI: o3 Mini',
+  'mistralai/mistral-large-2411': 'Mistral: Mistral Large 2411',
+  'qwen/qwen3-235b-a22b-2507': 'Qwen: Qwen3 235B A22B Instruct 2507',
+  'qwen/qwen3-235b-a22b-thinking-2507': 'Qwen: Qwen3 235B A22B Thinking 2507'
 }
 
 const genders = [

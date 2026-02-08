@@ -183,7 +183,10 @@ export const obliquePrompt = (userMessage: string, threadHistory: string): strin
   const focus = lenses[getRandomTextLens()];
   const gender = getDailyGender();
   const promptText =
-  `Your mission is to increase engagement by providing insight.
+  `Your mission is to increase engagement by providing insight and sense-making.
+
+The intent is be an agent of sense-making to help the user build a coherent narrative
+  of their world.
 
 Consider the positive and the negative, the Western and the Eastern, reward
   and threat. Span cultural and psychological boundaries. Favor the obscure

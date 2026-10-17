@@ -8,9 +8,8 @@ import type { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
 import { createObliqueConversation, getDailyModel, getDailyGender } from './prompts/oblique.js';
 import { nextTask, createSucceededTask, createDeadTask, newReadyTask, newWaitingTask } from './drakidion/task-factories.js';
 import { shouldRespondToThread } from './bluesky-polling.js';
+import { MAX_BLUESKY_REPLY_CHARS } from './reply-length.js';
 
-// Single source of truth for reply length limits
-const MAX_BLUESKY_REPLY_CHARS = 299;
 // Punctuation considered safe boundaries for truncation (omit when cutting)
 const OBLIQUE_TRUNCATION_PUNCTUATION = new Set(['.', '!', '?', ',', ':', ';', '—', '–', '…', '(', '\n']);
 // Regex to extract content after "# Response" header
@@ -27,10 +26,10 @@ const coalesceText = (text: unknown, fallback: string): string => {
 
 /**
  * Intelligently truncate text by finding the last punctuation mark
- * If no punctuation found, truncate to MAX_OBLIQUE_REPLY_CHARS
+ * If no punctuation found, truncate to MAX_BLUESKY_REPLY_CHARS
  * Omits the final punctuation when truncating
  */
-const truncateAtLastPunctuation = (text: string): string => {
+export const truncateAtLastPunctuation = (text: string): string => {
   if (text.length <= MAX_BLUESKY_REPLY_CHARS) {
     return text;
   }
@@ -47,7 +46,7 @@ const truncateAtLastPunctuation = (text: string): string => {
     }
   }
   
-  // If no punctuation found, just truncate to maxLength
+  // If no punctuation found, just truncate to the limit
   return text.substring(0, MAX_BLUESKY_REPLY_CHARS);
 };
 
@@ -68,7 +67,7 @@ const extractResponseContent = (content: string): string | null => {
 
 /**
  * Generate LLM response with retry logic for length constraints
- * Retries up to 5 times if response is longer than 300 characters
+ * Retries while the response is longer than MAX_BLUESKY_REPLY_CHARS
  * Returns null if conversation is null (aborted)
  */
 const generateLLMResponseWithRetry = async (
@@ -98,11 +97,11 @@ const generateLLMResponseWithRetry = async (
     const contentToUse = extractResponseContent(response.content) || response.content;
     
     // Check if response is within character limit
-    if (contentToUse.length < 300) {
+    if (contentToUse.length <= MAX_BLUESKY_REPLY_CHARS) {
       return { conversation, response: { ...response, content: contentToUse } };
     }
     
-    console.log(`Attempt ${attempts}: Response too long (${response.content.length} chars), retrying...`);
+    console.log(`Attempt ${attempts}: Response too long (${contentToUse.length} chars, limit ${MAX_BLUESKY_REPLY_CHARS}), retrying...`);
     
     // If this is the last attempt, intelligently truncate the response
     if (attempts >= maxAttempts) {

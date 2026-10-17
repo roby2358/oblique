@@ -1,108 +1,67 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
-import { createSendToLLMTask } from '../src/oblique-task-factory.js';
+import { createSendToLLMTask, truncateAtLastPunctuation } from '../src/oblique-task-factory.js';
+import { MAX_BLUESKY_REPLY_CHARS } from '../src/reply-length.js';
 import { getConfig } from '../src/config.js';
 import type { BlueskyMessage } from '../src/types/index.js';
 import type { LLMClient } from '../src/hooks/llm/llm-client.js';
 import type { BlueskyClient } from '../src/hooks/bluesky/bluesky-client.js';
 import type { DrakidionTask } from '../src/drakidion/drakidion-types.js';
 
-// Test the truncation function by importing the module
-// Since the function is not exported, we'll test it conceptually
-// and create a standalone version for testing
-
-/**
- * Intelligently truncate text by finding the last punctuation mark
- * If no punctuation found, truncate to maxLength
- * Omits the final punctuation when truncating
- */
-const truncateAtLastPunctuation = (text: string, maxLength: number = 279): string => {
-  if (text.length <= maxLength) {
-    return text;
-  }
-
-  // Extended punctuation marks list
-  const punctuationMarks = ['.', '!', '?', ',', ':', ';', '—', '–', '…', '('];
-  let lastPunctuationIndex = -1;
-  
-  // Search within the maxLength limit
-  for (const mark of punctuationMarks) {
-    const index = text.lastIndexOf(mark, maxLength - 1);
-    if (index > lastPunctuationIndex) {
-      lastPunctuationIndex = index;
-    }
-  }
-  
-  // If we found punctuation, truncate before it (omitting the punctuation)
-  if (lastPunctuationIndex > 0) {
-    return text.substring(0, lastPunctuationIndex);
-  }
-  
-  // If no punctuation found, just truncate to maxLength
-  return text.substring(0, maxLength);
-};
+// Filler that carries no punctuation, so a fixture's only boundaries are the ones it states
+const filler = (count: number): string => 'a'.repeat(count);
 
 describe('truncateAtLastPunctuation', () => {
-  it('should return text unchanged if within maxLength', () => {
-    const shortText = 'This is a short message.';
-    expect(truncateAtLastPunctuation(shortText, 279)).toBe(shortText);
+  it('returns text at the limit unchanged', () => {
+    const text = filler(MAX_BLUESKY_REPLY_CHARS);
+    expect(truncateAtLastPunctuation(text)).toBe(text);
   });
 
-  it('should truncate at last period within maxLength and omit punctuation', () => {
-    const longText = 'This is a very long message that goes on and on and on. This is the end. And this continues.';
-    const result = truncateAtLastPunctuation(longText, 50);
-    expect(result).toBe('This is a very long message that goes on and on an');
-    expect(result.length).toBeLessThanOrEqual(50);
+  it('returns short text unchanged', () => {
+    const text = 'This is a short message.';
+    expect(truncateAtLastPunctuation(text)).toBe(text);
   });
 
-  it('should truncate at last exclamation mark within maxLength and omit punctuation', () => {
-    const longText = 'This is exciting! Really exciting! But this part is too long.';
-    const result = truncateAtLastPunctuation(longText, 30);
-    expect(result).toBe('This is exciting');
-    expect(result.length).toBeLessThanOrEqual(30);
+  it('returns an empty string unchanged', () => {
+    expect(truncateAtLastPunctuation('')).toBe('');
   });
 
-  it('should truncate at last question mark within maxLength and omit punctuation', () => {
-    const longText = 'What do you think? Are you sure? This continues beyond the limit.';
-    const result = truncateAtLastPunctuation(longText, 25);
-    expect(result).toBe('What do you think');
-    expect(result.length).toBeLessThanOrEqual(25);
+  it.each(['.', '!', '?', ',', ':', ';', '\u2014', '\u2013', '\u2026', '(', '\n'])(
+    'cuts over-long text at %j and drops the mark',
+    (mark) => {
+      const text = `${filler(250)}${mark}${filler(100)}`;
+      const result = truncateAtLastPunctuation(text);
+      expect(result).toBe(filler(250));
+      expect(result.length).toBeLessThanOrEqual(MAX_BLUESKY_REPLY_CHARS);
+    }
+  );
+
+  it('cuts at the last punctuation at or before the limit', () => {
+    const text = `${filler(100)}.${filler(150)}!${filler(100)}`;
+    expect(truncateAtLastPunctuation(text)).toBe(`${filler(100)}.${filler(150)}`);
   });
 
-  it('should prefer the latest punctuation mark within maxLength and omit punctuation', () => {
-    const longText = 'First sentence. Second sentence! Third sentence? Fourth continues.';
-    const result = truncateAtLastPunctuation(longText, 40);
-    expect(result).toBe('First sentence. Second sentence');
-    expect(result.length).toBeLessThanOrEqual(40);
+  it('cuts at the limit when the only punctuation is past it', () => {
+    const text = `${filler(350)}.${filler(50)}`;
+    const result = truncateAtLastPunctuation(text);
+    expect(result).toBe(filler(MAX_BLUESKY_REPLY_CHARS));
+    expect(result.length).toBe(MAX_BLUESKY_REPLY_CHARS);
   });
 
-  it('should handle the specific example with comma truncation', () => {
-    const longText = 'Time shifts perception like a kaleidoscope, revealing the folly of certainty.\n\nIn 2015, the guise of satire masked the fear of decline, while by 2025, fantasy\'s allure shields us from uncomfortable truths.\n\nThe subtext whispers that reality is subjective, and hopes are often clo xyz';
-    const result = truncateAtLastPunctuation(longText, 279);
-    expect(result).toBe('Time shifts perception like a kaleidoscope, revealing the folly of certainty.\n\nIn 2015, the guise of satire masked the fear of decline, while by 2025, fantasy\'s allure shields us from uncomfortable truths.\n\nThe subtext whispers that reality is subjective');
-    expect(result.length).toBeLessThanOrEqual(279);
+  it('cuts at the limit when there is no punctuation at all', () => {
+    const result = truncateAtLastPunctuation(filler(400));
+    expect(result).toBe(filler(MAX_BLUESKY_REPLY_CHARS));
   });
 
-  it('should fallback to simple truncation if no punctuation found within maxLength', () => {
-    const longText = 'This is a very long message with no punctuation marks anywhere in the text';
-    const result = truncateAtLastPunctuation(longText, 30);
-    expect(result).toBe('This is a very long message wi');
-    expect(result.length).toBe(30);
+  it('falls through to the plain cut when the only punctuation is at index 0', () => {
+    const result = truncateAtLastPunctuation(`.${filler(400)}`);
+    expect(result).toBe(`.${filler(MAX_BLUESKY_REPLY_CHARS - 1)}`);
+    expect(result.length).toBe(MAX_BLUESKY_REPLY_CHARS);
   });
 
-  it('should handle edge case with punctuation at exact maxLength', () => {
-    const longText = 'Short text!';
-    const result = truncateAtLastPunctuation(longText, 11);
-    expect(result).toBe('Short text!');
-  });
-
-  it('should handle empty string', () => {
-    expect(truncateAtLastPunctuation('', 279)).toBe('');
-  });
-
-  it('should use default maxLength of 279', () => {
-    const veryLongText = 'A'.repeat(300);
-    const result = truncateAtLastPunctuation(veryLongText);
-    expect(result.length).toBe(279);
+  it('cuts one character over the limit at the last boundary', () => {
+    const text = `${filler(200)}, ${filler(MAX_BLUESKY_REPLY_CHARS - 201)}`;
+    expect(text.length).toBe(MAX_BLUESKY_REPLY_CHARS + 1);
+    expect(truncateAtLastPunctuation(text)).toBe(filler(200));
   });
 });
 
@@ -440,5 +399,83 @@ describe('createPostReplyTask', () => {
 
     expect(successor.status).toBe('dead');
     expect(successor.work).toEqual([replyText, 'Failed to post: no network']);
+  });
+});
+
+describe('reply length gate', () => {
+  let llmClient: LLMClient;
+  let blueskyClient: BlueskyClient;
+  let onWaitingTaskComplete: jest.Mock;
+  let predecessor: DrakidionTask;
+
+  const notification: BlueskyMessage = {
+    uri: 'at://did:plc:test/app.bsky.feed.post/len123',
+    cid: 'bafylen123',
+    author: 'asker.bsky.social',
+    text: 'Hello @oblique.yuwakisa.com',
+    createdAt: new Date(),
+    reason: 'mention',
+  };
+
+  const response = (text: string) => ({ content: `# Response\n${text}`, model: 'test-model' });
+
+  beforeEach(() => {
+    const config = getConfig();
+    config.botList = [];
+    config.ignoreList = [];
+    config.bluesky = config.bluesky || { handle: '', password: '' };
+    config.openrouter = {
+      apiKey: 'sk-or-v1-test',
+      models: ['anthropic/claude-sonnet-4.5'],
+      rotate: true,
+      baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    };
+
+    llmClient = { generateResponse: jest.fn() } as any;
+    blueskyClient = { getHistory: jest.fn() } as any;
+    (blueskyClient.getHistory as jest.MockedFunction<any>).mockResolvedValue([
+      { author: 'asker.bsky.social', text: 'Hello @oblique.yuwakisa.com' },
+    ]);
+    onWaitingTaskComplete = jest.fn();
+
+    predecessor = {
+      taskId: 'length-task-1',
+      version: 1,
+      status: 'ready',
+      description: 'Test predecessor',
+      work: [],
+      conversation: [{ role: 'user', content: 'Hello' }],
+      createdAt: new Date(),
+      process: () => ({} as DrakidionTask),
+    };
+  });
+
+  const run = async () => {
+    createSendToLLMTask(notification, llmClient, blueskyClient, onWaitingTaskComplete, predecessor);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const successor = onWaitingTaskComplete.mock.calls[0][1] as DrakidionTask;
+    return successor.work[successor.work.length - 1];
+  };
+
+  it('accepts a response of exactly the limit without asking again', async () => {
+    const atLimit = filler(MAX_BLUESKY_REPLY_CHARS);
+    (llmClient.generateResponse as jest.MockedFunction<any>).mockResolvedValue(response(atLimit));
+
+    const posted = await run();
+
+    expect(llmClient.generateResponse).toHaveBeenCalledTimes(1);
+    expect(posted).toBe(atLimit);
+  });
+
+  it('asks again when the response is one character over the limit', async () => {
+    const overLimit = filler(MAX_BLUESKY_REPLY_CHARS + 1);
+    (llmClient.generateResponse as jest.MockedFunction<any>)
+      .mockResolvedValueOnce(response(overLimit))
+      .mockResolvedValueOnce(response('Short enough.'));
+
+    const posted = await run();
+
+    expect(llmClient.generateResponse).toHaveBeenCalledTimes(2);
+    expect(posted).toBe('Short enough.');
   });
 });

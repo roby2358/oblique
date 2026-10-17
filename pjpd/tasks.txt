@@ -1,11 +1,3 @@
-Priority:   70
-Status: ToDo
-ID: replylen-6a9i
-Created: 2026-10-17T01:01:04Z
-Updated: 2026-10-17T18:30:18Z
-
-Four different reply-length limits are in play and they disagree. src/oblique-task-factory.ts:13 sets MAX_BLUESKY_REPLY_CHARS = 299 (the truncation point); line 100 accepts a response at `length < 300` (the retry gate); src/prompts/oblique.ts:19 tells the model "The reply MUST be less than 279 characters" while line 37 of the same prompt says "limit all responses to 299 characters or less" and a third line says the Response section must be under 300. A test in test/oblique-task-factory.test.ts is still named "should use default maxLength of 279". So the model is given contradictory instructions and the code enforces a different number again. Fix: pick one limit, keep it as the single named constant, and interpolate it into the system prompt instead of restating it in prose. Rename the stale test. Bluesky's own post limit is 300 graphemes, which should inform the choice.
-----
 Priority:   65
 Status: ToDo
 ID: obstaskio-tn5t

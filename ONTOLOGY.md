@@ -466,7 +466,7 @@ generateLLMResponseWithRetry(client, conversation, maxAttempts = LLM_MAX_ATTEMPT
                                                temperature: LLM_TEMPERATURE,
                                                maxTokens: LLM_MAX_TOKENS })
     text = extractResponseContent(response.content) or response.content
-    if text.length < REPLY_LENGTH_GATE -> return text
+    if text.length <= MAX_BLUESKY_REPLY_CHARS -> return text
   -> truncateAtLastPunctuation(text)                 # last attempt only
 
 truncateAtLastPunctuation(text):
@@ -480,6 +480,12 @@ truncateAtLastPunctuation(text):
 Asking again is preferred to cutting, because a model that overran once usually complies on
 the retry and a cut sentence reads as a failure. Truncation is the floor, not the plan, and it
 cuts at a boundary rather than mid-word.
+
+`MAX_BLUESKY_REPLY_CHARS` is the only limit the code enforces — the gate above and the
+truncation point are the same number. The prompt asks the model for `ADVERTISED_REPLY_CHARS`
+instead, and every place it states a limit interpolates that constant: the `MUST` line and
+the `# Response` section's length in `systemPrompt`, and the same section's length in
+`obliquePrompt`.
 
 ### 4.15 Reply threading — `notificationReplyTo` **[D]**
 
@@ -720,8 +726,8 @@ tests. The code is the single source; the value here is a copy.
 
 | Name | Value | Unit | Where | Decision |
 |---|---|---|---|---|
-| `MAX_BLUESKY_REPLY_CHARS` | 299 | characters | `oblique-task-factory.ts` | D-9 |
-| `REPLY_LENGTH_GATE` | 300 | characters | `generateLLMResponseWithRetry` | D-9 |
+| `MAX_BLUESKY_REPLY_CHARS` | 300 | characters | `reply-length.ts` | D-9, D-19 |
+| `ADVERTISED_REPLY_CHARS` | 290 | characters | `reply-length.ts` | D-19 |
 | `LLM_MAX_ATTEMPTS` | 5 | attempts | `generateLLMResponseWithRetry` | D-9 |
 | `LLM_TEMPERATURE` | 0.8 | — | both LLM paths | D-10 |
 | `LLM_MAX_TOKENS` | 8000 | tokens | both LLM paths | D-10 |
@@ -742,8 +748,8 @@ tests. The code is the single source; the value here is a copy.
 | `MODEL_ROTATION_SIZE` | 23 | models | `config.json` → `openrouter.models` | D-5 |
 | `GENDER_ROTATION_SIZE` | 25 | entries | `prompts/oblique.ts` | D-5 |
 
-Only `MAX_BLUESKY_REPLY_CHARS`, `TOKEN_REFRESH_BUFFER_MS` and `SAFE_BASE32_ALPHABET` are named
-constants in the code today; the rest are literals at their use site, except
+Only `MAX_BLUESKY_REPLY_CHARS`, `ADVERTISED_REPLY_CHARS`, `TOKEN_REFRESH_BUFFER_MS` and
+`SAFE_BASE32_ALPHABET` are named constants in the code today; the rest are literals at their use site, except
 `MODEL_ROTATION_SIZE`, which is the length of a list in `config.json`. Naming them is Q-7 in
 `ARCHITECTURE_LOG.md`.
 

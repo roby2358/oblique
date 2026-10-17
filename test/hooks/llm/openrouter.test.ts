@@ -75,6 +75,22 @@ describe('OpenRouter client', () => {
     expect(JSON.parse(options.body).reasoning).toEqual({ enabled: false });
   });
 
+  it('never logs the API key', async () => {
+    const logged = console.log as jest.Mock<(...args: unknown[]) => void>;
+    fetchMock.mockResolvedValue(
+      okResponse({
+        choices: [{ message: { content: 'text' } }],
+        model: 'anthropic/claude-sonnet-4.5',
+      })
+    );
+
+    await createOpenRouterClient(config).generateResponse(request);
+
+    const everythingLogged = JSON.stringify(logged.mock.calls);
+    expect(everythingLogged).not.toContain(config.apiKey);
+    expect(everythingLogged).not.toContain('Authorization');
+  });
+
   it('throws when the payload carries no choices', async () => {
     fetchMock.mockResolvedValue(okResponse({ choices: [], model: 'some/model' }));
 

@@ -7,6 +7,18 @@ export const createOpenRouterClient = (config: LLMConfig): LLMClient => {
 
   return {
     async generateResponse(request: LLMRequest): Promise<LLMResponse> {
+      const body = {
+        model: request.model,
+        messages: request.conversation,
+        temperature: request.temperature ?? config.temperature ?? 0.7,
+        max_tokens: request.maxTokens ?? config.maxTokens ?? 500,
+        // Oblique's prompt asks for its own "# Thinking" section and only the "# Response"
+        // section is ever posted, so a model's private reasoning is budget spent on text
+        // nobody reads. On a reasoning model it spends all of it: deepseek-flash burned the
+        // whole LLM_MAX_TOKENS allowance thinking and returned content: null (R-35).
+        reasoning: { enabled: false },
+      };
+
       const fetchOptions = {
         method: 'POST',
         headers: {
@@ -15,20 +27,11 @@ export const createOpenRouterClient = (config: LLMConfig): LLMClient => {
           'HTTP-Referer': referrer,
           'X-Title': 'Oblique Bot',
         },
-        body: JSON.stringify({
-          model: request.model,
-          messages: request.conversation,
-          temperature: request.temperature ?? config.temperature ?? 0.7,
-          max_tokens: request.maxTokens ?? config.maxTokens ?? 500,
-          // Oblique's prompt asks for its own "# Thinking" section and only the "# Response"
-          // section is ever posted, so a model's private reasoning is budget spent on text
-          // nobody reads. On a reasoning model it spends all of it: deepseek-flash burned the
-          // whole LLM_MAX_TOKENS allowance thinking and returned content: null (R-35).
-          reasoning: { enabled: false },
-        }),
+        body: JSON.stringify(body),
       };
 
-      console.log(fetchOptions);
+      // Log the body, never fetchOptions: the headers carry the API key (R-35).
+      console.log('OpenRouter request:', body);
 
       const response = await fetch(config.baseUrl, fetchOptions);
 

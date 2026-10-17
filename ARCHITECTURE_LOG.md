@@ -339,6 +339,19 @@ so, as `ONTOLOGY.md` now does.
 
 ## History
 
+### 2026-10-17 — The OpenRouter client stops logging its own API key
+
+`console.log(fetchOptions)` printed the whole request to the browser console, headers
+included, so every call wrote `Authorization: Bearer sk-or-v1-...` where anyone looking at the
+console — or at a screen recording, or a pasted stack trace — could read it. The log now takes
+the request body alone, which is the part worth seeing anyway. R-35 gains an assertion that
+nothing logged contains the key, and it was confirmed to fail against the old line before the
+fix went in.
+
+The key was never at risk off the machine: Oblique runs as one page, the console is local, and
+the only operator is the repository's owner. This is hygiene against the day either of those
+stops being true.
+
 ### 2026-10-17 — `LLM_MAX_TOKENS` raised from 2000 to 8000
 
 Turning reasoning off earlier today did not end the no-content failures, so the budget was

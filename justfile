@@ -11,6 +11,10 @@
 #
 # `run` sets BROWSER=none, which overrides `open: true` in vite.config.ts; under WSL that
 # tries to spawn a powershell.exe that is not on this machine and prints a stack trace.
+#
+# The watcher polls (vite.config.ts). Edits made outside this filesystem's event domain — a
+# container, or the Windows side of a WSL mount — fire no inotify event, and Vite then keeps
+# serving the module it cached, through a forced browser refresh and all. Polling sees them.
 
 set shell := ["bash", "-uc"]
 

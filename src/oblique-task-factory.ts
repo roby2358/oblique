@@ -314,7 +314,7 @@ export const createPostReplyTask = (
           replyTo,
         });
 
-        // Return succeeded version (TODO: handle async result properly)
+        // Succeeds on dispatch, not on confirmation. See ARCHITECTURE_LOG.md Q-8.
         return createPostReplySucceededTask(task, 'reply-posted');
       } catch (error) {
         // Return dead version on error

@@ -125,7 +125,7 @@ export const shouldRespondToThread = (thread: BlueskyHistoryEntry[]): BlueskyHis
     return null;
   }
   
-  // For now, if we get this far, we should respond
+  // Past both checks: respond. See ARCHITECTURE_LOG.md D-6.
   console.log(`✓ Thread passed thread-level checks (${thread.length} messages)`);
   return thread;
 };

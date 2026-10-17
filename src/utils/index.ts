@@ -28,7 +28,7 @@ export const generateConversationId = (): string => {
   return generateSafeBase32(24);
 };
 
-// Legacy ID generators (kept for backward compatibility)
+// Unreferenced ID generators. See ARCHITECTURE_LOG.md Q-1.
 export const generateId = (): string => {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 };

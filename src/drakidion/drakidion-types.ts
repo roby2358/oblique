@@ -2,7 +2,7 @@
 // This file defines types for the DRAKIDION task orchestration system
 
 /**
- * Task status values as defined in DRAKIDION spec
+ * Task status values. See ONTOLOGY.md, the task state machine.
  */
 export type TaskStatus = 
   | 'ready'      // Task is queued and ready to process

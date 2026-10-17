@@ -348,19 +348,42 @@ re-queued (D-17).
 *Serves:* G-2. The first, cheap gate. Runs per notification, before any task exists.
 
 ```
+REPLIABLE_REASONS = { mention, reply, quote }
+
+isRepliableNotification(notif) -> notif.reason in REPLIABLE_REASONS
+
 shouldRespondToNotification(notif, postData):
+  if not isRepliableNotification(notif)                               -> false  # names no post
   if config.ignoreList includes notif.author                          -> false
   if notif.reason == 'quote' and handle not in notif.text             -> false
   if notif.reason == 'mention'                                        -> TRUE   # always
-  thread = postData.data.thread
-  if thread missing or $type != 'app.bsky.feed.defs#threadViewPost'   -> false  # deleted
-  if thread.replies is non-empty                                      -> false  # beaten to it
+  if postUnreadableReason(postData) is not null                       -> false  # say which
+  if postData.data.thread.replies is non-empty                        -> false  # beaten to it
   -> true
+
+postUnreadableReason(postData):
+  thread = postData?.data?.thread
+  if thread missing                     -> 'the post could not be fetched'
+  if $type == '…#threadViewPost'        -> null                       # readable
+  if $type == '…#notFoundPost'          -> 'the post is gone'
+  if $type == '…#blockedPost'           -> 'the post is blocked, by us or by its author'
+  -> 'the thread came back as <$type>'
 ```
 
+Only a `mention`, `reply` or `quote` names a post. A `like`, `repost` or `follow`
+notification's `uri` is that like, repost or follow record, so there is nothing to answer and
+`getPostThread` refuses it with a 400. `isRepliableNotification` is split out and offline so
+the poller can ask before it fetches.
+
 A direct mention is answered unconditionally — it was addressed to the bot, so someone else
-having replied is irrelevant. Everything else defers: an unparseable post is treated as
-deleted, and an existing reply means the conversation no longer needs the bot.
+having replied is irrelevant. Everything else defers: a post that cannot be read is left
+alone, and an existing reply means the conversation no longer needs the bot.
+
+A post that cannot be read is not the same as a deleted one, and the four reasons are named
+rather than guessed at: `#notFoundPost` is gone, `#blockedPost` is a perfectly good post
+behind a block in one direction or the other, a missing thread means the fetch itself failed
+(`fetchPostData` logged why), and any other `$type` is reported as itself. All four refuse,
+but the console says which.
 
 ### 4.9 Thread restraint **[D]**
 
@@ -730,7 +753,8 @@ checkNotifications():
   render notifs
   if #mark-as-seen -> await markNotificationsAsSeen()      # once, for the whole batch
   for each notif:
-    postData = await getSinglePost(notif.uri)
+    if not isRepliableNotification(notif): continue   # before any fetch: its uri is no post
+    postData = await fetchPostData(notif)             # null on any failure, never a throw
     if not shouldRespondToNotification(notif, postData): continue
     addTask(state, createReplyTask(notif, llmClient, blueskyClient, onWaitingTaskComplete))
   report created and filtered counts
@@ -739,6 +763,12 @@ checkNotifications():
 The poller's information is exactly what the Bluesky API returns for unread notifications —
 it has no memory of what it saw last pass. Marking as seen happens before the per-notification
 loop so a mid-loop failure cannot cause the same batch to be reprocessed forever.
+
+Each notification is considered on its own. `fetchPostData` answers `null` for anything
+Bluesky refuses — a deleted post, a blocked author, a URI it will not resolve — so one bad
+notification costs that notification and not the batch. `null` travels on to the restraint
+gate rather than skipping it, because the gate already treats unreadable post data as a
+deleted post, and a mention is still answered unconditionally.
 
 `onWaitingTaskComplete` is the bridge back into the orchestrator: the LLM promise calls it with
 `(taskId, successor)`, and it invokes rule 4.7 and refreshes the status display.

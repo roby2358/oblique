@@ -12,6 +12,49 @@ const normalizeHandle = (handle: string | undefined | null): string => {
   return (handle || '').replace(/^@/, '');
 };
 
+/**
+ * The notification reasons that name a post. A like, repost or follow notification's `uri` is
+ * the like/repost/follow record itself, so asking Bluesky for its thread is a 400 — and there
+ * is nothing there to answer in any case.
+ */
+const REPLIABLE_REASONS = ['mention', 'reply', 'quote'];
+
+/** Check whether a notification names a post at all
+ *
+ * Cheap and offline, so the caller can ask before fetching anything.
+ * @param notification - The notification to check
+ * @returns Whether `notification.uri` is a post Oblique could answer
+ */
+export const isRepliableNotification = (notification: BlueskyMessage): boolean => {
+  return REPLIABLE_REASONS.includes(notification.reason);
+};
+
+/**
+ * Why the post a notification names could not be read, or `null` when it could. `getPostThread`
+ * answers a union and the poller folds a failed fetch into it, so four quite different
+ * situations arrive in the same shape: the post is gone, the post is there but behind a block,
+ * the fetch never returned, or the thread is a kind nothing here handles. Only the first is a
+ * deleted post, so each is named rather than guessed at.
+ */
+const UNREADABLE_THREAD_TYPES: { [key: string]: string } = {
+  'app.bsky.feed.defs#notFoundPost': 'the post is gone',
+  'app.bsky.feed.defs#blockedPost': 'the post is blocked, by us or by its author',
+};
+
+export const postUnreadableReason = (postData: any): string | null => {
+  const thread = postData?.data?.thread;
+
+  if (!thread) {
+    return 'the post could not be fetched';
+  }
+
+  if (thread.$type === 'app.bsky.feed.defs#threadViewPost') {
+    return null;
+  }
+
+  return UNREADABLE_THREAD_TYPES[thread.$type] ?? `the thread came back as ${thread.$type}`;
+};
+
 /** Check if a single notification should be responded to based on response rules
  * 
  * This is the first, quick check to see if the notification should be responded to.
@@ -23,6 +66,12 @@ export const shouldRespondToNotification = (
   notification: BlueskyMessage,
   postData: any
 ): boolean => {
+  // Rule 0: Only reasons that name a post can be answered
+  if (!isRepliableNotification(notification)) {
+    console.log(`Skipping @${notification.author}: a ${notification.reason} names no post to answer`);
+    return false;
+  }
+
   // Rule 1: Check if author is in ignore list
   const config = getConfig();
   const configuredHandle: string = normalizeHandle(config.bluesky.handle);
@@ -48,14 +97,14 @@ export const shouldRespondToNotification = (
     return true;
   }
 
-  // If we can't parse the post data, skip response
-  // Likely it was deleted
-  const thread = postData?.data?.thread as any;
-  if (!thread ||
-    thread.$type !== 'app.bsky.feed.defs#threadViewPost') {
-    console.log(`Skipping @${notification.author}: Post data is invalid (deleted?)`);
+  // If we can't read the post, skip response — and say which of the four reasons it was
+  const unreadable = postUnreadableReason(postData);
+  if (unreadable) {
+    console.log(`Skipping @${notification.author}: ${unreadable}`);
     return false;
   }
+
+  const thread = postData.data.thread as any;
   
   // Rule 4: If it's not a direct mention, check if anyone has already replied
   const hasReplies = !!(thread.replies && thread.replies.length > 0);

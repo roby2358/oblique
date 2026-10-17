@@ -68,7 +68,67 @@ describe('Bluesky Polling Module', () => {
     },
   });
 
+  // R-8: a like, repost or follow names no post, so it is refused before anything is fetched
+  describe('isRepliableNotification', () => {
+    it('accepts the reasons that name a post', async () => {
+      const { isRepliableNotification } = await import('../src/bluesky-polling.js');
+
+      for (const reason of ['mention', 'reply', 'quote']) {
+        expect(isRepliableNotification({ ...baseNotification, reason })).toBe(true);
+      }
+    });
+
+    it('refuses the reasons whose uri is not a post', async () => {
+      const { isRepliableNotification } = await import('../src/bluesky-polling.js');
+
+      for (const reason of ['like', 'repost', 'follow', 'starterpack-joined']) {
+        expect(isRepliableNotification({ ...baseNotification, reason })).toBe(false);
+      }
+    });
+  });
+
+  // R-8: an unreadable post is not evidence of a deleted one
+  describe('postUnreadableReason', () => {
+    const threadOf = ($type: string) => ({ data: { thread: { $type } } });
+
+    it('reads a thread view post', async () => {
+      const { postUnreadableReason } = await import('../src/bluesky-polling.js');
+
+      expect(postUnreadableReason(createPostData(false))).toBeNull();
+    });
+
+    it('tells a gone post from a blocked one', async () => {
+      const { postUnreadableReason } = await import('../src/bluesky-polling.js');
+
+      expect(postUnreadableReason(threadOf('app.bsky.feed.defs#notFoundPost')))
+        .toBe('the post is gone');
+      expect(postUnreadableReason(threadOf('app.bsky.feed.defs#blockedPost')))
+        .toBe('the post is blocked, by us or by its author');
+    });
+
+    it('tells a failed fetch from an unhandled thread type', async () => {
+      const { postUnreadableReason } = await import('../src/bluesky-polling.js');
+
+      expect(postUnreadableReason(null)).toBe('the post could not be fetched');
+      expect(postUnreadableReason({ data: {} })).toBe('the post could not be fetched');
+      expect(postUnreadableReason(threadOf('app.bsky.feed.defs#somethingNew')))
+        .toBe('the thread came back as app.bsky.feed.defs#somethingNew');
+    });
+  });
+
   describe('shouldRespondToNotification', () => {
+    it('refuses a like without consulting the post data', async () => {
+      const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
+      const like: BlueskyMessage = {
+        ...baseNotification,
+        uri: 'at://did:plc:test/app.bsky.feed.like/3my3tjzprdr24',
+        reason: 'like',
+      };
+
+      expect(shouldRespondToNotification(like, createPostData(false))).toBe(false);
+      expect(shouldRespondToNotification(like, undefined)).toBe(false);
+    });
+
     it('skips authors in the ignore list', async () => {
       getConfigMock.mockReturnValue({
         ignoreList: ['user.test'],

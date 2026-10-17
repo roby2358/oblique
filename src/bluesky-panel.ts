@@ -4,7 +4,8 @@ import { getBlueskyClient, getLLMClient, getOrchestratorState, setOrchestratorSt
 import { createReplyTask } from './oblique-task-factory.js';
 import * as Orchestrator from './drakidion/orchestrator.js';
 import type { BlueskyMessage } from './types/index.js';
-import { shouldRespondToNotification } from './bluesky-polling.js';
+import { isRepliableNotification, shouldRespondToNotification } from './bluesky-polling.js';
+import type { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
 
 declare const $: any;
 
@@ -95,6 +96,22 @@ const updateCountdown = (nextCheckTime: Date) => {
 };
 
 // Main notification checking logic (shared between manual and polling)
+/**
+ * The post data a notification names, or `null` when Bluesky will not give it up — a deleted
+ * post, a blocked author, a URI it refuses. One notification's failure skips that
+ * notification; it must not abort the rest of the batch (R-21). `null` travels on to the
+ * restraint gate, which already treats unreadable post data as a deleted post.
+ */
+export const fetchPostData = async (blueskyClient: BlueskyClient, notif: BlueskyMessage): Promise<any> => {
+  try {
+    return await blueskyClient.getSinglePost(notif.uri);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'Unknown error';
+    console.log(`Could not fetch the post for @${notif.author}: ${reason}`);
+    return null;
+  }
+};
+
 export const checkNotifications = async () => {
   const blueskyClient = getBlueskyClient();
   const llmClient = getLLMClient();
@@ -143,7 +160,14 @@ export const checkNotifications = async () => {
 
     // Iterate through each notification and check if we should respond
     for (const notif of notifications) {
-      const postData = await blueskyClient.getSinglePost(notif.uri);
+      // Ask before fetching: a like, repost or follow notification's uri is that record,
+      // not a post, and getPostThread answers 400 for it (R-8).
+      if (!isRepliableNotification(notif)) {
+        console.log(`Skipping @${notif.author}: a ${notif.reason} names no post to answer`);
+        continue;
+      }
+
+      const postData = await fetchPostData(blueskyClient, notif);
       
       if (!shouldRespondToNotification(notif, postData)) {
         continue;

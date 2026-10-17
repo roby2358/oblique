@@ -43,6 +43,35 @@ describe('Bluesky Polling Module', () => {
     }));
   });
 
+  // R-21: one notification's failed fetch skips that notification, not the batch
+  describe('fetchPostData', () => {
+    const notif = {
+      uri: 'at://did:plc:test/app.bsky.feed.post/abc',
+      cid: 'cid-1',
+      author: 'user.test',
+      text: 'Hello',
+      createdAt: new Date('2025-01-01T00:00:00Z'),
+      reason: 'mention',
+    };
+
+    it('returns what Bluesky gives it', async () => {
+      const { fetchPostData } = await import('../src/bluesky-panel.js');
+      const postData = { data: { thread: { $type: 'app.bsky.feed.defs#threadViewPost' } } };
+      const client = { getSinglePost: jest.fn<any>().mockResolvedValue(postData) } as any;
+
+      await expect(fetchPostData(client, notif)).resolves.toBe(postData);
+    });
+
+    it('returns null rather than throwing when the fetch fails', async () => {
+      const { fetchPostData } = await import('../src/bluesky-panel.js');
+      const client = {
+        getSinglePost: jest.fn<any>().mockRejectedValue(new Error('400 Bad Request')),
+      } as any;
+
+      await expect(fetchPostData(client, notif)).resolves.toBeNull();
+    });
+  });
+
   it('should create toggle handler function', async () => {
     const { createHandleTogglePolling } = await import('../src/bluesky-panel.js');
     const handleToggle = createHandleTogglePolling();

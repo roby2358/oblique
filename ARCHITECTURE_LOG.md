@@ -424,6 +424,30 @@ so, as `ONTOLOGY.md` now does.
 
 ## History
 
+### 2026-10-17 — Only notifications that name a post are fetched
+Every unread notification was passed to `getSinglePost`, whose `getPostThread` call needs a
+post URI. A `like`, `repost` or `follow` notification's `uri` is that like, repost or follow
+record, so Bluesky answered 400 and the exception escaped the per-notification loop and
+aborted the whole batch — one like in a batch of three meant none of the three was considered.
+R-8 gains a Rule 0: `isRepliableNotification` accepts only `mention`, `reply` and `quote`. It
+is split out of `shouldRespondToNotification` and kept offline so the poller can ask before it
+fetches, which is where the 400 was coming from; the gate checks it too, so a caller that
+forgets still cannot act on a like. The fetch itself is now `fetchPostData`, which answers
+`null` for anything Bluesky refuses, so the next cause — a deleted post, a blocked author —
+costs one notification rather than the batch. `null` travels on to the gate rather than
+skipping it, because the gate already treats unreadable post data as a deleted post and a
+mention is still answered unconditionally; no rule changed, only the blast radius of a
+failure. The poller's loop in ONTOLOGY now shows both. R-21 stays `not yet covered` —
+`checkNotifications` still imports its dependencies rather than taking them — but
+`fetchPostData` is covered on both paths.
+
+The gate used to log every post it could not read as `Post data is invalid (deleted?)`. That
+was a guess, and a wrong one often enough to mislead: `getPostThread` answers a union, and a
+`#blockedPost` is a perfectly good post behind a block in one direction or the other, while a
+missing thread now means the fetch failed rather than that anything was deleted.
+`postUnreadableReason` names which of the four it was and the gate logs that. All four still
+refuse; only the diagnosis changed.
+
 ### 2026-10-17 — The oblique prompt is ordered least volatile first
 `obliquePrompt` interleaved its variables with its fixed text: the lens and the voice were
 written in the middle, with the output-format instruction below them, so a block of text that

@@ -417,6 +417,22 @@ createObliqueConversation(thread):
 `null` in, `null` out: a refusal from either restraint gate propagates through the promise
 chain as `null` and silently ends the chain without a post.
 
+`obliquePrompt` orders its text least volatile first, so that a provider's prefix cache keeps
+as much of it as the next request allows: the fixed mission, then the voice (one value per UTC
+day), then the lens (one of four, drawn per reply), then the thread history, then the message
+being answered, then a three-line restatement of the task. Every request that day shares the
+fixed text; a request that draws the same lens shares that too. The lens sits above the thread
+rather than below it because consecutive replies usually belong to *different* threads, so
+four possible lens blocks are cached more often than one thread's history. The closing
+restatement is fixed text in the least cacheable position, deliberately: it is there for
+recency, and it is short because it is paid for on every request.
+
+The output format is stated once, as a fenced skeleton under `# Output format` in
+`systemPrompt`: `# Thinking`, `# Related Western`, `# Related Eastern`, `# Insight 1` … `3`,
+`# Response`, with no section count to disagree with the list. `systemPrompt` carries no
+interpolation beyond `ADVERTISED_REPLY_CHARS` and is the same string for every request on both
+call sites, so the format sits in the longest fixed prefix there is.
+
 ### 4.12 Lens and voice selection **[D]**
 
 *Serves:* G-1, and the *literate* quality.
@@ -628,7 +644,8 @@ generateResponse(request):
 ```
 
 Every request turns reasoning off. The prompt asks the model for its own `# Thinking`,
-`# Related Western` and `# Related Eastern` sections and only `# Response` is ever posted, so
+`# Related Western`, `# Related Eastern` and `# Insight 1` … `3` sections and only
+`# Response` is ever posted, so
 private reasoning is budget spent on text nothing reads — and on a reasoning model it is spent
 first, so the whole of `LLM_MAX_TOKENS` can go to thinking and leave `content` null. It is off
 for every model, including those that do not reason; a model that refuses the flag is a problem

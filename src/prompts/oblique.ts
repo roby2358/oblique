@@ -40,12 +40,10 @@ You MUST NOT advocate death or self-harm
 - Your answer is oblique but intended to fill in understanding.
 - Frame the response as statement as implied question.
 
-Answer in markdown with 3 sections, Thinking, Related Western, Related Eastern, and Response as primary
- headings. Put each sentence on a new line with a blank line in between.
+# Output format
+Answer in markdown with these primary headings, in this order and no others.
+Put each sentence on a new line with a blank line in between.
 
-The # Response section must be ${ADVERTISED_REPLY_CHARS} characters or less.
-
- Example:
 \`\`\`
 # Thinking
 500 words or less.
@@ -56,12 +54,22 @@ The # Response section must be ${ADVERTISED_REPLY_CHARS} characters or less.
 # Related Eastern
 500 words or less.
 
+# Insight 1
+One sentence.
+
+# Insight 2
+One sentence.
+
+# Insight 3
+One sentence.
+
 # Response
 First sentence.
 
 Second sentence.
-...
 \`\`\`
+
+Only # Response is posted, and it MUST be ${ADVERTISED_REPLY_CHARS} characters or less.
 `;
 
 const lenses: { [key in ObliqueTextLens]: string } = {
@@ -174,6 +182,16 @@ const formatPost = (post: { author: string; text: string; altTexts?: string[] })
     : mainText;
 };
 
+/**
+ * The prompt is ordered least volatile first, so a provider's prefix cache keeps as much of
+ * it as the next request allows: the fixed mission, then the voice (one value per UTC day),
+ * then the lens (one of four, drawn per reply), then the thread, then the message being
+ * answered. The output format is stated once, in `systemPrompt`, which never varies at all. Anything written above a variable is cached for every request that
+ * day; anything written below one is re-read whenever that variable changes. Keep new text at
+ * the volatility it belongs to (R-37). The closing restatement is the one deliberate
+ * exception: it is fixed text placed last, for recency rather than for caching, so it is kept
+ * to a few lines (D-21).
+ */
 export const obliquePrompt = (userMessage: string, threadHistory: string): string => {
   const focus = lenses[getRandomTextLens()];
   const gender = getDailyGender();
@@ -185,14 +203,13 @@ The intent is be an agent of sense-making to help the user build a coherent narr
 
 Consider the positive and the negative, the Western and the Eastern, reward
   and threat. Span cultural and psychological boundaries. Favor the obscure
-  and eclectic. Reply through the chosen lens:
+  and eclectic.
+
+You are ${gender}. Reply in a ${gender} voice.
+
+Reply through the chosen lens:
 
   "${focus}"
-
-  You are ${gender}. Reply in a ${gender} voice.
-
-Answer in markdown with 6 sections: Thinking, Related Western, Related Eastern, Insight 1, Insight 2, Insight 3, and Response as primary
- headings. Put each sentence on a new line with a blank line in between. The # Response section must be ${ADVERTISED_REPLY_CHARS} characters or less.
 
   Thread history:
 
@@ -201,6 +218,10 @@ Answer in markdown with 6 sections: Thinking, Related Western, Related Eastern, 
   Reply to this message:
 
   "${userMessage}"
+
+Answer that message now, through the lens above: one oblique observation, specific to the
+post and its thread, in the sections given. The # Response section is the reply that gets
+posted, and it must be ${ADVERTISED_REPLY_CHARS} characters or less.
   `;
 
   return promptText;

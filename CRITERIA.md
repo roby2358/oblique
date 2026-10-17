@@ -44,6 +44,7 @@ IDs are never renumbered. Rules are cited by ID, never by section number.
 | R-24 | `createTaskFromFunction(d, fn)` where `fn` returns a partial, returns `{}`, returns a custom status, throws an `Error`, and throws a non-`Error` | Returns a `ready` task. On success the partial is merged over a succeeded successor, but `taskId`, `version` and `doneAt` are never overridden and the status defaults to `succeeded`. On a throw the result is a `dead` successor with the message appended to `work` as a further line; a non-`Error` throw yields `Unknown error`. | automated |
 | R-35 | `generateResponse` with a normal payload, checking the request body names the model, carries `reasoning: { enabled: false }` and that nothing logged contains the API key; with `choices: []`; with `content: null` and `finish_reason: length`; with whitespace-only content; with a non-OK status | The normal payload yields the content, model and usage, and the console sees the request body without the headers. Each of the next three throws `OpenRouter returned no content for model <model> (finish_reason: <reason>)` rather than returning `''`. A non-OK status throws `OpenRouter API error: <status> <body>`. | automated |
 | R-36 | A chain's `work` after each step; `latestWork` for a work product with lines and for one with none | Every step appends exactly one line and leaves the earlier lines untouched, so the latest snapshot carries the whole trace. `latestWork` returns the last line, and `''` when there are none, so a caller's own fallback text applies. | automated |
+| R-37 | `obliquePrompt` called twice with different messages and histories; `systemPrompt` | The sections appear in volatility order: the fixed mission text, the daily voice, the lens, the thread history, the message being answered, the closing restatement. Everything above the voice is byte-identical between the two calls. The output format is stated in `systemPrompt` and nowhere else, and the restatement is the last thing in the user message. | automated |
 
 ### Unbuilt rules
 
@@ -130,6 +131,10 @@ close. R-21 needs the poller's dependencies injected rather than imported.
   terminal v5 are covered only by R-16, and v2 inheriting v1's `conversation` is covered only
   by R-1.
 - **R-18** — construction and the resolve path are covered; the reject path is not.
+- **R-37** — the order of the sections, the shared prefix above the voice, the single home of
+  the output format and the position of the restatement are all asserted. That the ordering
+  actually earns a cache hit is a property of the provider, not of this code, and nothing here
+  measures it.
 - **R-21** — only the polling *toggle* handler and the interval clamp (U-7) are covered;
   `checkNotifications` itself is not.
 

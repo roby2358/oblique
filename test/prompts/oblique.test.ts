@@ -64,6 +64,52 @@ describe('Oblique Prompts', () => {
     });
   });
 
+  // R-37: the prompt is ordered least volatile first, so a prefix cache keeps as much of it
+  // as the next request allows
+  describe('prompt ordering for prefix caching', () => {
+    const sectionStarts = (prompt: string): number[] => [
+      prompt.indexOf('Your mission is to increase engagement'),
+      prompt.indexOf('Reply in a'),
+      prompt.indexOf('Reply through the chosen lens'),
+      prompt.indexOf('Thread history:'),
+      prompt.indexOf('Reply to this message:'),
+      prompt.indexOf('Answer that message now'),
+    ];
+
+    it('places the fixed text, then the daily voice, then the lens, then the thread, then the message, then the restatement', () => {
+      const starts = sectionStarts(obliquePrompt('The message', 'The history'));
+
+      expect(starts).not.toContain(-1);
+      expect(starts).toEqual([...starts].sort((a, b) => a - b));
+    });
+
+    it('states the output format only in the system prompt', () => {
+      const prompt = obliquePrompt('The message', 'The history');
+
+      expect(systemPrompt).toContain('# Output format');
+      expect(systemPrompt).toContain('# Insight 1');
+      expect(prompt).not.toContain('Answer in markdown');
+    });
+
+    it('closes by restating the task after the message being answered', () => {
+      const prompt = obliquePrompt('The message', 'The history');
+      const restatement = prompt.slice(prompt.indexOf('Answer that message now'));
+
+      expect(restatement).toContain('# Response');
+      expect(prompt.trimEnd().endsWith(restatement.trimEnd())).toBe(true);
+    });
+
+    it('keeps everything before the voice identical across two calls', () => {
+      const first = obliquePrompt('One message', 'One history');
+      const second = obliquePrompt('Another message', 'Another history');
+
+      const sharedPrefix = (text: string): string => text.slice(0, text.indexOf('Reply in a'));
+
+      expect(sharedPrefix(first)).toBe(sharedPrefix(second));
+      expect(sharedPrefix(first).length).toBeGreaterThan(0);
+    });
+  });
+
   describe('createObliqueConversation', () => {
 
     it('should split last post from thread history', () => {

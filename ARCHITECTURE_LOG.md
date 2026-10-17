@@ -268,6 +268,45 @@ settled), **History** (dated entries, newest first).
   it in prose. Serves G-1 and the *terse* quality.
 - **Evidence:** `npm test` — R-14 asserts the gate at both edges.
 
+### D-20 The prompt is ordered by how often each part changes — *Decided*
+
+- **Alternatives:** write the prompt in the order it reads best and accept the cache misses;
+  put the thread history above the lens, so a second reply in the same thread shares more;
+  move the output-format instruction into the system prompt, where it would never be re-read.
+- **Why:** a prefix cache keeps a request's prompt only up to the first byte that differs from
+  the last one, so a fixed block written below a variable is paid for on every request. The
+  fixed mission and output format go first, then the voice (one value per UTC day), then the
+  lens (one of four, per reply), then the thread history, then the message. The lens is above
+  the thread because consecutive replies usually belong to different threads, so four lens
+  blocks are reused far more often than one thread's history. The format instruction stays in
+  the user message rather than moving into the system prompt: it already sits inside the
+  fixed prefix, so moving it would change what the model is told for no further caching, and
+  the system prompt's own section list already disagrees with it (Q-14). This serves no §0
+  goal: cost is not among them. It is free — only the order changed, not a word of what the
+  model is told — and that is the whole case for it, not a reason to reshape the prompt
+  further.
+- **Evidence:** `npm test` — R-37 asserts the order and the shared prefix. Whether a given
+  provider turns that order into a hit is not measured here.
+
+### D-21 The output format is stated once, in the system prompt, and restated in one line at the end — *Decided*
+
+- **Alternatives:** leave the two statements as they were; keep both but make them agree; put
+  the single statement in the user message's fixed prefix instead.
+- **Why:** the system prompt asked for "3 sections, Thinking, Related Western, Related
+  Eastern, and Response" while the user message asked for "6 sections" and named seven,
+  Insight 1 … 3 among them. The lists disagreed and neither count matched its own list, so the
+  model was given two answers to one question. The format now appears once, as a fenced
+  skeleton under `# Output format` in `systemPrompt` — no count, the headings themselves are
+  the list. The system prompt is the right home because both call sites send it and it carries
+  no interpolation at all, so the format sits in the longest fixed prefix there is.
+  `obliquePrompt` then closes, after the message being answered, with three lines naming the
+  task again and the one constraint that matters: `# Response` is what gets posted and must be
+  `ADVERTISED_REPLY_CHARS` or less. That tail is fixed text in the least cacheable position in
+  the prompt, which is the point — it is there for recency, and it is short because it is paid
+  for on every request. Serves G-1 and the *terse* quality.
+- **Evidence:** `npm test` — R-37 asserts that the format appears only in the system prompt
+  and that the restatement is last.
+
 ### Deliberately left out
 
 - **Multi-turn memory of its own.** Context is re-read from the Bluesky thread on every pass.
@@ -384,6 +423,23 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-17 — The oblique prompt is ordered least volatile first
+`obliquePrompt` interleaved its variables with its fixed text: the lens and the voice were
+written in the middle, with the output-format instruction below them, so a block of text that
+never changes sat behind two values that change every reply and every day. A provider's prefix
+cache stops at the first difference, so that block was re-read on every request. The prompt now
+runs fixed text, then the daily voice, then the lens, then the thread history, then the message
+being answered. The lens is deliberately above the thread: consecutive replies usually belong to
+different threads, so four possible lens blocks are reused more often than one thread's history.
+Nothing the model is told has changed, only the order it is told in. ONTOLOGY's conversation
+construction rule now states the ordering and why; D-20 records the choice and R-37 asserts
+it. Reading the two prompts side by side also showed them asking for different sections, with
+neither count matching its own list; D-21 collapses that to one statement in the system prompt
+and closes the user message with a three-line restatement of the task, placed last for recency
+rather than for caching. Oblique answers one
+notification at a time rather than carrying a conversation, so most of the prompt below the
+fixed text still misses — this is the best the shape of the work allows.
 
 ### 2026-10-17 — The notification text survives into the first snapshot of a reply chain
 

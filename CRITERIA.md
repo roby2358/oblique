@@ -130,9 +130,6 @@ close. R-21 needs the poller's dependencies injected rather than imported.
 - **R-18** — construction and the resolve path are covered; the reject path is not.
 - **R-21** — only the polling *toggle* handler and the interval clamp (U-7) are covered;
   `checkNotifications` itself is not.
-- **R-23** — WaitingSet is tested through `src/drakidion/waiting-map.ts`, a byte-identical
-  duplicate of `waiting-set.ts` that nothing else imports. The module the orchestrator actually
-  uses is covered only transitively. See `ARCHITECTURE_LOG.md`.
 
 ### Manual only
 

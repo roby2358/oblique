@@ -38,6 +38,14 @@ Updated: 2026-10-17T07:38:20Z
 
 The Bluesky reply path ignores the daily model rotation. src/oblique-task-factory.ts:232 logs `getDailyModel()` for display, but generateLLMResponseWithRetry (called at line 238) builds its request as `{ conversation, temperature, maxTokens }` with no `model` field, so the OpenRouter client falls back to `config.openrouter.model` and every public reply uses the configured model. The chat path (createObliqueMessageTask) does pass `getDailyModel()`, so the two paths silently disagree and the console log claims a model that was not used. The rotation exists so 15 models can be compared on identical public traffic, which only works on the reply path. Fix: pass `model: getDailyModel()` into the reply path's request, and assert in a test that the model reaching the client matches the daily rotation.
 ----
+Priority:   60
+Status: Done
+ID: dupwaitset-tu5f
+Created: 2026-10-17T01:00:47Z
+Updated: 2026-10-17T17:41:19Z
+
+src/drakidion/waiting-map.ts is a byte-identical duplicate of src/drakidion/waiting-set.ts, and the tests cover the wrong one. orchestrator.ts imports waiting-set.ts; test/drakidion/waiting-map.test.ts imports waiting-map.ts. So the module the orchestrator actually runs is only tested transitively, and the 12 direct assertions land on a file nothing else imports — edits to waiting-set.ts cannot break those tests. Fix: delete waiting-map.ts, repoint the test at waiting-set.ts, and rename it waiting-set.test.ts. Confirm with a grep that no import of waiting-map remains.
+----
 Priority:    0
 Status: Done
 ID: extract-resp-juwa

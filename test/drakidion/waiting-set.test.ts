@@ -1,5 +1,5 @@
 // Tests for WaitingSet
-import * as WaitingSetOps from '../../src/drakidion/waiting-map.js';
+import * as WaitingSetOps from '../../src/drakidion/waiting-set.js';
 
 describe('WaitingSet', () => {
   describe('createWaitingSet', () => {

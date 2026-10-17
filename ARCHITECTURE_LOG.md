@@ -298,13 +298,6 @@ are imported by nothing. They are the vocabulary of the pre-2025-10-11 design.
 **Recommendation:** delete them, keeping `BlueskyMessage`, `BlueskyPost`, `LLMRequest` and
 `LLMResponse`. Risk is zero — the TypeScript build proves nothing imports them.
 
-### Q-2 `waiting-map.ts` duplicates `waiting-set.ts` — *tracked as `dupwaitset-tu5f`*
-
-The two files are byte-identical. `orchestrator.ts` imports `waiting-set.ts`;
-`test/drakidion/waiting-map.test.ts` imports `waiting-map.ts`. So the module under test is not
-the module in use. **Recommendation:** delete `waiting-map.ts`, point the test at
-`waiting-set.ts`, and rename it `waiting-set.test.ts`.
-
 ### Q-3 `errorWaitingTask` is identical to `resumeWaitingTask` — *tracked as `errwait-rwzm`*
 
 Both do exactly the same thing; the difference is only in the successor the caller passes.
@@ -368,6 +361,15 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-17 — The duplicate `waiting-map.ts` is gone and its tests point at the module in use
+
+`src/drakidion/waiting-map.ts` was a byte-identical copy of `waiting-set.ts` that nothing
+imported, and `test/drakidion/waiting-map.test.ts` was the only file reading it, so R-23's
+twelve WaitingSet assertions landed on a dead module and an edit to the module the
+orchestrator runs could not break them. The copy is deleted, the test is renamed
+`test/drakidion/waiting-set.test.ts` and imports `waiting-set.js`, and R-23 loses its partial
+coverage note. Settles Q-2 (`dupwaitset-tu5f`); no behavior changes.
 
 ### 2026-10-17 — A task's `work` becomes a list of lines that every step appends to
 

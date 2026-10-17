@@ -1,11 +1,3 @@
-Priority:   90
-Status: ToDo
-ID: buildbreak-4s8x
-Created: 2026-10-17T01:00:02Z
-Updated: 2026-10-17T01:00:02Z
-
-`npm run build` fails. src/prompts/dadabot.ts is a Markdown prompt ("# DadaBot / You are DadaBot, the ghost of Tristan Tzara reborn in a machine...") saved with a .ts extension, so `tsc` rejects it with ~40 syntax errors and the build never reaches `vite build`. Nothing imports it, and `npm test` passes because Jest only compiles what is imported, so the break is invisible until someone builds. Fix: either rename it dadabot.md, or make it a real .ts module exporting the prompt as a string the way src/prompts/oblique.ts does. Then decide whether DadaBot is a planned second persona or dead material. Verify with `npx tsc --noEmit`, which should report zero errors.
-----
 Priority:   85
 Status: ToDo
 ID: cfgsave-5vpt

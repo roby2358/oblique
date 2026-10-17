@@ -3,11 +3,14 @@
 #
 #   just            # list recipes
 #   just run        # dev server on http://localhost:5173
-#   just preview    # build, then serve the real bundle
-#   just check      # types, tests and build — what to run before committing
+#   just check      # types and tests — what to run before committing
 #
-# Install on the platform you build from: rollup and esbuild ship per-platform
-# binaries, so a node_modules/ installed from Windows fails under WSL, and the reverse.
+# There is no build: the page is served by Vite from source, and nothing deploys a bundle
+# yet. Install on the platform you run from — esbuild ships per-platform binaries, so a
+# node_modules/ installed from Windows fails under WSL, and the reverse.
+#
+# `run` sets BROWSER=none, which overrides `open: true` in vite.config.ts; under WSL that
+# tries to spawn a powershell.exe that is not on this machine and prints a stack trace.
 
 set shell := ["bash", "-uc"]
 
@@ -16,19 +19,9 @@ default:
     @just --list
 
 # Launch the page: Vite dev server on http://localhost:5173 with hot reload
-# BROWSER=none overrides `open: true` in vite.config.ts, which under WSL tries to
-# spawn a powershell.exe that is not on this machine and prints a stack trace.
 run:
     @[ -f config.json ] || echo "[warn] no config.json — the page loads unconfigured; copy config-example.json and fill it in"
     BROWSER=none npm run dev
-
-# Serve the production bundle from dist/, to check what actually ships
-preview: build
-    npm start
-
-# Type-check and bundle to dist/
-build:
-    npm run build
 
 # Run the Jest suite
 test:
@@ -43,12 +36,8 @@ typecheck:
     npx tsc --noEmit
 
 # Everything green before a commit
-check: typecheck test build
+check: typecheck test
 
-# Remove dist/
-clean:
-    npm run clean
-
-# Install dependencies — on the platform you build from (see the note at the top)
+# Install dependencies — on the platform you run from (see the note at the top)
 install:
     npm install

@@ -100,8 +100,8 @@ anything until one exists.
 
 ## Status
 
-**As of 2026-10-17.** `npm test` runs 17 suites, 156 tests, and passes. `npm run build`
-(`tsc && vite build`) passes: `tsc` reports no errors and Vite emits `dist/`.
+**As of 2026-10-17.** `npm test` runs 17 suites, 156 tests, and passes, and `npx tsc --noEmit`
+reports no errors. There is no build step to check.
 
 ### Not yet covered
 

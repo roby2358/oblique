@@ -317,6 +317,26 @@ so, as `ONTOLOGY.md` now does.
 
 ## History
 
+### 2026-10-17 — The build step is removed; `tsc` is `noEmit` and only type-checks
+
+`npm run build` was `tsc && vite build`, and the two halves did not feed each other. `tsc`
+wrote 112 files into `dist/` — a `.js`, `.js.map`, `.d.ts` and `.d.ts.map` per source file —
+and `vite build`, with `emptyOutDir: true`, deleted all of them before emitting its own four.
+Nothing `tsc` produced was ever read; only its exit code mattered. And nothing read Vite's
+output either: there is no deploy target, no CI, and `dist/` is gitignored, so the bundle was
+built for a reader that does not exist.
+
+Removed: `build`, `start` (`vite preview`, which only served the bundle) and `clean` (`rimraf
+dist`) from `package.json`, along with the `main` and `types` entries pointing into `dist/`;
+the `build`, `preview` and `clean` recipes from the justfile; and the `build` block from
+`vite.config.ts`. `just check` is now `typecheck test`, which no longer type-checks twice.
+`tsconfig.json` gains `noEmit` and loses `outDir`, `declaration`, `declarationMap` and
+`sourceMap`, so `npx tsc` cannot write `dist/` by accident.
+
+This was anticipating a requirement rather than meeting one. Add a build back the day there is
+somewhere to deploy to; it is four lines. `rimraf` is left in `devDependencies` rather than
+churn the lockfile for one unused entry.
+
 ### 2026-10-17 — Model list refreshed from yuwakisagpt, preferring floating `~*-latest` aliases
 
 The list was the one carried over from the original hardcoded map — Claude Sonnet 4.5, GPT-5,

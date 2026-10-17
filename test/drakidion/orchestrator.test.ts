@@ -1,23 +1,20 @@
 // Tests for Orchestrator
+import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import * as Orchestrator from '../../src/drakidion/orchestrator.js';
+import * as TaskMapOps from '../../src/drakidion/task-map.js';
 import type { DrakidionTask } from '../../src/drakidion/drakidion-types.js';
 import { generateTaskId } from '../../src/utils/index.js';
 
 describe('Orchestrator', () => {
   // Suppress console output during tests for cleaner output
-  let originalLog: typeof console.log;
-  let originalError: typeof console.error;
-
   beforeEach(() => {
-    originalLog = console.log;
-    originalError = console.error;
-    console.log = () => {};
-    console.error = () => {};
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
-    console.log = originalLog;
-    console.error = originalError;
+    jest.restoreAllMocks();
   });
 
   const createMockTask = (
@@ -183,83 +180,148 @@ describe('Orchestrator', () => {
     });
   });
   
-  describe('resumeWaitingTask', () => {
+  // R-7: resuming a waiting chain, and refusing to resume one that is not waiting
+  describe('resumeWaitingTask / errorWaitingTask', () => {
+    const waitingTask = (taskId: string): DrakidionTask => ({
+      taskId,
+      version: 1,
+      status: 'waiting',
+      description: 'Waiting task',
+      work: 'Waiting...',
+      createdAt: new Date(),
+      process: () => {
+        throw new Error('A waiting task is never processed');
+      },
+    });
+
+    const terminalSuccessor = (
+      task: DrakidionTask,
+      status: DrakidionTask['status'],
+      work: string
+    ): DrakidionTask => ({
+      ...task,
+      version: task.version + 1,
+      status,
+      work,
+      doneAt: new Date(),
+      process: () => {
+        throw new Error('Done');
+      },
+    });
+
     it('should resume a waiting task with successor task', () => {
       const state = Orchestrator.createOrchestrator();
-      
-      const task: DrakidionTask = {
-        taskId: 'task1',
-        version: 1,
-        status: 'waiting',
-        description: 'Waiting task',
-        work: 'Waiting...',
-        createdAt: new Date(),
-        process: () => task,
-      };
-      
-      const successorTask: DrakidionTask = {
-        taskId: 'task1',
-        version: 2,
-        status: 'succeeded',
-        description: 'Waiting task',
-        work: 'Result: test result',
-        createdAt: new Date(),
-        doneAt: new Date(),
-        process: () => {
-          throw new Error('Done');
-        },
-      };
-      
+      const task = waitingTask('task1');
+
       Orchestrator.addTask(state, task);
-      
-      // Use the taskId directly for resuming
-      const newState = Orchestrator.resumeWaitingTask(state, task.taskId, successorTask);
-      
+
+      const newState = Orchestrator.resumeWaitingTask(
+        state,
+        task.taskId,
+        terminalSuccessor(task, 'succeeded', 'Result: test result')
+      );
+
       const status = Orchestrator.getStatus(newState);
       expect(status.waitingSize).toBe(0);
       expect(status.totalTasks).toBe(1);
     });
-  });
-  
-  describe('errorWaitingTask', () => {
+
     it('should handle error for waiting task with successor task', () => {
       const state = Orchestrator.createOrchestrator();
-      
-      const task: DrakidionTask = {
-        taskId: 'task1',
-        version: 1,
-        status: 'waiting',
-        description: 'Waiting task with error',
-        work: 'Waiting...',
-        createdAt: new Date(),
-        process: () => task,
-      };
-      
-      const errorTask: DrakidionTask = {
-        taskId: 'task1',
-        version: 2,
-        status: 'dead',
-        description: 'Waiting task with error',
-        work: 'Error: Test error',
-        createdAt: new Date(),
-        doneAt: new Date(),
-        process: () => {
-          throw new Error('Failed');
-        },
-      };
-      
+      const task = waitingTask('task1');
+
       Orchestrator.addTask(state, task);
-      
-      // Use the taskId directly for error handling
+
       const newState = Orchestrator.errorWaitingTask(
         state,
         task.taskId,
-        errorTask
+        terminalSuccessor(task, 'dead', 'Error: Test error')
       );
-      
+
       const status = Orchestrator.getStatus(newState);
       expect(status.waitingSize).toBe(0);
       expect(status.totalTasks).toBe(1);
+    });
+
+    it('should warn and leave state unchanged for a taskId absent from taskMap', () => {
+      const state = Orchestrator.createOrchestrator();
+      const task = waitingTask('ghost');
+
+      const newState = Orchestrator.resumeWaitingTask(
+        state,
+        task.taskId,
+        terminalSuccessor(task, 'succeeded', 'Never admitted')
+      );
+
+      const status = Orchestrator.getStatus(newState);
+      expect(status.totalTasks).toBe(0);
+      expect(status.waitingSize).toBe(0);
+      expect(status.queueSize).toBe(0);
+      expect(console.warn).toHaveBeenCalled();
+    });
+
+    it('should ignore a repeated callback rather than transition the chain twice', () => {
+      const state = Orchestrator.createOrchestrator();
+      const task = waitingTask('task1');
+
+      Orchestrator.addTask(state, task);
+
+      const first = terminalSuccessor(task, 'succeeded', 'Result: the real one');
+      Orchestrator.resumeWaitingTask(state, task.taskId, first);
+
+      const second = terminalSuccessor(first, 'succeeded', 'Result: the duplicate');
+      const newState = Orchestrator.resumeWaitingTask(state, task.taskId, second);
+
+      // The terminal snapshot from the first callback survives untouched
+      const stored = TaskMapOps.getTask(newState.taskMap, task.taskId);
+      expect(stored?.version).toBe(2);
+      expect(stored?.work).toBe('Result: the real one');
+      expect(Orchestrator.getStatus(newState).totalTasks).toBe(1);
+      expect(console.warn).toHaveBeenCalled();
+    });
+
+    it('should ignore a late failure callback for a chain that already succeeded', () => {
+      const state = Orchestrator.createOrchestrator();
+      const task = waitingTask('task1');
+
+      Orchestrator.addTask(state, task);
+
+      const succeeded = terminalSuccessor(task, 'succeeded', 'Result: confirmed');
+      Orchestrator.resumeWaitingTask(state, task.taskId, succeeded);
+
+      const late = terminalSuccessor(succeeded, 'dead', 'Error: arrived too late');
+      const newState = Orchestrator.errorWaitingTask(state, task.taskId, late);
+
+      const stored = TaskMapOps.getTask(newState.taskMap, task.taskId);
+      expect(stored?.status).toBe('succeeded');
+      expect(stored?.work).toBe('Result: confirmed');
+      expect(console.warn).toHaveBeenCalled();
+    });
+
+    it('should not re-queue a ready chain that a stale callback resumes', () => {
+      const state = Orchestrator.createOrchestrator();
+      const task = waitingTask('task1');
+
+      Orchestrator.addTask(state, task);
+
+      // The chain resumes into more work: it is ready and queued, no longer waiting
+      const readyAgain: DrakidionTask = {
+        ...task,
+        version: 2,
+        status: 'ready',
+        work: 'More work',
+      };
+      Orchestrator.resumeWaitingTask(state, task.taskId, readyAgain);
+      expect(Orchestrator.getStatus(state).queueSize).toBe(1);
+
+      const stale = terminalSuccessor(readyAgain, 'succeeded', 'Result: stale');
+      const newState = Orchestrator.resumeWaitingTask(state, task.taskId, stale);
+
+      // The queued work is still queued, not replaced by the stale terminal snapshot
+      const status = Orchestrator.getStatus(newState);
+      expect(status.queueSize).toBe(1);
+      expect(TaskMapOps.getTask(newState.taskMap, task.taskId)?.status).toBe('ready');
+      expect(console.warn).toHaveBeenCalled();
     });
   });
 });

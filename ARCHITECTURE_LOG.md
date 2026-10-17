@@ -224,6 +224,22 @@ settled), **History** (dated entries, newest first).
 - **Evidence:** R-16 covers both the resolve and the reject path; the resolve path asserts the
   returned URI rather than a placeholder.
 
+### D-17 Only a waiting chain can be resumed — *Decided*
+
+- **Alternatives:** leave the WaitingSet unchecked and rely on each chain having exactly one
+  promise in flight; track a callback token per chain and compare it; make the successor's
+  version the guard, refusing anything that is not `predecessor.version + 1`.
+- **Why:** `resumeWaitingTask` checked TaskMap and nothing else, so a repeated or late callback
+  transitioned a chain that had already settled — overwriting a terminal snapshot or
+  re-queueing finished work. The WaitingSet already records exactly which chains have a promise
+  outstanding, so it is the guard; a token or a version check would add state to say what the
+  set already says. The one-promise-per-chain invariant that made this harmless is an accident
+  of the current factories, not a rule, and D-16 made the posting path a second in-flight
+  promise in the same chain. Serves G-3, and G-1 through never posting twice.
+- **Evidence:** R-7 covers the repeated callback, the late failure after success, and the stale
+  callback against a chain that has resumed into `ready` work; with the guard removed, all
+  three fail.
+
 ### Deliberately left out
 
 - **Multi-turn memory of its own.** Context is re-read from the Bluesky thread on every pass.
@@ -282,14 +298,6 @@ Both do exactly the same thing; the difference is only in the successor the call
 `errorWaitingTask` delegate, so the duplication cannot drift. Alternatively give it a real
 difference: assert the successor is terminal.
 
-### Q-4 Stale callbacks are accepted — *tracked as `stalecb-k59i`*
-
-`resumeWaitingTask` checks TaskMap but not the WaitingSet, so a repeated or late callback
-transitions a chain that is no longer waiting. `src/drakidion/SPEC.md` required rejecting
-these; the code never did. **Recommendation:** return unchanged when `isWaiting(taskId)` is
-false, and add the case to R-7. This is the kind of defect that produces a double post once
-the posting path is awaited.
-
 ### Q-5 Refused chains leak a WaitingSet entry — *tracked as `waitleak-duk4`*
 
 When either restraint gate returns `null`, `sendReply` logs and returns without calling
@@ -346,6 +354,25 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-17 — A callback is accepted only while the chain is still waiting
+
+`resumeWaitingTask` and `errorWaitingTask` checked only that the `taskId` was in TaskMap.
+A callback that arrived twice, or after the chain had already settled, therefore transitioned
+it again: a terminal snapshot was overwritten by a later one, and a chain that had resumed
+into `ready` work had that work replaced. Nothing triggered it today because each chain held
+one promise at a time, but that is a property of the current factories rather than a rule, and
+D-16 had just given the reply chain a second awaited call.
+
+Both functions now return the state unchanged, with a warning, when the `taskId` is not in the
+WaitingSet. The TaskMap guard stays ahead of it, so a `taskId` that is waiting but unmapped is
+still cleaned out of the set. Q-4 is settled as D-17.
+
+R-7 grows from two cases to six: the two original paths plus a repeated callback, a late
+failure for a chain that already succeeded, and a stale callback against a chain that has
+resumed into queued work. The orchestrator suite's console suppression moved from hand-rolled
+save/restore to `jest.spyOn`, so the warnings can be asserted. `just check` passes: 17 suites,
+165 tests.
 
 ### 2026-10-17 — A reply is reported when Bluesky confirms it, not when it is dispatched
 

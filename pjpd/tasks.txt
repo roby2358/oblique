@@ -1,13 +1,5 @@
 Priority:   70
 Status: ToDo
-ID: stalecb-k59i
-Created: 2026-10-17T01:00:18Z
-Updated: 2026-10-17T01:00:18Z
-
-Stale and duplicate async callbacks are accepted instead of ignored. In src/drakidion/orchestrator.ts, resumeWaitingTask and errorWaitingTask check only that the taskId exists in taskMap (line 198 and line 222); neither checks WaitingSetOps.isWaiting. A late or repeated callback therefore transitions a chain that is no longer waiting, overwriting a terminal snapshot and re-queueing work. Harmless today only because each chain has exactly one in-flight promise; it becomes a double-post the moment retries exist. Fix: return the state unchanged when the taskId is not in the waitingSet, and log at warn. Add test cases for a repeated callback and for a callback arriving after the chain already reached a terminal state.
-----
-Priority:   70
-Status: ToDo
 ID: panel-ui-r6ze
 Created: 2025-10-16T17:25:28Z
 Updated: 2025-10-16T17:25:28Z

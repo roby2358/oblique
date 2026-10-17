@@ -24,7 +24,7 @@ IDs are never renumbered. Rules are cited by ID, never by section number.
 | R-4 | A queued `ready` task whose `process` returns a successor; an empty queue; a queued id with no TaskMap entry; a queued task whose status is not `ready`; a `process` that throws | Successor case transitions and reports `processed: true`. Empty queue reports `processed: false` without warning. Missing entry and wrong status warn and report `processed: false`. A throw records a `dead` snapshot at `version + 1` with the error appended to `work`, and still reports `processed: true`. | automated |
 | R-5 | A queue of several tasks, each returning a terminal successor; then a queue whose head refuses | Drains to empty in FIFO order. A refusal breaks the loop rather than spinning on the same head. | automated |
 | R-6 | `startLoop` on a fresh state; `startLoop` again while running; `stop()` then a further frame | At most one task per animation frame; the second call warns and returns a no-op `stop`; after `stop()`, `isRunning` is false and no further task is processed. | not yet covered |
-| R-7 | `resumeWaitingTask` / `errorWaitingTask` for a waiting chain, then for a `taskId` absent from TaskMap | Present: the chain leaves the WaitingSet and the successor is routed by status. Absent: warns, clears any WaitingSet entry, leaves state otherwise unchanged. | automated |
+| R-7 | `resumeWaitingTask` / `errorWaitingTask` for a waiting chain; for a `taskId` absent from TaskMap; the same callback twice; a late failure for a chain that already succeeded; a stale callback for a chain that has resumed into `ready` work | Waiting: the chain leaves the WaitingSet and the successor is routed by status. Absent: warns, clears any WaitingSet entry, leaves state otherwise unchanged. Every callback for a chain that is not waiting warns and changes nothing — the terminal snapshot keeps its version, status and `work`, and queued work stays queued. | automated |
 | R-8 | Notifications: author in `ignoreList`; `quote` whose text omits the handle; `mention` on a post that already has replies; post data missing or of the wrong `$type`; a post with replies; a post with none | `false`, `false`, **`true`** (a mention is always answered), `false`, `false`, `true`. | automated |
 | R-9 | Threads: empty; last author is a bot appearing 4 of the last 8; the same bot appearing 3 of 8; last author human appearing 6 of 8; length `THREAD_MAX_POSTS + 1`; a normal thread | `null`, `null`, the thread, the thread (humans are never attenuated), `null`, the thread. | automated |
 | R-10 | `getHistory` for a `quote` notification; a notification with no `replyInfo.parent.uri`; a reply; each of those with the upstream fetch failing | Quote → `[quoted post, the quote]`; standalone → `[quoted?, the post]`; reply → ancestors oldest-first with the notification last, at most `THREAD_MAX_DEPTH` deep. Every failure degrades to `[{ author, text }]` and never throws. Alt texts are carried on every path. | automated |
@@ -100,7 +100,7 @@ anything until one exists.
 
 ## Status
 
-**As of 2026-10-17.** `npm test` runs 17 suites, 161 tests, and passes, and `npx tsc --noEmit`
+**As of 2026-10-17.** `npm test` runs 17 suites, 165 tests, and passes, and `npx tsc --noEmit`
 reports no errors. There is no build step to check.
 
 ### Not yet covered

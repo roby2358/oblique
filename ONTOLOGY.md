@@ -317,7 +317,8 @@ lifecycle design.
 
 ```
 resumeWaitingTask(state, taskId, successor):
-  if not taskMap.has(taskId) -> warn, waitingSet.delete(taskId), return state
+  if not taskMap.has(taskId)       -> warn, waitingSet.delete(taskId), return state
+  if not waitingSet.has(taskId)    -> warn, return state unchanged
   waitingSet.delete(taskId)
   transitionTask(state, taskId, successor)
 ```
@@ -325,8 +326,10 @@ resumeWaitingTask(state, taskId, successor):
 `errorWaitingTask` is byte-identical. The distinction is in the successor the caller hands
 over — a dead snapshot rather than a ready one — not in the orchestrator.
 
-This rule does **not** check that the chain was in the WaitingSet, so a stale or repeated
-callback is accepted and transitions the chain again. Flagged in `ARCHITECTURE_LOG.md`.
+Only a chain that is *currently* waiting can be resumed. A callback that arrives twice, or
+after the chain has already settled, finds the chain gone from the WaitingSet and is logged
+and dropped, so a terminal snapshot is never overwritten and finished work is never
+re-queued (D-17).
 
 ### 4.8 Notification restraint **[D]**
 
@@ -747,8 +750,8 @@ the shape is what a second client would have to speak.
 | `processNextTask(state)` | always | Runs the head of the queue (4.4). | whatever `process` does |
 | `processAllTasks(state)` | always | Drains the queue (4.5). | as above |
 | `startLoop(state, onStateChange?)` | `!state.isRunning` | Starts the rAF loop; returns `{ state, stop }`. | schedules frames |
-| `resumeWaitingTask(state, taskId, successor)` | always | Resumes a chain (4.7). | none |
-| `errorWaitingTask(state, taskId, successor)` | always | Identical to resume (4.7). | none |
+| `resumeWaitingTask(state, taskId, successor)` | `taskId` is in TaskMap and in the WaitingSet | Resumes a chain (4.7). Otherwise warns and leaves the state unchanged. | none |
+| `errorWaitingTask(state, taskId, successor)` | as resume | Identical to resume (4.7). | none |
 
 Every command returns the state object. **The state is mutated in place** — the returned
 reference is the same object, not a copy. Callers reassign by convention, not because they must.

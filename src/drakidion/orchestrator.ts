@@ -203,6 +203,13 @@ export const resumeWaitingTask = (
     return state;
   }
   
+  // A chain that is not waiting has already been resumed: this callback is stale or a
+  // duplicate, and acting on it would overwrite a terminal snapshot (D-17).
+  if (!WaitingSetOps.isWaiting(state.waitingSet, taskId)) {
+    console.warn(`Task ${taskId} is not waiting, ignoring callback`);
+    return state;
+  }
+  
   // Remove from waitingSet
   WaitingSetOps.removeWaitingTask(state.waitingSet, taskId);
   
@@ -224,6 +231,13 @@ export const errorWaitingTask = (
   if (!task) {
     console.warn(`Task ${taskId} not found in taskMap`);
     WaitingSetOps.removeWaitingTask(state.waitingSet, taskId);
+    return state;
+  }
+  
+  // The same stale-callback guard as resumeWaitingTask: a chain that is not waiting has
+  // already settled, and a late failure must not revive it (D-17).
+  if (!WaitingSetOps.isWaiting(state.waitingSet, taskId)) {
+    console.warn(`Task ${taskId} is not waiting, ignoring callback`);
     return state;
   }
   

@@ -61,6 +61,20 @@ describe('OpenRouter client', () => {
     expect(JSON.parse(options.body).model).toBe('anthropic/claude-sonnet-4.5');
   });
 
+  it('turns reasoning off, so the token budget goes to the visible answer', async () => {
+    fetchMock.mockResolvedValue(
+      okResponse({
+        choices: [{ message: { content: 'text' } }],
+        model: 'anthropic/claude-sonnet-4.5',
+      })
+    );
+
+    await createOpenRouterClient(config).generateResponse(request);
+
+    const [, options] = fetchMock.mock.calls[0] as [string, any];
+    expect(JSON.parse(options.body).reasoning).toEqual({ enabled: false });
+  });
+
   it('throws when the payload carries no choices', async () => {
     fetchMock.mockResolvedValue(okResponse({ choices: [], model: 'some/model' }));
 
@@ -69,13 +83,16 @@ describe('OpenRouter client', () => {
     );
   });
 
-  it('throws when the content is null', async () => {
+  it('throws when the content is null, naming the finish reason', async () => {
     fetchMock.mockResolvedValue(
-      okResponse({ choices: [{ message: { content: null } }], model: 'some/model' })
+      okResponse({
+        choices: [{ message: { content: null }, finish_reason: 'length' }],
+        model: 'some/model',
+      })
     );
 
     await expect(createOpenRouterClient(config).generateResponse(request)).rejects.toThrow(
-      'OpenRouter returned no content'
+      'OpenRouter returned no content for model some/model (finish_reason: length)'
     );
   });
 

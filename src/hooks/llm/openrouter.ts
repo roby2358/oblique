@@ -20,6 +20,11 @@ export const createOpenRouterClient = (config: LLMConfig): LLMClient => {
           messages: request.conversation,
           temperature: request.temperature ?? config.temperature ?? 0.7,
           max_tokens: request.maxTokens ?? config.maxTokens ?? 500,
+          // Oblique's prompt asks for its own "# Thinking" section and only the "# Response"
+          // section is ever posted, so a model's private reasoning is budget spent on text
+          // nobody reads. On a reasoning model it spends all of it: deepseek-flash burned the
+          // whole LLM_MAX_TOKENS allowance thinking and returned content: null (R-35).
+          reasoning: { enabled: false },
         }),
       };
 
@@ -35,14 +40,18 @@ export const createOpenRouterClient = (config: LLMConfig): LLMClient => {
       }
 
       const data = await response.json() as {
-        choices: Array<{ message: { content: string } }>;
+        choices: Array<{ message: { content: string }; finish_reason: string }>;
         model: string;
         usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
       };
       
-      const content = data.choices[0]?.message?.content;
+      const choice = data.choices[0];
+      const content = choice?.message?.content;
       if (typeof content !== 'string' || content.trim().length === 0) {
-        throw new Error(`OpenRouter returned no content for model ${data.model}`);
+        throw new Error(
+          `OpenRouter returned no content for model ${data.model} ` +
+          `(finish_reason: ${choice?.finish_reason})`
+        );
       }
 
       return {

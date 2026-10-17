@@ -188,6 +188,26 @@ settled), **History** (dated entries, newest first).
   reply. Serves G-4; the whole of R-25 … R-33 is the deferred bill.
 - **Evidence:** none.
 
+### D-15 Reasoning is off for every model — *Decided*
+
+- **Alternatives:** leave it on and raise `LLM_MAX_TOKENS` until the budget covers reasoning
+  as well as the answer; leave it on only for the models known not to reason; pick a reasoning
+  effort per model.
+- **Why:** the prompt already asks the model to think on the page — `# Thinking`,
+  `# Related Western`, `# Related Eastern`, three `# Insight` sections — and only `# Response`
+  is ever posted. Private reasoning is therefore a second, invisible draft of work the prompt
+  has already commissioned, and it is emitted *before* any content, so on a reasoning model it
+  can consume the whole allowance and leave nothing to post. Raising the budget works but pays
+  for the invisible draft; a per-model list is the kind of table that rots as the floating
+  `~*-latest` aliases move under it. One flag for every model is the smaller thing, and a model
+  that rejects it is a problem to meet when one appears.
+- **Evidence:** `Measured by: the Oblique system prompt and a one-post thread against
+  ~deepseek/deepseek-flash-latest` → with reasoning on and `max_tokens` 2000, all 2000
+  completion tokens were reasoning, `content` was null and `finish_reason` was `length`; the
+  same call at 8000 finished, spending 5053 of 5118 tokens on reasoning for a 228-character
+  answer at $0.0040. With reasoning off at 2000, the same call finished in 276 tokens at
+  $0.00035 — a tenth of the cost, with a longer document to extract from.
+
 ### Deliberately left out
 
 - **Multi-turn memory of its own.** Context is re-read from the Bluesky thread on every pass.
@@ -318,6 +338,20 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-17 — Reasoning is turned off for every model
+
+A reply failed with `OpenRouter returned no content for model deepseek/deepseek-v4.1-flash`.
+The model was answering: it spent every one of the 2000 tokens of `LLM_MAX_TOKENS` on private
+reasoning, hit `finish_reason: length`, and returned `content: null` before writing a word of
+the document the prompt asked for. The throw added when Oblique posted a blank reply caught it
+exactly as intended — it named the model but not the reason, which is why the failure read as a
+mystery.
+
+Every request now carries `reasoning: { enabled: false }` (D-15), and the no-content error
+names the `finish_reason` alongside the model. ONTOLOGY's LLM client response rule gains the
+flag and the fuller message; R-35 gains both to its Given and Expect. `LLM_MAX_TOKENS` is
+unchanged — with reasoning off, 2000 is ample for the seven-section document.
 
 ### 2026-10-17 — `rotate` ships false
 

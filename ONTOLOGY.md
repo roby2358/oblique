@@ -576,18 +576,27 @@ reloading the page.
 
 ```
 generateResponse(request):
-  r = await fetch(config.baseUrl, { model, messages, temperature, max_tokens })
+  r = await fetch(config.baseUrl, { model, messages, temperature, max_tokens,
+                                    reasoning: { enabled: false } })
   if not r.ok -> throw "OpenRouter API error: <status> <body>"
-  content = r.json().choices[0]?.message?.content
-  if content is not a non-blank string
-    -> throw "OpenRouter returned no content for model <model>"
+  choice = r.json().choices[0]
+  if choice.message.content is not a non-blank string
+    -> throw "OpenRouter returned no content for model <model>
+              (finish_reason: <choice.finish_reason>)"
   -> { content, model, usage }
 ```
 
+Every request turns reasoning off. The prompt asks the model for its own `# Thinking`,
+`# Related Western` and `# Related Eastern` sections and only `# Response` is ever posted, so
+private reasoning is budget spent on text nothing reads — and on a reasoning model it is spent
+first, so the whole of `LLM_MAX_TOKENS` can go to thinking and leave `content` null. It is off
+for every model, including those that do not reason; a model that refuses the flag is a problem
+to meet when one appears.
+
 A 200 carrying no usable content — an empty `choices` array, a null `content`, a model that
 spent its budget before emitting any — is a failure, not an empty reply. Throwing lands the
-chain in `dead` with the model named, where returning `''` would travel all the way to a blank
-post.
+chain in `dead` with the model and the `finish_reason` named, where returning `''` would travel
+all the way to a blank post.
 
 ### 4.21 Authentication refresh — `ensureAuth` **[D]**
 

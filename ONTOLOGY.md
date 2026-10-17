@@ -701,7 +701,7 @@ tests. The code is the single source; the value here is a copy.
 | `SAFE_BASE32_ALPHABET` | `abcdefghijkmnpqrstuvwxyz23456789` | — | `safebase32.ts` | D-3 |
 | `TOKEN_REFRESH_BUFFER_MS` | 300000 | ms (5 min) | `BlueskyClient` | D-12 |
 | `TOKEN_DEFAULT_TTL` | 86400000 | ms (1 day) | `getDefaultTokenExpiration` | D-12 |
-| `MODEL_ROTATION_SIZE` | 15 | models | `config.json` → `openrouter.models` | D-5 |
+| `MODEL_ROTATION_SIZE` | 23 | models | `config.json` → `openrouter.models` | D-5 |
 | `GENDER_ROTATION_SIZE` | 25 | entries | `prompts/oblique.ts` | D-5 |
 
 Only `MAX_BLUESKY_REPLY_CHARS`, `TOKEN_REFRESH_BUFFER_MS` and `SAFE_BASE32_ALPHABET` are named

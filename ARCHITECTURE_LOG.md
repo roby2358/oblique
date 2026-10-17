@@ -76,7 +76,11 @@ settled), **History** (dated entries, newest first).
   weights table would be more machinery than the effect is worth. Serves G-1.
 
   The list is `config.openrouter.models`, not code: which models the bot speaks through is a
-  deployment choice, and changing it should not be a rebuild. `rotate: false` pins the bot to
+  deployment choice, and changing it should not be a rebuild. Where OpenRouter publishes a
+  floating `~vendor/model-latest` alias, the list uses it rather than a dated slug, so a
+  vendor's own releases reach the rotation without an edit; the bot drifting under us is the
+  point, since D-5 wants variety rather than a fixed set. Vendors with no alias stay pinned
+  and go stale. `rotate: false` pins the bot to
   the first entry, so pinning is a reordering rather than a second field that can disagree
   with the list. There is no config-level `model`, so both LLM paths must name one on the
   request and no call can go out unnamed — which is what let the reply path silently diverge
@@ -312,6 +316,49 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-17 — Model list refreshed from yuwakisagpt, preferring floating `~*-latest` aliases
+
+The list was the one carried over from the original hardcoded map — Claude Sonnet 4.5, GPT-5,
+Gemini 2.5 Pro, Llama 3.x. `/work/yuwakisagpt/yuwakisagpt/static/js/yuwakisa.js` keeps a
+maintained one, so `config-example.json` now takes its OpenRouter entries with the
+`OpenRouterApi:` / `OpenRouterBaseApi:` prefixes stripped. Every slug was checked against
+`https://openrouter.ai/api/v1/models` and all of them exist.
+
+Entries with a `~` prefix are kept as written. They looked like hand-marked exclusions at
+first, since nothing in yuwakisagpt strips the character — but `~` is OpenRouter's own prefix
+for a floating "latest" alias, and the catalog lists `~google/gemini-pro-latest` and
+`~moonshotai/kimi-latest` while the un-prefixed forms do not exist.
+
+Left out: `google/gemini-3-pro-image-preview`, whose output modalities are `['image', 'text']`
+and which would produce one unusable reply per cycle; `TopologyApi:topology-tiny`, not an
+OpenRouter model; and a commented-out Mistral entry.
+
+Every dated slug with a floating equivalent is replaced by it, so 10 of the 23 entries now
+track their vendor's releases rather than being re-pinned by hand: both DeepSeek tiers, Gemini
+flash and pro, Kimi, GLM, and the two added below. Google's three dated flash entries —
+`gemini-3-flash-preview`, `gemini-3.1-flash-lite`, `gemini-3.5-flash` — collapse into one
+`~google/gemini-flash-latest`, which costs the flash-lite tier as a distinct voice. Qwen,
+Nvidia, Mistral, Arcee and the Venice Dolphin publish no alias and stay pinned; they will go
+stale and need this pass repeating.
+
+`~deepseek/deepseek-v4-flash-latest` is left out: it floats within v4 rather than across
+majors, so it would overlap with `~deepseek/deepseek-flash-latest` and put two slots in the
+rotation that can resolve to the same model.
+
+`~anthropic/claude-sonnet-latest`, `~openai/gpt-sol-latest`, `~openai/gpt-mini-latest` and
+`~openai/gpt-terra-latest` bring Anthropic and OpenAI back in. The OpenAI tiers are codenames
+rather than sizes, so they were read by price: luna $0.10, mini $0.75, sol and terra $2.00,
+astra $10.00 per Mtok in. Sol matches Sonnet's $2.00 in / $10.00 out exactly, so the two are a
+like-for-like comparison across vendors; terra sits at the same input with $12.00 out, and
+mini a tier below at $0.75. Three OpenAI entries against one Anthropic is deliberate — the
+daily walk lands on OpenAI three times per cycle, at two price points, which is the spread
+D-5's comparison wants. Luna and astra are left out as the extremes.
+
+Before these two, Anthropic and OpenAI had left the
+rotation entirely. Nothing from the pre-refresh list survives. D-5's claim that the rotation
+is perceptible (X-5) is still unmeasured, and this is a larger change to it than any tuning so
+far.
 
 ### 2026-10-17 — `DEFAULT_CONFIG` removed; `config.json` carries every value
 

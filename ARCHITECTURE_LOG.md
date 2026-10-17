@@ -240,6 +240,20 @@ settled), **History** (dated entries, newest first).
   callback against a chain that has resumed into `ready` work; with the guard removed, all
   three fail.
 
+### D-18 A task's work product is a list of lines, appended to by every step — *Decided*
+
+- **Alternatives:** keep `work` a single string that each step concatenates onto; make it a
+  list but let each step write its own result over the previous one; give each line a record
+  of its own (`{ at, text }`).
+- **Why:** `work` was a string, and most steps replaced it outright — the snapshot that
+  recorded a posted URI threw away the draft it had posted, and the only reason a chain's
+  earlier output survived anywhere was that one or two steps happened to concatenate. A list
+  that every step appends to makes the latest snapshot carry the whole trace, which is what
+  the observer, queue and waiting panels already serialize, and what a retry or a longer chain
+  will keep adding to. A record per line carries metadata nothing reads today. Serves G-3, G-4.
+- **Evidence:** R-36 covers the append rule and `latestWork`; R-17 checks the trace end to end;
+  `just check` passes 18 suites, 167 tests.
+
 ### Deliberately left out
 
 - **Multi-turn memory of its own.** Context is re-read from the Bluesky thread on every pass.
@@ -354,6 +368,28 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-17 — A task's `work` becomes a list of lines that every step appends to
+
+`work` was a single string. Most steps replaced it with their own result, so the posted URI
+snapshot dropped the reply text it had just posted, and the two steps that did keep history
+did it by concatenating with `'\n'` — a formatting convention rather than a value. The
+observer, queue and waiting panels serialize the task record as JSON, where all of that showed
+as one opaque blob.
+
+`work` is now `string[]`, one line per step, and every step appends: the base's lines, then
+its own. `newWaitingTask` no longer seeds `'Waiting...'`, so both factories start a chain with
+no lines and the first line is written by whichever factory starts it. The succeeded post line
+is now just `Posted: <uri>`, because the reply text is already the line before it.
+`latestWork`, in the new `task-work.ts`, returns the last line and `''` for none, which is what
+the chat panel shows and what keeps its `[No response received]` fallback working.
+`createSendToLLMTask` and `createPostReplyTask` now take a full snapshot rather than a
+`Partial<DrakidionTask>`, since they read the base's lines; the two `as DrakidionTask` casts
+went with it. This is D-18.
+
+R-36 is new, covering the append rule and `latestWork`, and R-17 now asserts the accumulated
+trace. Nothing is stored between sessions, so the change lands on a page refresh with nothing
+to migrate. `just check` passes: 18 suites, 167 tests.
 
 ### 2026-10-17 — A callback is accepted only while the chain is still waiting
 

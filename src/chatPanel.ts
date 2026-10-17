@@ -1,5 +1,6 @@
 // Chat Panel - UI functions for handling chat interactions
 import * as Orchestrator from './drakidion/orchestrator.js';
+import { latestWork } from './drakidion/task-work.js';
 import { createObliqueMessageTask } from './oblique-task-factory.js';
 import { systemPrompt, obliquePrompt } from './prompts/oblique.js';
 import { getOrchestratorState, setOrchestratorState, getLLMClient, addMessage, updateStatus } from './panels.js';
@@ -48,7 +49,7 @@ export const createHandleSendMessage = () => {
           setOrchestratorState(orchestratorState);
           
           // Extract response from successor task
-          const response = successorTask.work || '[No response received]';
+          const response = latestWork(successorTask.work) || '[No response received]';
           
           console.log('Response:', response);
 

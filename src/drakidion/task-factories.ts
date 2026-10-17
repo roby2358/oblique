@@ -17,7 +17,7 @@ export const newReadyTask = (description: string): Omit<DrakidionTask, 'doneAt'>
     createdAt: new Date(),
     status: 'ready',
     description,
-    work: '',
+    work: [],
     conversation: undefined,
     process: (): DrakidionTask => {
       throw new Error('Task process not implemented');
@@ -39,7 +39,7 @@ export const newWaitingTask = (description: string): Omit<DrakidionTask, 'doneAt
     createdAt: new Date(),
     status: 'waiting',
     description,
-    work: 'Waiting...',
+    work: [],
     conversation: undefined,
     process: (): DrakidionTask => {
       throw new Error('Waiting tasks should not be processed directly');

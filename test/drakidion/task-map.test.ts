@@ -8,7 +8,7 @@ describe('TaskMap', () => {
     version: 1,
     status,
     description: `Mock task ${taskId}`,
-    work: `Work for ${taskId}`,
+    work: [`Work for ${taskId}`],
     process: () => createMockTask(taskId, 'succeeded'),
   });
   

@@ -71,7 +71,7 @@ itself, it returns its successor. Behavior is carried in a closure on `process`.
 | `version` | `number` | Starts at 1, increments per successor. |
 | `status` | `TaskStatus` | See §3. |
 | `description` | `string` | Human-readable, shown in the UI panels. |
-| `work` | `string` | The work product being built — a draft reply, an error message, a posted URI. |
+| `work` | `string[]` | The work product, one line per step — a draft reply, an error message, a posted URI. Every step **appends**; none replaces what an earlier step wrote, so the list is the chain's trace. `latestWork` reads the last line. |
 | `process` | `() => DrakidionTask` | Synchronous. Returns the successor snapshot. |
 | `conversation?` | `ConversationMessage[]` | LLM message history carried along the chain. |
 | `retryCount?` | `number` | Declared; nothing reads or writes it. **[D, unbuilt]** |
@@ -210,8 +210,8 @@ WaitingSet, anything else → TaskMap only.
 
 ```
 newReadyTask(description)   -> { taskId: fresh(24), version: 1, status: ready,
-                                 createdAt: now, work: '', process: throws }
-newWaitingTask(description) -> same, status: waiting, work: 'Waiting...'
+                                 createdAt: now, work: [], process: throws }
+newWaitingTask(description) -> same, status: waiting, work: []
 nextTask(prev)              -> { taskId: prev.taskId, version: prev.version + 1,
                                  status: ready, description, work, conversation,
                                  createdAt: prev.createdAt, process: throws }
@@ -219,9 +219,10 @@ createSucceededTask(prev)   -> { ...nextTask(prev), status: succeeded, doneAt: n
 createDeadTask(prev)        -> { ...nextTask(prev), status: dead,      doneAt: now }
 ```
 
-Each returns a base to be spread over; the caller supplies `work` and `process`. The stub
-`process` throws, so a successor that forgets to define one fails loudly rather than silently
-doing nothing.
+Each returns a base to be spread over; the caller supplies `process` and a `work` list made of
+the base's lines plus its own. Both factories start a chain with no lines at all, so the first
+line of a chain is written by the factory that starts it. The stub `process` throws, so a
+successor that forgets to define one fails loudly rather than silently doing nothing.
 
 A convenience builder wraps a plain function as a one-step chain. It is public API of the
 orchestration layer; no application code uses it today.
@@ -233,7 +234,7 @@ createTaskFromFunction(description, fn) -> { ...newReadyTask(description), proce
             -> { ...createSucceededTask(base), ...partial,
                  taskId, version, doneAt from the successor,      # never overridable
                  status: partial.status ?? 'succeeded' }
-    catch:  -> createDeadTask(base) with work + '\n[Function failed: …]'
+    catch:  -> createDeadTask(base) with work + ['[Function failed: …]']
 ```
 
 ### 4.2 Admitting a task — `addTask` **[D]**
@@ -275,7 +276,7 @@ processNextTask(state):
   try:    successor = task.process()
           transitionTask(state, taskId, successor)
   catch:  taskMap.set(taskId, { ...task, status: 'dead', version: version + 1,
-                                work: work + '\n[ERROR: …]' })
+                                work: [...work, '[ERROR: …]'] })
   -> { processed: true }
 ```
 
@@ -493,18 +494,18 @@ directly under it.
 ```
 createPostReplyTask(...).process():
   if replyText.trim() is empty                       # nothing to say is not a reply
-    -> createDeadTask(task) with work = "Failed to post: Refusing to post an empty reply"
+    -> createDeadTask(task) with work + ["Failed to post: Refusing to post an empty reply"]
   try:
     replyTo = blueskyClient.notificationReplyTo(originalNotification)
     blueskyClient.like(originalNotification.uri)     # not awaited; a rejection is logged
     blueskyClient.post({ text: replyText, replyTo })
       .then(result -> onWaitingTaskComplete(taskId,
-              createSucceededTask(task) with work = "Posted: <text> (<result.uri>)"))
+              createSucceededTask(task) with work + ["Posted: <result.uri>"]))
       .catch(error -> onWaitingTaskComplete(taskId,
-              createDeadTask(task) with work = "Failed to post: <message>"))
-    -> waiting successor, work unchanged             # the reply text, for the quote above
+              createDeadTask(task) with work + ["Failed to post: <message>"]))
+    -> waiting successor, work unchanged             # the reply text is already its last line
   catch:
-    -> createDeadTask(task) with work = "Failed to post: <message>"
+    -> createDeadTask(task) with work + ["Failed to post: <message>"]
 ```
 
 Blank text is refused before the like, not after: Bluesky accepts an empty post without
@@ -550,8 +551,8 @@ failure, and there is no "abandoned" status to move it to.
 ```
 v1  createObliqueMessageTask waiting  side effect: generateResponse({ model: getDailyModel(),
                                                                      temperature, maxTokens })
-                                        -> succeeded v2, work = extracted response
-                                      on reject -> dead v2, work = "Error: …"
+                                        -> succeeded v2, work + [extracted response]
+                                      on reject -> dead v2, work + ["Error: …"]
 ```
 
 No restraint gates apply — a human typed it, so it is always answered. No length retry either:

@@ -141,7 +141,7 @@ describe('createSendToLLMTask quote post handling', () => {
       version: 1,
       status: 'ready',
       description: 'Test predecessor',
-      work: 'Test work',
+      work: ['Test work'],
       conversation: [{ role: 'user', content: 'Test message' }],
       createdAt: new Date(),
       process: () => ({} as DrakidionTask)
@@ -356,7 +356,7 @@ describe('createPostReplyTask', () => {
     task.process!();
     await flush();
 
-    expect(completions[0].successor.work).toBe(`Posted: ${replyText} (${postedUri})`);
+    expect(completions[0].successor.work).toEqual([replyText, `Posted: ${postedUri}`]);
   });
 
   it('dies when the post is rejected', async () => {
@@ -370,7 +370,7 @@ describe('createPostReplyTask', () => {
 
     expect(completions).toHaveLength(1);
     expect(completions[0].successor.status).toBe('dead');
-    expect(completions[0].successor.work).toBe('Failed to post: network down');
+    expect(completions[0].successor.work).toEqual([replyText, 'Failed to post: network down']);
   });
 
   it('still posts when the like is rejected', async () => {
@@ -392,7 +392,7 @@ describe('createPostReplyTask', () => {
     expect(blueskyClient.post).not.toHaveBeenCalled();
     expect(blueskyClient.like).not.toHaveBeenCalled();
     expect(successor.status).toBe('dead');
-    expect(successor.work).toBe('Failed to post: Refusing to post an empty reply');
+    expect(successor.work).toEqual(['', 'Failed to post: Refusing to post an empty reply']);
   });
 
   it('refuses to post a whitespace-only reply', async () => {
@@ -414,7 +414,7 @@ describe('createPostReplyTask', () => {
 
     expect(blueskyClient.like).not.toHaveBeenCalled();
     expect(successor.status).toBe('dead');
-    expect(successor.work).toBe('Failed to post: no reply info');
+    expect(successor.work).toEqual([replyText, 'Failed to post: no reply info']);
   });
 
   it('dies when liking throws before the post is dispatched', async () => {
@@ -427,7 +427,7 @@ describe('createPostReplyTask', () => {
 
     expect(blueskyClient.post).not.toHaveBeenCalled();
     expect(successor.status).toBe('dead');
-    expect(successor.work).toBe('Failed to post: like failed');
+    expect(successor.work).toEqual([replyText, 'Failed to post: like failed']);
   });
 
   it('dies when dispatching the post throws', async () => {
@@ -439,6 +439,6 @@ describe('createPostReplyTask', () => {
     const successor = task.process!() as DrakidionTask;
 
     expect(successor.status).toBe('dead');
-    expect(successor.work).toBe('Failed to post: no network');
+    expect(successor.work).toEqual([replyText, 'Failed to post: no network']);
   });
 });

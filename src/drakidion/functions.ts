@@ -51,7 +51,7 @@ export const createTaskFromFunction = (
         const deadTask = createDeadTask(baseTask);
         return {
           ...deadTask,
-          work: `${baseTask.work}\n[Function failed: ${errorMessage}]`,
+          work: [...baseTask.work, `[Function failed: ${errorMessage}]`],
         };
       }
     },

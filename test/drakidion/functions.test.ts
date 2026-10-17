@@ -4,7 +4,7 @@ import { createTaskFromFunction, type TaskFunction } from '../../src/drakidion/f
 
 describe('createTaskFromFunction', () => {
   it('should create a ready task with the correct properties', () => {
-    const mockFunction: TaskFunction = () => ({ work: 'Test work' });
+    const mockFunction: TaskFunction = () => ({ work: ['Test work'] });
     const description = 'Test task';
     
     const task = createTaskFromFunction(description, mockFunction);
@@ -12,7 +12,7 @@ describe('createTaskFromFunction', () => {
     expect(task.status).toBe('ready');
     expect(task.description).toBe(description);
     expect(task.version).toBe(1);
-    expect(task.work).toBe('');
+    expect(task.work).toEqual([]);
     expect(typeof task.process).toBe('function');
     expect(task.taskId).toMatch(/^[abcdefghijkmnpqrstuvwxyz23456789]{24}$/); // safe-base32 format
   });
@@ -22,7 +22,7 @@ describe('createTaskFromFunction', () => {
     const mockFunction: TaskFunction = () => {
       callCount++;
       return { 
-        work: 'Custom work from function',
+        work: ['Custom work from function'],
         description: 'Updated description'
       };
     };
@@ -34,7 +34,7 @@ describe('createTaskFromFunction', () => {
     expect(callCount).toBe(1);
     expect(result.status).toBe('succeeded');
     expect(result.description).toBe('Updated description');
-    expect(result.work).toBe('Custom work from function');
+    expect(result.work).toEqual(['Custom work from function']);
     expect(result.doneAt).toBeInstanceOf(Date);
   });
 
@@ -47,7 +47,7 @@ describe('createTaskFromFunction', () => {
     
     expect(result.status).toBe('succeeded');
     expect(result.description).toBe(description);
-    expect(result.work).toBe('');
+    expect(result.work).toEqual([]);
   });
 
   it('should create a dead task when function throws an error', async () => {
@@ -82,7 +82,7 @@ describe('createTaskFromFunction', () => {
 
   it('should handle partial task with custom status', async () => {
     const mockFunction: TaskFunction = () => ({
-      work: 'Custom work',
+      work: ['Custom work'],
       status: 'waiting' as const,
       conversation: [{ role: 'user', content: 'Test message' }]
     });
@@ -92,7 +92,7 @@ describe('createTaskFromFunction', () => {
     const result = await task.process();
     
     expect(result.status).toBe('waiting');
-    expect(result.work).toBe('Custom work');
+    expect(result.work).toEqual(['Custom work']);
     expect(result.conversation).toEqual([{ role: 'user', content: 'Test message' }]);
   });
 });
@@ -100,7 +100,7 @@ describe('createTaskFromFunction', () => {
 describe('TaskFunction type', () => {
   it('should accept functions that return Partial<DrakidionTask>', () => {
     const validFunction: TaskFunction = () => {
-      return { work: 'Test work' };
+      return { work: ['Test work'] };
     };
     
     expect(typeof validFunction).toBe('function');

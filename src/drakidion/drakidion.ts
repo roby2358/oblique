@@ -28,6 +28,9 @@ export * as Orchestrator from './orchestrator.js';
 // Task factories
 export * as TaskFactories from './task-factories.js';
 
+// Work product
+export { latestWork } from './task-work.js';
+
 
 // Utilities
 export { generateTaskId, generateCorrelationId, generateSafeBase32 } from '../utils/index.js';

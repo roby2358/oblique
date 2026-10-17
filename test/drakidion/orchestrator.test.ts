@@ -26,7 +26,7 @@ describe('Orchestrator', () => {
     version: 1,
     status,
     description: `Mock task ${taskId}`,
-    work: `Work for ${taskId}`,
+    work: [`Work for ${taskId}`],
     createdAt: new Date(),
     process: () => {
       if (processResult) {
@@ -38,7 +38,7 @@ describe('Orchestrator', () => {
         version: 2,
         status: 'succeeded',
         description: `Mock task ${taskId}`,
-        work: `Completed ${taskId}`,
+        work: [`Completed ${taskId}`],
         createdAt: new Date(),
         doneAt: new Date(),
         process: () => {
@@ -145,7 +145,7 @@ describe('Orchestrator', () => {
         version: 1,
         status: 'ready',
         description: 'Error task',
-        work: 'Will fail',
+        work: ['Will fail'],
         createdAt: new Date(),
         process: () => {
           throw new Error('Test error');
@@ -187,7 +187,7 @@ describe('Orchestrator', () => {
       version: 1,
       status: 'waiting',
       description: 'Waiting task',
-      work: 'Waiting...',
+      work: ['Waiting...'],
       createdAt: new Date(),
       process: () => {
         throw new Error('A waiting task is never processed');
@@ -202,7 +202,7 @@ describe('Orchestrator', () => {
       ...task,
       version: task.version + 1,
       status,
-      work,
+      work: [work],
       doneAt: new Date(),
       process: () => {
         throw new Error('Done');
@@ -275,7 +275,7 @@ describe('Orchestrator', () => {
       // The terminal snapshot from the first callback survives untouched
       const stored = TaskMapOps.getTask(newState.taskMap, task.taskId);
       expect(stored?.version).toBe(2);
-      expect(stored?.work).toBe('Result: the real one');
+      expect(stored?.work).toEqual(['Result: the real one']);
       expect(Orchestrator.getStatus(newState).totalTasks).toBe(1);
       expect(console.warn).toHaveBeenCalled();
     });
@@ -294,7 +294,7 @@ describe('Orchestrator', () => {
 
       const stored = TaskMapOps.getTask(newState.taskMap, task.taskId);
       expect(stored?.status).toBe('succeeded');
-      expect(stored?.work).toBe('Result: confirmed');
+      expect(stored?.work).toEqual(['Result: confirmed']);
       expect(console.warn).toHaveBeenCalled();
     });
 
@@ -309,7 +309,7 @@ describe('Orchestrator', () => {
         ...task,
         version: 2,
         status: 'ready',
-        work: 'More work',
+        work: ['More work'],
       };
       Orchestrator.resumeWaitingTask(state, task.taskId, readyAgain);
       expect(Orchestrator.getStatus(state).queueSize).toBe(1);

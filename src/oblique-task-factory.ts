@@ -131,7 +131,7 @@ const createSendToLLMDeadTask = (
 
   return {
     ...createDeadTask(task),
-    work: `Error: ${errorMsg}`,
+    work: [...task.work, `Error: ${errorMsg}`],
     conversation: task.conversation,
   };
 };
@@ -156,7 +156,7 @@ export const createReplyTask = (
 
     // Starts new chain: fresh taskId, version 1
     ...newReadyTask(description),
-    work: "<thinking>",
+    work: ["<thinking>"],
     process: () => {
       // When we process this task, we create a new SendToLLMTask (waiting task)
       return createSendToLLMTask(
@@ -214,7 +214,7 @@ export const createSendToLLMTask = (
   llmClient: LLMClient,
   blueskyClient: BlueskyClient,
   onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void,
-  baseTask: Partial<DrakidionTask>
+  baseTask: Omit<DrakidionTask, 'doneAt'>
 ): DrakidionTask => {
   const notificationText = coalesceText(notification?.text, FALLBACK_NOTIFICATION_TEXT);
   const description = `Oblique: ${notificationText.substring(0, 40)}${notificationText.length > 40 ? '...' : ''}`;
@@ -224,9 +224,9 @@ export const createSendToLLMTask = (
     ...baseTask,
     status: 'waiting',
     description,
-    work: 'Waiting for LLM response...',
+    work: [...baseTask.work, 'Waiting for LLM response...'],
     conversation: baseTask.conversation || [],
-  } as DrakidionTask;
+  };
   
   // Get the unified message history
   const getHistoryPromise = blueskyClient.getHistory(notification);
@@ -261,7 +261,7 @@ const createPostReplySucceededTask = (
 ): DrakidionTask => {
   return {
     ...createSucceededTask(task),
-    work: `Posted: ${task.work} (${resultUri})`,
+    work: [...task.work, `Posted: ${resultUri}`],
     conversation: task.conversation,
   };
 };
@@ -277,14 +277,14 @@ const createPostReplyDeadTask = (
 
   return {
     ...createDeadTask(task),
-    work: `Failed to post: ${errorMsg}`,
+    work: [...task.work, `Failed to post: ${errorMsg}`],
     conversation: task.conversation,
   };
 };
 
 /**
  * Waiting version of post reply task: the post is in flight
- * Keeps `work` as the reply text, so the succeeded snapshot can quote it back
+ * Carries the chain's lines along; the reply text is the last of them
  */
 const createPostReplyWaitingTask = (
   task: DrakidionTask
@@ -307,14 +307,14 @@ export const createPostReplyTask = (
   blueskyClient: BlueskyClient,
   conversation: ConversationMessage[] | undefined,
   onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void,
-  baseTask: Partial<DrakidionTask>
+  baseTask: Omit<DrakidionTask, 'doneAt'>
 ): DrakidionTask => {
   const description = `Post reply to @${originalNotification.author}`;
 
   const task: DrakidionTask = {
     ...baseTask,
     description,
-    work: replyText,
+    work: [...baseTask.work, replyText],
     conversation,
     process: () => {
       // An empty reply is never worth posting, and Bluesky accepts it silently
@@ -364,7 +364,7 @@ export const createPostReplyTask = (
         return createPostReplyDeadTask(task, error);
       }
     },
-  } as DrakidionTask;
+  };
 
   return task;
 };
@@ -383,7 +383,7 @@ const createObliqueMessageSucceededTask = (
 
   return {
     ...createSucceededTask(task),
-    work: responseContent,
+    work: [...task.work, responseContent],
     conversation: finalConversation,
   };
 };
@@ -399,7 +399,7 @@ const createObliqueMessageDeadTask = (
 
   return {
     ...createDeadTask(task),
-    work: `Error: ${errorMsg}`,
+    work: [...task.work, `Error: ${errorMsg}`],
     conversation: task.conversation,
   };
 };
@@ -422,7 +422,7 @@ export const createObliqueMessageTask = (
 ): DrakidionTask => {
   const task: DrakidionTask = {
     ...newWaitingTask("Oblique message"),
-    work: 'Waiting for LLM response...',
+    work: ['Waiting for LLM response...'],
     conversation: messages,
   };
   

@@ -18,7 +18,7 @@ describe('Task Factories', () => {
         process: () => ({
           ...newReadyTask('Test task'),
           status: 'succeeded' as const,
-          work: 'Completed',
+          work: ['Completed'],
           doneAt: new Date(),
         }),
       };
@@ -28,11 +28,11 @@ describe('Task Factories', () => {
       expect(task.version).toBe(1);
       expect(task.taskId).toHaveLength(24);
       expect(task.createdAt).toBeInstanceOf(Date);
-      expect(task.work).toBe('');
+      expect(task.work).toEqual([]);
       
       const successor = task.process();
       expect(successor.status).toBe('succeeded');
-      expect(successor.work).toBe('Completed');
+      expect(successor.work).toEqual(['Completed']);
     });
 
     it('should create unique task IDs', () => {
@@ -59,7 +59,7 @@ describe('Task Factories', () => {
       expect(task.version).toBe(1);
       expect(task.taskId).toHaveLength(24);
       expect(task.createdAt).toBeInstanceOf(Date);
-      expect(task.work).toBe('Waiting...');
+      expect(task.work).toEqual([]);
     });
 
     it('should create unique task IDs', () => {
@@ -109,7 +109,7 @@ describe('Task Factories', () => {
       const task = createObliqueMessageTask(mockClient, [{ role: 'user', content: 'Test notification' }], onComplete);
       
       expect(task.status).toBe('waiting');
-      expect(task.work).toBe('Waiting for LLM response...');
+      expect(task.work).toEqual(['Waiting for LLM response...']);
       expect(task.conversation).toEqual([
         { role: 'user', content: 'Test notification' }
       ]);

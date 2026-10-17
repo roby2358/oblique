@@ -112,7 +112,7 @@ export const processNextTask = async (
       ...task,
       status: 'dead',
       version: task.version + 1,
-      work: task.work + `\n[ERROR: ${error instanceof Error ? error.message : 'Unknown error'}]`,
+      work: [...task.work, `[ERROR: ${error instanceof Error ? error.message : 'Unknown error'}]`],
     };
     
     TaskMapOps.setTask(state.taskMap, errorTask);

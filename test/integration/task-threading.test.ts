@@ -151,6 +151,14 @@ describe('Task ID Threading', () => {
     expect(executionTrace[0].description).toContain('Notification from @testuser.bsky.social');
     expect(executionTrace[1].version).toBe(3);
     expect(executionTrace[1].description).toContain('Post reply to @testuser.bsky.social');
+
+    // Every step appends its line, so the latest snapshot carries the whole trace (D-18)
+    expect(executionTrace[0].work).toEqual(['<thinking>']);
+    expect(executionTrace[1].work).toEqual([
+      '<thinking>',
+      'Waiting for LLM response...',
+      'Response',
+    ]);
     // expect(executionTrace[2].version).toBe(3);
     // expect(executionTrace[2].description).toContain('Post reply');
 

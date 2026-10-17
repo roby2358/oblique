@@ -38,8 +38,8 @@ export interface DrakidionTask {
   /** Human-readable description of the task */
   description: string;
   
-  /** Work product being built (e.g., document, tweet) */
-  work: string;
+  /** Work product, one line per step; every step appends its own and keeps the rest (D-18) */
+  work: string[];
   
   /** Process function that returns successor task */
   process: () => DrakidionTask;

@@ -1,10 +1,10 @@
 Priority:   70
 Status: ToDo
-ID: refactor-c2cs
-Created: 2025-10-19T19:33:57Z
-Updated: 2025-10-19T19:33:57Z
+ID: replylen-6a9i
+Created: 2026-10-17T01:01:04Z
+Updated: 2026-10-17T18:30:18Z
 
-Refactor createSendToLLMTask to move notification handling logic higher up in the call stack and pass only the final prompt to the function instead of raw notification data
+Four different reply-length limits are in play and they disagree. src/oblique-task-factory.ts:13 sets MAX_BLUESKY_REPLY_CHARS = 299 (the truncation point); line 100 accepts a response at `length < 300` (the retry gate); src/prompts/oblique.ts:19 tells the model "The reply MUST be less than 279 characters" while line 37 of the same prompt says "limit all responses to 299 characters or less" and a third line says the Response section must be under 300. A test in test/oblique-task-factory.test.ts is still named "should use default maxLength of 279". So the model is given contradictory instructions and the code enforces a different number again. Fix: pick one limit, keep it as the single named constant, and interpolate it into the system prompt instead of restating it in prose. Rename the stale test. Bluesky's own post limit is 300 graphemes, which should inform the choice.
 ----
 Priority:   65
 Status: ToDo
@@ -36,35 +36,51 @@ Scope and acceptance:
 
 Context: this came out of a session where Oblique posted an empty reply to Bluesky. Diagnosing it meant reading source and reasoning about a chain of silent fallbacks; the task snapshots recorded a `succeeded` post with empty text and nothing that would have pointed at the cause. The Observer is the right place for that evidence.
 ----
-Priority:   60
+Priority:   65
 Status: ToDo
-ID: alt-notif-tin4
-Created: 2025-10-15T00:08:14Z
-Updated: 2025-10-15T00:08:14Z
+ID: convoclob-bynk
+Created: 2026-10-17T01:01:08Z
+Updated: 2026-10-17T18:30:19Z
 
-Investigate and fix issue with alt text not appearing correctly in notification handling
+The notification text is silently discarded from the first snapshot of every reply chain. src/oblique-task-factory.ts:154 sets `conversation: [{ role: 'user', content: notificationText }]` and then spreads `...newReadyTask(description)` on the next line — but newReadyTask returns `conversation: undefined`, so the later spread overwrites the earlier field and v1 carries no conversation at all. The successor then falls back to `baseTask.conversation || []`. Nothing breaks, because the real conversation is rebuilt from the fetched thread before the LLM call, but the Waiting and Observer panels show an empty conversation for a task whose whole purpose is that message. Fix: move the spread first, so explicit fields override the factory defaults, and add a test asserting v1 carries the notification text.
 ----
-Priority:   60
-Status: ToDo
-ID: refactor-mcaz
-Created: 2025-10-21T01:46:42Z
-Updated: 2025-10-21T01:46:42Z
-
-Refactor createObliqueMessageTask to remove options parameter and use config object instead. Add temperature property to config for LLM configuration.
-----
-Priority:   55
+Priority:   65
 Status: ToDo
 ID: doneat-76kf
 Created: 2026-10-17T01:00:54Z
-Updated: 2026-10-17T01:00:54Z
+Updated: 2026-10-17T18:30:19Z
 
 A task killed by a thrown error never gets a doneAt timestamp, breaking a stated invariant: doneAt is set when and only when a snapshot reaches a terminal status. The catch block in processNextTask (src/drakidion/orchestrator.ts, around line 113) builds the dead snapshot by hand as `{ ...task, status: 'dead', version: version + 1, work: work + '[ERROR: ...]' }` instead of going through createDeadTask, so it increments the version and marks the chain dead but leaves doneAt undefined. Every other terminal path uses createSucceededTask or createDeadTask and does set it. Consequence: a chain that died from a throw cannot be aged out or distinguished by completion time. Fix: build the snapshot with createDeadTask(task) and append the error to `work`. Add a test asserting doneAt is set on the throw path.
 ----
-Priority:   55
+Priority:   60
+Status: ToDo
+ID: waitleak-duk4
+Created: 2026-10-17T01:00:59Z
+Updated: 2026-10-17T18:30:20Z
+
+Chains refused by a restraint gate leak a waiting entry forever. In src/oblique-task-factory.ts, when shouldRespondToThread or createObliqueConversation returns null, sendReply logs "Task creation aborted due to thread-level checks" and returns without calling onWaitingTaskComplete. The chain therefore stays in the waitingSet with status 'waiting' for the life of the tab. Nothing scans the set so no work is wasted, but the waiting count shown in the status line and the Waiting panel overstates real in-flight work, which makes the UI misleading exactly when restraint is working as designed. Fix: have sendReply call onWaitingTaskComplete with a canceled successor — that is what the 'canceled' status exists for and nothing currently produces it. Assert in a test that a refused thread leaves the waitingSet empty and the chain terminal.
+----
+Priority:   60
+Status: ToDo
+ID: getstate-viig
+Created: 2026-10-17T01:01:29Z
+Updated: 2026-10-17T18:30:20Z
+
+The console debug helper `window.oblique.getState()` throws in the browser. src/index.ts:51 calls `require('./panels.js')` inside a module that Vite bundles as an ES module, where `require` is not defined — so the helper fails with a ReferenceError every time. The two siblings on the same object, processNext() and processAll(), correctly use `await import(...)`. Fix: make getState async and use a dynamic import like the others, or hoist the panels import to the top of the file since it is already imported there for other reasons.
+----
+Priority:   50
+Status: ToDo
+ID: refactor-c2cs
+Created: 2025-10-19T19:33:57Z
+Updated: 2026-10-17T18:30:21Z
+
+Refactor createSendToLLMTask to move notification handling logic higher up in the call stack and pass only the final prompt to the function instead of raw notification data
+----
+Priority:   45
 Status: ToDo
 ID: critstd-brnn
 Created: 2026-10-17T01:59:49Z
-Updated: 2026-10-17T01:59:49Z
+Updated: 2026-10-17T18:30:22Z
 
 Settle the criteria-verification standard across the ontology_spec doc sets, then update the skill at /home/roby/.claude/skills/ontology_spec to match.
 
@@ -89,37 +105,13 @@ Skill edits required: the skill's "Tests: the directory is the label" section cu
 
 Follow-on for /work/oblique once the skill is settled: CONSTRAINTS.md already uses the Instrument column and lists seven not-yet-covered rules (R-6, R-13, R-15, R-16, R-19, R-20, R-21), so only the coverage check needs writing, against the existing Jest suite organized by source file - no directory reorganization. Separately, none of the 23 tunables in ONTOLOGY section 6 currently has an Evidence line, which needs a committed harness before it can be fixed.
 ----
-Priority:   50
-Status: ToDo
-ID: waitleak-duk4
-Created: 2026-10-17T01:00:59Z
-Updated: 2026-10-17T01:00:59Z
-
-Chains refused by a restraint gate leak a waiting entry forever. In src/oblique-task-factory.ts, when shouldRespondToThread or createObliqueConversation returns null, sendReply logs "Task creation aborted due to thread-level checks" and returns without calling onWaitingTaskComplete. The chain therefore stays in the waitingSet with status 'waiting' for the life of the tab. Nothing scans the set so no work is wasted, but the waiting count shown in the status line and the Waiting panel overstates real in-flight work, which makes the UI misleading exactly when restraint is working as designed. Fix: have sendReply call onWaitingTaskComplete with a canceled successor — that is what the 'canceled' status exists for and nothing currently produces it. Assert in a test that a refused thread leaves the waitingSet empty and the chain terminal.
-----
-Priority:   50
-Status: ToDo
-ID: cleanup-h2ts
-Created: 2025-10-16T16:54:13Z
-Updated: 2025-10-16T16:54:13Z
-
-Review and clean up task syntax and formatting to make it easier to work with - standardize descriptions, improve clarity, and ensure consistent formatting across all tasks
-----
 Priority:   45
 Status: ToDo
-ID: replylen-6a9i
-Created: 2026-10-17T01:01:04Z
-Updated: 2026-10-17T01:01:04Z
+ID: namenums-vnzy
+Created: 2026-10-17T01:01:17Z
+Updated: 2026-10-17T18:30:22Z
 
-Four different reply-length limits are in play and they disagree. src/oblique-task-factory.ts:13 sets MAX_BLUESKY_REPLY_CHARS = 299 (the truncation point); line 100 accepts a response at `length < 300` (the retry gate); src/prompts/oblique.ts:19 tells the model "The reply MUST be less than 279 characters" while line 37 of the same prompt says "limit all responses to 299 characters or less" and a third line says the Response section must be under 300. A test in test/oblique-task-factory.test.ts is still named "should use default maxLength of 279". So the model is given contradictory instructions and the code enforces a different number again. Fix: pick one limit, keep it as the single named constant, and interpolate it into the system prompt instead of restating it in prose. Rename the stale test. Bluesky's own post limit is 300 graphemes, which should inform the choice.
-----
-Priority:   40
-Status: ToDo
-ID: convoclob-bynk
-Created: 2026-10-17T01:01:08Z
-Updated: 2026-10-17T01:01:08Z
-
-The notification text is silently discarded from the first snapshot of every reply chain. src/oblique-task-factory.ts:154 sets `conversation: [{ role: 'user', content: notificationText }]` and then spreads `...newReadyTask(description)` on the next line — but newReadyTask returns `conversation: undefined`, so the later spread overwrites the earlier field and v1 carries no conversation at all. The successor then falls back to `baseTask.conversation || []`. Nothing breaks, because the real conversation is rebuilt from the fetched thread before the LLM call, but the Waiting and Observer panels show an empty conversation for a task whose whole purpose is that message. Fix: move the spread first, so explicit fields override the factory defaults, and add a test asserting v1 carries the notification text.
+Most of the tunable numbers are bare literals at their use site, so tuning means hunting for them and the documented table can drift from the code without anything noticing. Only MAX_BLUESKY_REPLY_CHARS, TOKEN_REFRESH_BUFFER_MS and SAFE_BASE32_ALPHABET are named today. The unnamed ones include: the thread length cap 60 and the bot window 8 / limit 4 in bluesky-polling.ts; thread depth 25 in bluesky-client.ts getHistory; notification batch 3 and poll interval 60/10/3600 in bluesky-panel.ts; LLM attempts 5, temperature 0.8, max tokens 8000 and the 300 retry gate in oblique-task-factory.ts; the OpenRouter fallbacks 0.7 and 500; the one-day token default TTL; task id length 24. Fix: extract each to a named export near the code that owns it, refer to it by name in tests, and keep the table in the ontology quoting names rather than values.
 ----
 Priority:   40
 Status: ToDo
@@ -131,11 +123,19 @@ Remove createObliqueMessageTask function and replace its usage with the same uni
 ----
 Priority:   35
 Status: ToDo
-ID: namenums-vnzy
-Created: 2026-10-17T01:01:17Z
-Updated: 2026-10-17T17:50:48Z
+ID: errwait-rwzm
+Created: 2026-10-17T01:01:28Z
+Updated: 2026-10-17T18:30:23Z
 
-Most of the tunable numbers are bare literals at their use site, so tuning means hunting for them and the documented table can drift from the code without anything noticing. Only MAX_BLUESKY_REPLY_CHARS, TOKEN_REFRESH_BUFFER_MS and SAFE_BASE32_ALPHABET are named today. The unnamed ones include: the thread length cap 60 and the bot window 8 / limit 4 in bluesky-polling.ts; thread depth 25 in bluesky-client.ts getHistory; notification batch 3 and poll interval 60/10/3600 in bluesky-panel.ts; LLM attempts 5, temperature 0.8, max tokens 8000 and the 300 retry gate in oblique-task-factory.ts; the OpenRouter fallbacks 0.7 and 500; the one-day token default TTL; task id length 24. Fix: extract each to a named export near the code that owns it, refer to it by name in tests, and keep the table in the ontology quoting names rather than values.
+errorWaitingTask and resumeWaitingTask in src/drakidion/orchestrator.ts have byte-identical bodies — same taskMap lookup, same warn, same waitingSet removal, same transition. The only difference is in what the caller passes as the successor, so the two names imply a distinction the code does not make, and any fix applied to one will silently miss the other. Fix: either have errorWaitingTask delegate to resumeWaitingTask so the duplication cannot drift, or give it a real difference by asserting the successor is in a terminal state and warning when it is not. Keep both names regardless — the call sites read better for having them.
+----
+Priority:   35
+Status: ToDo
+ID: deadtypes-mrsf
+Created: 2026-10-17T01:01:22Z
+Updated: 2026-10-17T18:30:23Z
+
+src/types/index.ts still declares the vocabulary of the superseded agent architecture, and nothing imports any of it: Task, PendingTask, Conversation, StorageData, TaskId, UserId and ConversationId. The live task type is DrakidionTask in src/drakidion/drakidion-types.ts; only BlueskyMessage, BlueskyPost, LLMRequest and LLMResponse from this file are actually used. Two names actively mislead — `Task` and `Conversation` read as current concepts when grepping. Also unreferenced for the same reason: generateConversationId, generateId and wait in src/utils/index.ts. Fix: delete the dead declarations. Risk is low — `npx tsc --noEmit` proves nothing imports them — but check the Jest suite too, since a test may import a type for convenience.
 ----
 Priority:   30
 Status: ToDo
@@ -147,81 +147,103 @@ Create new panel component that displays inputs and outputs in a side-by-side la
 ----
 Priority:   30
 Status: ToDo
-ID: deadtypes-mrsf
-Created: 2026-10-17T01:01:22Z
-Updated: 2026-10-17T01:01:22Z
+ID: asyncorch-fenk
+Created: 2026-10-17T17:50:36Z
+Updated: 2026-10-17T18:30:24Z
 
-src/types/index.ts still declares the vocabulary of the superseded agent architecture, and nothing imports any of it: Task, PendingTask, Conversation, StorageData, TaskId, UserId and ConversationId. The live task type is DrakidionTask in src/drakidion/drakidion-types.ts; only BlueskyMessage, BlueskyPost, LLMRequest and LLMResponse from this file are actually used. Two names actively mislead — `Task` and `Conversation` read as current concepts when grepping. Also unreferenced for the same reason: generateConversationId, generateId and wait in src/utils/index.ts. Fix: delete the dead declarations. Risk is low — `npx tsc --noEmit` proves nothing imports them — but check the Jest suite too, since a test may import a type for convenience.
+The orchestrator's commands are declared async but nothing inside them ever awaits. src/drakidion/orchestrator.ts declares processNextTask and processAllTasks as `async`, and startLoop's frame body awaits processNextTask — yet no await appears inside any of them. A task's process() is synchronous by invariant (asynchronous work is started as a side effect in a factory closure and resolved through the resume path), so these promises always resolve in the same turn. The cost is a microtask per animation frame and a signature that tells a reader the core is asynchronous when the whole design says it is not. Fix: drop `async` from processNextTask, processAllTasks and the startLoop frame body, and let the commands return the state directly. `await` on a non-promise still works, so the call sites in src/panels.ts, src/index.ts (window.oblique.processNext / processAll) and the Jest suite keep working unchanged; update them anyway so nothing reads as asynchronous. Update the command table in ONTOLOGY.md, which now records the promise shape, and close the open question that tracks this. Against doing it: if a future step ever needs to await, the signature is already there — but the invariant says such a step belongs in a factory closure, not in the orchestrator.
 ----
-Priority:   30
-Status: ToDo
-ID: templates-squn
-Created: 2025-10-13T18:19:52Z
-Updated: 2025-10-13T18:19:52Z
-
-Support different response templates/personalities
-----
-Priority:   30
-Status: ToDo
-ID: error-yihe
-Created: 2025-10-13T18:19:52Z
-Updated: 2025-10-13T18:19:52Z
-
-Add retry logic and better error messages for API failures
-----
-Priority:   30
+Priority:   25
 Status: ToDo
 ID: ratelimit-797w
 Created: 2025-10-13T18:19:52Z
-Updated: 2025-10-13T18:19:52Z
+Updated: 2026-10-17T18:30:24Z
 
 Implement proper rate limiting for Bluesky API calls
 ----
-Priority:   30
-Status: ToDo
-ID: format-uuep
-Created: 2025-10-13T18:19:52Z
-Updated: 2025-10-13T18:19:52Z
-
-Improve how LLM responses are formatted before posting
-----
-Priority:   30
+Priority:   25
 Status: ToDo
 ID: context-yppk
 Created: 2025-10-13T18:19:52Z
-Updated: 2025-10-13T18:19:52Z
+Updated: 2026-10-17T18:32:28Z
 
-Maintain conversation history for better LLM context
+The chat panel has no memory: every message is sent to the model as a standalone exchange. `createHandleSendMessage` in src/chatPanel.ts builds `obliquePrompt(message, "")` — the thread-history argument is hard-coded to the empty string — and then sends exactly two messages, the system prompt and that one user turn, to `createObliqueMessageTask`. Nothing accumulates across sends, so asking a follow-up in the chat panel gets an answer that cannot see what was just said, even though the transcript is sitting on screen in `#chat-messages`.
+
+The Bluesky reply path does not have this problem and is not in scope: `getHistory` in src/hooks/bluesky/bluesky-client.ts walks up to 25 parent posts, `createObliqueConversation` formats them into the thread-history slot, and tests cover it.
+
+Fix: keep the accumulated turns for the chat panel and pass them as the conversation, or feed them into the thread-history slot of the oblique prompt so the chat path and the reply path assemble context the same way. Decide first which of the two it should be — the prompt is written around a thread of other people's posts, not a dialogue with one person, so reusing the history slot may read oddly to the model. Cap the retained turns; the reply path's 25-post depth is the precedent. Add a test asserting a second message carries the first exchange.
 ----
-Priority:   30
+Priority:   20
 Status: ToDo
-ID: test-ic9g
+ID: format-uuep
 Created: 2025-10-13T18:19:52Z
-Updated: 2025-10-13T18:19:52Z
+Updated: 2026-10-17T18:30:26Z
 
-Add more unit tests for critical components
+Improve how LLM responses are formatted before posting
 ----
-Priority:   30
-Status: ToDo
-ID: config-ftxs
-Created: 2025-10-13T18:19:52Z
-Updated: 2025-10-13T18:19:52Z
-
-Improve the configuration panel for easier setup
-----
-Priority:   30
+Priority:   20
 Status: ToDo
 ID: log-zgkr
 Created: 2025-10-13T18:19:52Z
-Updated: 2025-10-13T18:19:52Z
+Updated: 2026-10-17T18:30:26Z
 
 Add better logging for troubleshooting
 ----
-Priority:   30
+Priority:   20
+Status: ToDo
+ID: config-ftxs
+Created: 2025-10-13T18:19:52Z
+Updated: 2026-10-17T18:30:26Z
+
+Improve the configuration panel for easier setup
+----
+Priority:   20
+Status: ToDo
+ID: rmdadabot-tqce
+Created: 2026-10-17T02:17:30Z
+Updated: 2026-10-17T18:30:26Z
+
+Review whether to delete `src/prompts/dadabot.md`, then delete it if the review still says so.
+
+The file is a complete second-persona prompt — "the ghost of Tristan Tzara reborn in a machine", with its own principles, form, tone and six generative operations. It was written as an alternate personality for the bot, was never wired to anything, and the alternate-personality direction was dropped. No code references it, and nothing in `ONTOLOGY.md` describes a bot with more than one voice. On that basis the current intent is to remove it — but that intent is not binding, and this ticket exists partly so the call gets looked at once more with fresh eyes rather than executed on reflex.
+
+Step 1 — review. Read the file. Ask whether a second voice has become interesting again since the direction was dropped, and whether anything in the prompt is worth keeping even if DadaBot itself is not: the six generative operations (word collage, phonetic inversion, chance operations, semantic drift, surreal causality, fragmented manifesto) are reusable craft, and some could inform the existing oblique lenses rather than die with the file. Keeping it costs nothing — it is inert Markdown that no longer breaks the build.
+
+Step 2 — if the review says keep, close this ticket without deleting and record in `ARCHITECTURE_LOG.md` that the question was reopened and settled the other way. That is a legitimate outcome, not a failure to finish.
+
+Step 3 — if the review says delete: `git rm src/prompts/dadabot.md`; confirm nothing imports it (`grep -rni dadabot --include='*.ts' --include='*.html' src test`); run `npm run build` and `npm test`, both of which should stay green since nothing depended on it. The content stays recoverable from git history afterward, so no copy needs keeping outside the repo.
+
+Docs, whichever way it goes: update open question Q-12 in `ARCHITECTURE_LOG.md` — it asks whether DadaBot is a planned second persona or dead material — and add a dated History entry recording what was decided, that Q-12 is what it settled, and the reason in one line. Nothing in `ONTOLOGY.md` or `CONSTRAINTS.md` references the file, so neither should need an edit; verify rather than assume.
+----
+Priority:   15
+Status: ToDo
+ID: refactor-mcaz
+Created: 2025-10-21T01:46:42Z
+Updated: 2026-10-17T18:30:26Z
+
+Refactor createObliqueMessageTask to remove options parameter and use config object instead. Add temperature property to config for LLM configuration.
+----
+Priority:   15
+Status: ToDo
+ID: templates-squn
+Created: 2025-10-13T18:19:52Z
+Updated: 2026-10-17T18:30:26Z
+
+Support different response templates/personalities
+----
+Priority:   15
+Status: ToDo
+ID: error-yihe
+Created: 2025-10-13T18:19:52Z
+Updated: 2026-10-17T18:30:26Z
+
+Add retry logic and better error messages for API failures
+----
+Priority:    5
 Status: ToDo
 ID: ontoprefs-yx2j
 Created: 2026-10-17T02:03:16Z
-Updated: 2026-10-17T02:03:16Z
+Updated: 2026-10-17T18:30:28Z
 
 Reference capture, not a unit of work: Claude's stated preferences for the ontology_spec doc format, recorded 2026-10-17 after writing a full set for /work/oblique and reading the two mature examples (/work/hggames/survive and /work/yuwakisaweb/ideas/hexandcounter). These are opinions, not designer decisions - treat every one as [P]. The test-binding and Evidence-line preferences are deliberately omitted here because they are already captured as a decision to adopt in a separate ticket.
 
@@ -256,45 +278,3 @@ WHAT I WOULD CHANGE
 STATED BIAS
 
 13. I like this format and that is worth discounting. The cost is real: survive is roughly 920 lines of design docs against 2,400 lines of code, and oblique's set is comparable against a bot. For anything whose rules are a pipeline of obvious steps, that is pure overhead and the lighter specification skill is the right call. The threshold I would actually use: reach for ontology_spec when numbers will be tuned or when rules will be argued about. Not when the only question is what the code does.
-----
-Priority:   25
-Status: ToDo
-ID: errwait-rwzm
-Created: 2026-10-17T01:01:28Z
-Updated: 2026-10-17T01:01:28Z
-
-errorWaitingTask and resumeWaitingTask in src/drakidion/orchestrator.ts have byte-identical bodies — same taskMap lookup, same warn, same waitingSet removal, same transition. The only difference is in what the caller passes as the successor, so the two names imply a distinction the code does not make, and any fix applied to one will silently miss the other. Fix: either have errorWaitingTask delegate to resumeWaitingTask so the duplication cannot drift, or give it a real difference by asserting the successor is in a terminal state and warning when it is not. Keep both names regardless — the call sites read better for having them.
-----
-Priority:   25
-Status: ToDo
-ID: rmdadabot-tqce
-Created: 2026-10-17T02:17:30Z
-Updated: 2026-10-17T02:31:21Z
-
-Review whether to delete `src/prompts/dadabot.md`, then delete it if the review still says so.
-
-The file is a complete second-persona prompt — "the ghost of Tristan Tzara reborn in a machine", with its own principles, form, tone and six generative operations. It was written as an alternate personality for the bot, was never wired to anything, and the alternate-personality direction was dropped. No code references it, and nothing in `ONTOLOGY.md` describes a bot with more than one voice. On that basis the current intent is to remove it — but that intent is not binding, and this ticket exists partly so the call gets looked at once more with fresh eyes rather than executed on reflex.
-
-Step 1 — review. Read the file. Ask whether a second voice has become interesting again since the direction was dropped, and whether anything in the prompt is worth keeping even if DadaBot itself is not: the six generative operations (word collage, phonetic inversion, chance operations, semantic drift, surreal causality, fragmented manifesto) are reusable craft, and some could inform the existing oblique lenses rather than die with the file. Keeping it costs nothing — it is inert Markdown that no longer breaks the build.
-
-Step 2 — if the review says keep, close this ticket without deleting and record in `ARCHITECTURE_LOG.md` that the question was reopened and settled the other way. That is a legitimate outcome, not a failure to finish.
-
-Step 3 — if the review says delete: `git rm src/prompts/dadabot.md`; confirm nothing imports it (`grep -rni dadabot --include='*.ts' --include='*.html' src test`); run `npm run build` and `npm test`, both of which should stay green since nothing depended on it. The content stays recoverable from git history afterward, so no copy needs keeping outside the repo.
-
-Docs, whichever way it goes: update open question Q-12 in `ARCHITECTURE_LOG.md` — it asks whether DadaBot is a planned second persona or dead material — and add a dated History entry recording what was decided, that Q-12 is what it settled, and the reason in one line. Nothing in `ONTOLOGY.md` or `CONSTRAINTS.md` references the file, so neither should need an edit; verify rather than assume.
-----
-Priority:   25
-Status: ToDo
-ID: asyncorch-fenk
-Created: 2026-10-17T17:50:36Z
-Updated: 2026-10-17T17:50:36Z
-
-The orchestrator's commands are declared async but nothing inside them ever awaits. src/drakidion/orchestrator.ts declares processNextTask and processAllTasks as `async`, and startLoop's frame body awaits processNextTask — yet no await appears inside any of them. A task's process() is synchronous by invariant (asynchronous work is started as a side effect in a factory closure and resolved through the resume path), so these promises always resolve in the same turn. The cost is a microtask per animation frame and a signature that tells a reader the core is asynchronous when the whole design says it is not. Fix: drop `async` from processNextTask, processAllTasks and the startLoop frame body, and let the commands return the state directly. `await` on a non-promise still works, so the call sites in src/panels.ts, src/index.ts (window.oblique.processNext / processAll) and the Jest suite keep working unchanged; update them anyway so nothing reads as asynchronous. Update the command table in ONTOLOGY.md, which now records the promise shape, and close the open question that tracks this. Against doing it: if a future step ever needs to await, the signature is already there — but the invariant says such a step belongs in a factory closure, not in the orchestrator.
-----
-Priority:   20
-Status: ToDo
-ID: getstate-viig
-Created: 2026-10-17T01:01:29Z
-Updated: 2026-10-17T01:01:29Z
-
-The console debug helper `window.oblique.getState()` throws in the browser. src/index.ts:51 calls `require('./panels.js')` inside a module that Vite bundles as an ES module, where `require` is not defined — so the helper fails with a ReferenceError every time. The two siblings on the same object, processNext() and processAll(), correctly use `await import(...)`. Fix: make getState async and use a dynamic import like the others, or hoist the panels import to the top of the file since it is already imported there for other reasons.

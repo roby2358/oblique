@@ -46,6 +46,30 @@ Updated: 2026-10-17T17:41:19Z
 
 src/drakidion/waiting-map.ts is a byte-identical duplicate of src/drakidion/waiting-set.ts, and the tests cover the wrong one. orchestrator.ts imports waiting-set.ts; test/drakidion/waiting-map.test.ts imports waiting-map.ts. So the module the orchestrator actually runs is only tested transitively, and the 12 direct assertions land on a file nothing else imports — edits to waiting-set.ts cannot break those tests. Fix: delete waiting-map.ts, repoint the test at waiting-set.ts, and rename it waiting-set.test.ts. Confirm with a grep that no import of waiting-map remains.
 ----
+Priority:   20
+Status: Done
+ID: test-ic9g
+Created: 2025-10-13T18:19:52Z
+Updated: 2026-10-17T18:33:54Z
+
+Add more unit tests for critical components
+----
+Priority:   10
+Status: Done
+ID: cleanup-h2ts
+Created: 2025-10-16T16:54:13Z
+Updated: 2026-10-17T18:34:17Z
+
+Review and clean up task syntax and formatting to make it easier to work with - standardize descriptions, improve clarity, and ensure consistent formatting across all tasks
+----
+Priority:   10
+Status: Done
+ID: alt-notif-tin4
+Created: 2025-10-15T00:08:14Z
+Updated: 2026-10-17T18:32:17Z
+
+Investigate and fix issue with alt text not appearing correctly in notification handling
+----
 Priority:    0
 Status: Done
 ID: extract-resp-juwa

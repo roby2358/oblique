@@ -30,86 +30,6 @@ Updated: 2026-10-17T01:00:18Z
 
 Stale and duplicate async callbacks are accepted instead of ignored. In src/drakidion/orchestrator.ts, resumeWaitingTask and errorWaitingTask check only that the taskId exists in taskMap (line 198 and line 222); neither checks WaitingSetOps.isWaiting. A late or repeated callback therefore transitions a chain that is no longer waiting, overwriting a terminal snapshot and re-queueing work. Harmless today only because each chain has exactly one in-flight promise; it becomes a double-post the moment retries exist. Fix: return the state unchanged when the taskId is not in the waitingSet, and log at warn. Add test cases for a repeated callback and for a callback arriving after the chain already reached a terminal state.
 ----
-Priority:   65
-Status: ToDo
-ID: dailymodel-t46y
-Created: 2026-10-17T01:00:44Z
-Updated: 2026-10-17T01:00:44Z
-
-The Bluesky reply path ignores the daily model rotation. src/oblique-task-factory.ts:232 logs `getDailyModel()` for display, but generateLLMResponseWithRetry (called at line 238) builds its request as `{ conversation, temperature, maxTokens }` with no `model` field, so the OpenRouter client falls back to `config.openrouter.model` and every public reply uses the configured model. The chat path (createObliqueMessageTask) does pass `getDailyModel()`, so the two paths silently disagree and the console log claims a model that was not used. The rotation exists so 15 models can be compared on identical public traffic, which only works on the reply path. Fix: pass `model: getDailyModel()` into the reply path's request, and assert in a test that the model reaching the client matches the daily rotation.
-----
-Priority:   60
-Status: ToDo
-ID: dupwaitset-tu5f
-Created: 2026-10-17T01:00:47Z
-Updated: 2026-10-17T01:00:47Z
-
-src/drakidion/waiting-map.ts is a byte-identical duplicate of src/drakidion/waiting-set.ts, and the tests cover the wrong one. orchestrator.ts imports waiting-set.ts; test/drakidion/waiting-map.test.ts imports waiting-map.ts. So the module the orchestrator actually runs is only tested transitively, and the 12 direct assertions land on a file nothing else imports — edits to waiting-set.ts cannot break those tests. Fix: delete waiting-map.ts, repoint the test at waiting-set.ts, and rename it waiting-set.test.ts. Confirm with a grep that no import of waiting-map remains.
-----
-Priority:   55
-Status: ToDo
-ID: doneat-76kf
-Created: 2026-10-17T01:00:54Z
-Updated: 2026-10-17T01:00:54Z
-
-A task killed by a thrown error never gets a doneAt timestamp, breaking a stated invariant: doneAt is set when and only when a snapshot reaches a terminal status. The catch block in processNextTask (src/drakidion/orchestrator.ts, around line 113) builds the dead snapshot by hand as `{ ...task, status: 'dead', version: version + 1, work: work + '[ERROR: ...]' }` instead of going through createDeadTask, so it increments the version and marks the chain dead but leaves doneAt undefined. Every other terminal path uses createSucceededTask or createDeadTask and does set it. Consequence: a chain that died from a throw cannot be aged out or distinguished by completion time. Fix: build the snapshot with createDeadTask(task) and append the error to `work`. Add a test asserting doneAt is set on the throw path.
-----
-Priority:   50
-Status: ToDo
-ID: waitleak-duk4
-Created: 2026-10-17T01:00:59Z
-Updated: 2026-10-17T01:00:59Z
-
-Chains refused by a restraint gate leak a waiting entry forever. In src/oblique-task-factory.ts, when shouldRespondToThread or createObliqueConversation returns null, sendReply logs "Task creation aborted due to thread-level checks" and returns without calling onWaitingTaskComplete. The chain therefore stays in the waitingSet with status 'waiting' for the life of the tab. Nothing scans the set so no work is wasted, but the waiting count shown in the status line and the Waiting panel overstates real in-flight work, which makes the UI misleading exactly when restraint is working as designed. Fix: have sendReply call onWaitingTaskComplete with a canceled successor — that is what the 'canceled' status exists for and nothing currently produces it. Assert in a test that a refused thread leaves the waitingSet empty and the chain terminal.
-----
-Priority:   45
-Status: ToDo
-ID: replylen-6a9i
-Created: 2026-10-17T01:01:04Z
-Updated: 2026-10-17T01:01:04Z
-
-Four different reply-length limits are in play and they disagree. src/oblique-task-factory.ts:13 sets MAX_BLUESKY_REPLY_CHARS = 299 (the truncation point); line 100 accepts a response at `length < 300` (the retry gate); src/prompts/oblique.ts:19 tells the model "The reply MUST be less than 279 characters" while line 37 of the same prompt says "limit all responses to 299 characters or less" and a third line says the Response section must be under 300. A test in test/oblique-task-factory.test.ts is still named "should use default maxLength of 279". So the model is given contradictory instructions and the code enforces a different number again. Fix: pick one limit, keep it as the single named constant, and interpolate it into the system prompt instead of restating it in prose. Rename the stale test. Bluesky's own post limit is 300 graphemes, which should inform the choice.
-----
-Priority:   40
-Status: ToDo
-ID: convoclob-bynk
-Created: 2026-10-17T01:01:08Z
-Updated: 2026-10-17T01:01:08Z
-
-The notification text is silently discarded from the first snapshot of every reply chain. src/oblique-task-factory.ts:154 sets `conversation: [{ role: 'user', content: notificationText }]` and then spreads `...newReadyTask(description)` on the next line — but newReadyTask returns `conversation: undefined`, so the later spread overwrites the earlier field and v1 carries no conversation at all. The successor then falls back to `baseTask.conversation || []`. Nothing breaks, because the real conversation is rebuilt from the fetched thread before the LLM call, but the Waiting and Observer panels show an empty conversation for a task whose whole purpose is that message. Fix: move the spread first, so explicit fields override the factory defaults, and add a test asserting v1 carries the notification text.
-----
-Priority:   35
-Status: ToDo
-ID: namenums-vnzy
-Created: 2026-10-17T01:01:17Z
-Updated: 2026-10-17T01:01:17Z
-
-Nineteen of the twenty-three tunable numbers are bare literals at their use site, so tuning means hunting for them and the documented table can drift from the code without anything noticing. Only MAX_BLUESKY_REPLY_CHARS, TOKEN_REFRESH_BUFFER_MS, SAFE_BASE32_ALPHABET and DEFAULT_CONFIG are named today. The unnamed ones include: the thread length cap 60 and the bot window 8 / limit 4 in bluesky-polling.ts; thread depth 25 in bluesky-client.ts getHistory; notification batch 3 and poll interval 60/10/3600 in bluesky-panel.ts; LLM attempts 5, temperature 0.8, max tokens 2000 and the 300 retry gate in oblique-task-factory.ts; the OpenRouter fallbacks 0.7 and 500; token default TTL of one day; task id length 24. Fix: extract each to a named export near the code that owns it, refer to it by name in tests, and keep the table in the ontology quoting names rather than values.
-----
-Priority:   30
-Status: ToDo
-ID: deadtypes-mrsf
-Created: 2026-10-17T01:01:22Z
-Updated: 2026-10-17T01:01:22Z
-
-src/types/index.ts still declares the vocabulary of the superseded agent architecture, and nothing imports any of it: Task, PendingTask, Conversation, StorageData, TaskId, UserId and ConversationId. The live task type is DrakidionTask in src/drakidion/drakidion-types.ts; only BlueskyMessage, BlueskyPost, LLMRequest and LLMResponse from this file are actually used. Two names actively mislead — `Task` and `Conversation` read as current concepts when grepping. Also unreferenced for the same reason: generateConversationId, generateId and wait in src/utils/index.ts. Fix: delete the dead declarations. Risk is low — `npx tsc --noEmit` proves nothing imports them — but check the Jest suite too, since a test may import a type for convenience.
-----
-Priority:   25
-Status: ToDo
-ID: errwait-rwzm
-Created: 2026-10-17T01:01:28Z
-Updated: 2026-10-17T01:01:28Z
-
-errorWaitingTask and resumeWaitingTask in src/drakidion/orchestrator.ts have byte-identical bodies — same taskMap lookup, same warn, same waitingSet removal, same transition. The only difference is in what the caller passes as the successor, so the two names imply a distinction the code does not make, and any fix applied to one will silently miss the other. Fix: either have errorWaitingTask delegate to resumeWaitingTask so the duplication cannot drift, or give it a real difference by asserting the successor is in a terminal state and warning when it is not. Keep both names regardless — the call sites read better for having them.
-----
-Priority:   20
-Status: ToDo
-ID: getstate-viig
-Created: 2026-10-17T01:01:29Z
-Updated: 2026-10-17T01:01:29Z
-
-The console debug helper `window.oblique.getState()` throws in the browser. src/index.ts:51 calls `require('./panels.js')` inside a module that Vite bundles as an ES module, where `require` is not defined — so the helper fails with a ReferenceError every time. The two siblings on the same object, processNext() and processAll(), correctly use `await import(...)`. Fix: make getState async and use a dynamic import like the others, or hoist the panels import to the top of the file since it is already imported there for other reasons.
-----
 Priority:   70
 Status: ToDo
 ID: panel-ui-r6ze
@@ -125,6 +45,22 @@ Created: 2025-10-19T19:33:57Z
 Updated: 2025-10-19T19:33:57Z
 
 Refactor createSendToLLMTask to move notification handling logic higher up in the call stack and pass only the final prompt to the function instead of raw notification data
+----
+Priority:   65
+Status: ToDo
+ID: dailymodel-t46y
+Created: 2026-10-17T01:00:44Z
+Updated: 2026-10-17T01:00:44Z
+
+The Bluesky reply path ignores the daily model rotation. src/oblique-task-factory.ts:232 logs `getDailyModel()` for display, but generateLLMResponseWithRetry (called at line 238) builds its request as `{ conversation, temperature, maxTokens }` with no `model` field, so the OpenRouter client falls back to `config.openrouter.model` and every public reply uses the configured model. The chat path (createObliqueMessageTask) does pass `getDailyModel()`, so the two paths silently disagree and the console log claims a model that was not used. The rotation exists so 15 models can be compared on identical public traffic, which only works on the reply path. Fix: pass `model: getDailyModel()` into the reply path's request, and assert in a test that the model reaching the client matches the daily rotation.
+----
+Priority:   60
+Status: ToDo
+ID: dupwaitset-tu5f
+Created: 2026-10-17T01:00:47Z
+Updated: 2026-10-17T01:00:47Z
+
+src/drakidion/waiting-map.ts is a byte-identical duplicate of src/drakidion/waiting-set.ts, and the tests cover the wrong one. orchestrator.ts imports waiting-set.ts; test/drakidion/waiting-map.test.ts imports waiting-map.ts. So the module the orchestrator actually runs is only tested transitively, and the 12 direct assertions land on a file nothing else imports — edits to waiting-set.ts cannot break those tests. Fix: delete waiting-map.ts, repoint the test at waiting-set.ts, and rename it waiting-set.test.ts. Confirm with a grep that no import of waiting-map remains.
 ----
 Priority:   60
 Status: ToDo
@@ -142,6 +78,51 @@ Updated: 2025-10-21T01:46:42Z
 
 Refactor createObliqueMessageTask to remove options parameter and use config object instead. Add temperature property to config for LLM configuration.
 ----
+Priority:   55
+Status: ToDo
+ID: doneat-76kf
+Created: 2026-10-17T01:00:54Z
+Updated: 2026-10-17T01:00:54Z
+
+A task killed by a thrown error never gets a doneAt timestamp, breaking a stated invariant: doneAt is set when and only when a snapshot reaches a terminal status. The catch block in processNextTask (src/drakidion/orchestrator.ts, around line 113) builds the dead snapshot by hand as `{ ...task, status: 'dead', version: version + 1, work: work + '[ERROR: ...]' }` instead of going through createDeadTask, so it increments the version and marks the chain dead but leaves doneAt undefined. Every other terminal path uses createSucceededTask or createDeadTask and does set it. Consequence: a chain that died from a throw cannot be aged out or distinguished by completion time. Fix: build the snapshot with createDeadTask(task) and append the error to `work`. Add a test asserting doneAt is set on the throw path.
+----
+Priority:   55
+Status: ToDo
+ID: critstd-brnn
+Created: 2026-10-17T01:59:49Z
+Updated: 2026-10-17T01:59:49Z
+
+Settle the criteria-verification standard across the ontology_spec doc sets, then update the skill at /home/roby/.claude/skills/ontology_spec to match.
+
+Two existing projects implement the criteria/test binding differently:
+
+- /work/hggames/survive — CRITERIA.md R-rows have no status column. test/smoke.js holds all rule assertions as check('R-n ...', cond), and a coverage assertion greps CRITERIA.md for R-\d+ and fails if any ID lacks a check() labelled with it. Also has tools/tune.js (self-play with constant overrides, prints X-* proxies) and test/browser.js (headless Chromium, screenshot per screen) backing the U and X rows.
+- /work/yuwakisaweb/ideas/hexandcounter — CRITERIA.md adds an Instrument column with exactly four values (automated / manual - <what a human checks> / not yet covered / retired), one test/R-n/ directory per automated criterion, and test/coverage.js checking both directions, run by node test/run.js.
+
+Decision to adopt:
+
+1. Keep the Instrument column with its four values. Its point is that "not yet covered" is a legal, visible state. Survive's format cannot express a known gap: an uncovered rule must either be deleted from the table or given a hollow assertion to satisfy the grep.
+
+2. Drop the test/R-n/ directory requirement. It does not actually enforce "one rule per test" (nothing stops a file in test/R-7/ asserting three things) and it forces a parallel taxonomy plus a custom runner onto projects that already organize tests another way. Bind a test to its criterion by putting the ID in the test name instead, using whatever the project's framework already provides (Jest describe('R-9 ...'), a check() label, etc.).
+
+3. Make the coverage check bidirectional: every row whose Instrument is "automated" must have at least one test labelled with its ID, AND every ID found in a test label must correspond to a row that is marked "automated". Survive only checks the first direction, which leaves orphan tests for deleted criteria.
+
+4. Read criterion IDs from the table's ID column only, never by grepping the whole document. Survive's whole-file regex turns any prose mention ("superseded by R-21c") into a phantom requirement and makes a criterion impossible to retire without scrubbing every reference to it. This is also why the "retired" tombstone value is needed.
+
+5. Adopt survive's RATIONALE Evidence line as a required field on any tuned decision: the line names the command that produced the number, e.g. `GAMES=40 ROUNDS=120 SEED=900 node tools/tune.js` followed by the result. This is the discipline that caught survive's own wrong prediction - the duel table predicted 8-13 dice was right, self-play showed survivors going down in a median of 2 shots, and D-5 records both the first decision and the correction. A modelled number is never stated as fact.
+
+Skill edits required: the skill's "Tests: the directory is the label" section currently mandates test/R-n/ directories and describes them as the only link between a criterion and its tests. Rewrite it around ID-labelled tests, keep the coverage test but specify both directions and the ID-column-only scan, and keep the four Instrument forms unchanged. Add the Evidence-line requirement to the RATIONALE section. Cite /work/hggames/survive as the worked example throughout; it is the fuller reference, with hexandcounter noted as the source of the Instrument column.
+
+Follow-on for /work/oblique once the skill is settled: CONSTRAINTS.md already uses the Instrument column and lists seven not-yet-covered rules (R-6, R-13, R-15, R-16, R-19, R-20, R-21), so only the coverage check needs writing, against the existing Jest suite organized by source file - no directory reorganization. Separately, none of the 23 tunables in ONTOLOGY section 6 currently has an Evidence line, which needs a committed harness before it can be fixed.
+----
+Priority:   50
+Status: ToDo
+ID: waitleak-duk4
+Created: 2026-10-17T01:00:59Z
+Updated: 2026-10-17T01:00:59Z
+
+Chains refused by a restraint gate leak a waiting entry forever. In src/oblique-task-factory.ts, when shouldRespondToThread or createObliqueConversation returns null, sendReply logs "Task creation aborted due to thread-level checks" and returns without calling onWaitingTaskComplete. The chain therefore stays in the waitingSet with status 'waiting' for the life of the tab. Nothing scans the set so no work is wasted, but the waiting count shown in the status line and the Waiting panel overstates real in-flight work, which makes the UI misleading exactly when restraint is working as designed. Fix: have sendReply call onWaitingTaskComplete with a canceled successor — that is what the 'canceled' status exists for and nothing currently produces it. Assert in a test that a refused thread leaves the waitingSet empty and the chain terminal.
+----
 Priority:   50
 Status: ToDo
 ID: cleanup-h2ts
@@ -150,6 +131,22 @@ Updated: 2025-10-16T16:54:13Z
 
 Review and clean up task syntax and formatting to make it easier to work with - standardize descriptions, improve clarity, and ensure consistent formatting across all tasks
 ----
+Priority:   45
+Status: ToDo
+ID: replylen-6a9i
+Created: 2026-10-17T01:01:04Z
+Updated: 2026-10-17T01:01:04Z
+
+Four different reply-length limits are in play and they disagree. src/oblique-task-factory.ts:13 sets MAX_BLUESKY_REPLY_CHARS = 299 (the truncation point); line 100 accepts a response at `length < 300` (the retry gate); src/prompts/oblique.ts:19 tells the model "The reply MUST be less than 279 characters" while line 37 of the same prompt says "limit all responses to 299 characters or less" and a third line says the Response section must be under 300. A test in test/oblique-task-factory.test.ts is still named "should use default maxLength of 279". So the model is given contradictory instructions and the code enforces a different number again. Fix: pick one limit, keep it as the single named constant, and interpolate it into the system prompt instead of restating it in prose. Rename the stale test. Bluesky's own post limit is 300 graphemes, which should inform the choice.
+----
+Priority:   40
+Status: ToDo
+ID: convoclob-bynk
+Created: 2026-10-17T01:01:08Z
+Updated: 2026-10-17T01:01:08Z
+
+The notification text is silently discarded from the first snapshot of every reply chain. src/oblique-task-factory.ts:154 sets `conversation: [{ role: 'user', content: notificationText }]` and then spreads `...newReadyTask(description)` on the next line — but newReadyTask returns `conversation: undefined`, so the later spread overwrites the earlier field and v1 carries no conversation at all. The successor then falls back to `baseTask.conversation || []`. Nothing breaks, because the real conversation is rebuilt from the fetched thread before the LLM call, but the Waiting and Observer panels show an empty conversation for a task whose whole purpose is that message. Fix: move the spread first, so explicit fields override the factory defaults, and add a test asserting v1 carries the notification text.
+----
 Priority:   40
 Status: ToDo
 ID: unify-tasks-9sa6
@@ -157,6 +154,22 @@ Created: 2025-10-21T01:46:42Z
 Updated: 2025-10-21T01:46:42Z
 
 Remove createObliqueMessageTask function and replace its usage with the same unified approach used by the bot task for consistency and simplification.
+----
+Priority:   35
+Status: ToDo
+ID: namenums-vnzy
+Created: 2026-10-17T01:01:17Z
+Updated: 2026-10-17T01:01:17Z
+
+Nineteen of the twenty-three tunable numbers are bare literals at their use site, so tuning means hunting for them and the documented table can drift from the code without anything noticing. Only MAX_BLUESKY_REPLY_CHARS, TOKEN_REFRESH_BUFFER_MS, SAFE_BASE32_ALPHABET and DEFAULT_CONFIG are named today. The unnamed ones include: the thread length cap 60 and the bot window 8 / limit 4 in bluesky-polling.ts; thread depth 25 in bluesky-client.ts getHistory; notification batch 3 and poll interval 60/10/3600 in bluesky-panel.ts; LLM attempts 5, temperature 0.8, max tokens 2000 and the 300 retry gate in oblique-task-factory.ts; the OpenRouter fallbacks 0.7 and 500; token default TTL of one day; task id length 24. Fix: extract each to a named export near the code that owns it, refer to it by name in tests, and keep the table in the ontology quoting names rather than values.
+----
+Priority:   30
+Status: ToDo
+ID: deadtypes-mrsf
+Created: 2026-10-17T01:01:22Z
+Updated: 2026-10-17T01:01:22Z
+
+src/types/index.ts still declares the vocabulary of the superseded agent architecture, and nothing imports any of it: Task, PendingTask, Conversation, StorageData, TaskId, UserId and ConversationId. The live task type is DrakidionTask in src/drakidion/drakidion-types.ts; only BlueskyMessage, BlueskyPost, LLMRequest and LLMResponse from this file are actually used. Two names actively mislead — `Task` and `Conversation` read as current concepts when grepping. Also unreferenced for the same reason: generateConversationId, generateId and wait in src/utils/index.ts. Fix: delete the dead declarations. Risk is low — `npx tsc --noEmit` proves nothing imports them — but check the Jest suite too, since a test may import a type for convenience.
 ----
 Priority:   30
 Status: ToDo
@@ -222,130 +235,58 @@ Updated: 2025-10-13T18:19:52Z
 
 Add better logging for troubleshooting
 ----
-Priority:    0
-Status: Done
-ID: extract-resp-juwa
-Created: 2025-10-21T01:46:42Z
-Updated: 2025-10-21T01:46:42Z
+Priority:   30
+Status: ToDo
+ID: ontoprefs-yx2j
+Created: 2026-10-17T02:03:16Z
+Updated: 2026-10-17T02:03:16Z
 
-Extract and trim all text after the "# Response" header from LLM responses. Update response processing logic to parse structured responses and extract only the response content section.
+Reference capture, not a unit of work: Claude's stated preferences for the ontology_spec doc format, recorded 2026-10-17 after writing a full set for /work/oblique and reading the two mature examples (/work/hggames/survive and /work/yuwakisaweb/ideas/hexandcounter). These are opinions, not designer decisions - treat every one as [P]. The test-binding and Evidence-line preferences are deliberately omitted here because they are already captured as a decision to adopt in a separate ticket.
+
+WHAT EARNS ITS KEEP
+
+1. The explicit priority ordering in section 0 is the highest-value line in the whole set. Most specs list goals; almost none rank them, and the ranking is the only thing that turns a wish list into a tiebreaker. Oblique's "G-2 > G-1 > G-3 > G-5 > G-4" (restraint beats wit) settles arguments that the goal text alone leaves open. A goals list submitted without an ordering should be treated as incomplete.
+
+2. Serves: tags are the best pruning tool in the format, and the check should run in both directions. "An item that serves nothing is a candidate for cutting" is the direction everyone does. "A goal that nothing serves is unmet" is the direction everyone skips, and it is the one that finds missing features rather than dead ones. This is mechanizable: parse the Serves: lines, diff the cited goal IDs against the section 0 list, report both orphan sets.
+
+3. The pseudocode length limit is a detector, not a style rule. "If a rule cannot be written in under ten lines it is too vague to implement" is what makes the exercise worth doing. Forcing oblique's rules into pseudocode is what surfaced the createReplyTask spread-order bug and the unreferenced ID generators - neither was visible while reading the code as code.
+
+4. Write the commands/events interface before the engine, whatever position it occupies on the page. Survive's own docs/PROCESS_REVIEW.md admits section 7 was added after the first build, where it had been invented during implementation instead. That is the strongest evidence in either repo for the rule, and it comes from the project that violated it.
+
+5. "Code wins" on conversion, with the discrepancy list as an explicit deliverable. Oblique's conversion turned up 13 places where the old spec and the code disagreed; all 13 went into the log, none were silently fixed in either direction. The pull toward fixing while documenting is strong and it produces one unreviewable change.
+
+6. A dead-vocabulary section (oblique's section 1.10). Names that still exist in code but no longer mean anything need somewhere to go that is neither "current state" nor "silently deleted". Not currently in the skill; it should be.
+
+7. Batched open questions, each carrying a recommendation. The recommendation is what makes a Q answerable in one pass - a bare question gets deferred. Corollary worth stating: not every Q needs a ticket. A Q that is a designer decision rather than a repair should stay ticketless (oblique's Q-6, prompt injection having no mechanical prevention, is the example).
+
+WHAT I WOULD CHANGE
+
+8. Generating the Numbers table from code should be mandatory, not "ideally". A hand-maintained table of constant values is the most drift-prone artifact in the set, because it is the one thing that is both duplicated and frequently edited. Oblique has 23 hand-copied tunables and they will drift.
+
+9. Ban section-number citations outright, including inside the doc set. The skill already says to prefer stable IDs, but survive's CRITERIA still carries group headers like "Damage (section 4.1, 4.2)" - exactly the references that break on reorganization. Name the rule instead.
+
+10. An entity's field table must carry Notes that the type declaration cannot - ranges, invariants, who writes the field, when it is valid. If a table is just the TypeScript types transcribed into Markdown, it is worse than nothing: it will drift and nobody will read it. The goal is "every piece of state has a named home", not a schema dump.
+
+11. Fewer documents for a single-author project. Survive's own retrospective scores TELOS as low-use (hence folded into section 0) and DYNAMICS as mostly dormant after design. Oblique folded RATIONALE into ARCHITECTURE_LOG, which was right there: with one author and a short history, the Why and the When are the same story. Split them once there are multiple maintainers and the Why needs to be readable without scrolling through dates.
+
+12. The format should require a short retrospective after the first build. survive/docs/PROCESS_REVIEW.md is the single most useful document in either repo for deciding how to work, and nothing in the skill asks for one. It is also where survive honestly records that its ARCHITECTURE_LOG was written in one go at the end and is "not yet doing its job".
+
+STATED BIAS
+
+13. I like this format and that is worth discounting. The cost is real: survive is roughly 920 lines of design docs against 2,400 lines of code, and oblique's set is comparable against a bot. For anything whose rules are a pipeline of obvious steps, that is pure overhead and the lighter specification skill is the right call. The threshold I would actually use: reach for ontology_spec when numbers will be tuned or when rules will be argued about. Not when the only question is what the code does.
 ----
-Priority:    0
-Status: Done
-ID: model-rot-gdrc
-Created: 2025-10-18T23:21:05Z
-Updated: 2025-10-18T23:21:05Z
+Priority:   25
+Status: ToDo
+ID: errwait-rwzm
+Created: 2026-10-17T01:01:28Z
+Updated: 2026-10-17T01:01:28Z
 
-Rotate the model and introduce a daily gender rotation that posts to Bluesky with the current configuration
+errorWaitingTask and resumeWaitingTask in src/drakidion/orchestrator.ts have byte-identical bodies — same taskMap lookup, same warn, same waitingSet removal, same transition. The only difference is in what the caller passes as the successor, so the two names imply a distinction the code does not make, and any fix applied to one will silently miss the other. Fix: either have errorWaitingTask delegate to resumeWaitingTask so the duplication cannot drift, or give it a real difference by asserting the successor is in a terminal state and warning when it is not. Keep both names regardless — the call sites read better for having them.
 ----
-Priority:    0
-Status: Done
-ID: like-first-ni5b
-Created: 2025-10-16T17:25:28Z
-Updated: 2025-10-16T17:25:28Z
+Priority:   20
+Status: ToDo
+ID: getstate-viig
+Created: 2026-10-17T01:01:29Z
+Updated: 2026-10-17T01:01:29Z
 
-Implement automatic liking functionality where Oblique likes a post before replying to it, simulating the heart button click behavior
-----
-Priority:    0
-Status: Done
-ID: preview-fps7
-Created: 2025-10-16T17:25:28Z
-Updated: 2025-10-16T17:25:28Z
-
-Implement post preview functionality that displays post content before sending reply to allow review and editing
-----
-Priority:    0
-Status: Done
-ID: truncate-4nfr
-Created: 2025-10-16T16:54:13Z
-Updated: 2025-10-16T16:54:13Z
-
-Implement smarter message truncation for retried LLM responses to avoid repeated failures
-----
-Priority:    0
-Status: Done
-ID: no-quotes-w4jc
-Created: 2025-10-16T16:54:13Z
-Updated: 2025-10-16T16:54:13Z
-
-Don't reply to quote posts
-----
-Priority:    0
-Status: Done
-ID: prompt-sep-ait3
-Created: 2025-10-15T00:08:14Z
-Updated: 2025-10-15T00:08:14Z
-
-Separate the most recent post from thread history in the oblique LLM prompt for better context handling
-----
-Priority:    0
-Status: Done
-ID: bot-ignore-6mcw
-Created: 2025-10-15T00:08:14Z
-Updated: 2025-10-15T00:08:14Z
-
-Add ignore list for known bots that can be updated manually and add exponential backoff timing for replies to bots based on post timestamps
-----
-Priority:    0
-Status: Done
-ID: filter-trdq
-Created: 2025-10-13T18:19:52Z
-Updated: 2025-10-13T18:19:52Z
-
-Implement rules for which notifications to respond to
-----
-Priority:    0
-Status: Done
-ID: refactor-ne3i
-Created: 2025-10-14T19:35:03Z
-Updated: 2025-10-14T19:35:03Z
-
-Rename 'conversation' field to 'messages' throughout the codebase for better clarity and consistency with LLM API conventions. I'm going to let this stand. This mirrors OpenAI terminology.
-----
-Priority:    0
-Status: Done
-ID: llm-retry-7zxt
-Created: 2025-10-14T23:53:04Z
-Updated: 2025-10-14T23:53:04Z
-
-Implement retry logic for LLM calls when response exceeds maximum length constraints
-----
-Priority:    0
-Status: Done
-ID: alt-3suq
-Created: 2025-10-13T18:19:52Z
-Updated: 2025-10-13T18:19:52Z
-
-extract and display alt text from image attachments
-----
-Priority:    0
-Status: Done
-ID: thread-8df4
-Created: 2025-10-13T18:19:52Z
-Updated: 2025-10-13T18:19:52Z
-
-implement full thread reading from notifications
-----
-Priority:    0
-Status: Done
-ID: prompt-bug4
-Created: 2025-10-13T18:19:52Z
-Updated: 2025-10-13T18:19:52Z
-
-fix prompt to llm using system command
-----
-Priority:    0
-Status: Done
-ID: fix-mqsf
-Created: 2025-10-13T18:19:52Z
-Updated: 2025-10-13T18:19:52Z
-
-fix onSuccess and onError
-----
-Priority:    0
-Status: Done
-ID: fix-convo-yqak
-Created: 2025-10-13T18:19:52Z
-Updated: 2025-10-13T18:19:52Z
-
-Fix conversation handling
+The console debug helper `window.oblique.getState()` throws in the browser. src/index.ts:51 calls `require('./panels.js')` inside a module that Vite bundles as an ES module, where `require` is not defined — so the helper fails with a ReferenceError every time. The two siblings on the same object, processNext() and processAll(), correctly use `await import(...)`. Fix: make getState async and use a dynamic import like the others, or hoist the panels import to the top of the file since it is already imported there for other reasons.

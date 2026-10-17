@@ -1,0 +1,127 @@
+Priority:    0
+Status: Done
+ID: extract-resp-juwa
+Created: 2025-10-21T01:46:42Z
+Updated: 2025-10-21T01:46:42Z
+
+Extract and trim all text after the "# Response" header from LLM responses. Update response processing logic to parse structured responses and extract only the response content section.
+----
+Priority:    0
+Status: Done
+ID: model-rot-gdrc
+Created: 2025-10-18T23:21:05Z
+Updated: 2025-10-18T23:21:05Z
+
+Rotate the model and introduce a daily gender rotation that posts to Bluesky with the current configuration
+----
+Priority:    0
+Status: Done
+ID: like-first-ni5b
+Created: 2025-10-16T17:25:28Z
+Updated: 2025-10-16T17:25:28Z
+
+Implement automatic liking functionality where Oblique likes a post before replying to it, simulating the heart button click behavior
+----
+Priority:    0
+Status: Done
+ID: preview-fps7
+Created: 2025-10-16T17:25:28Z
+Updated: 2025-10-16T17:25:28Z
+
+Implement post preview functionality that displays post content before sending reply to allow review and editing
+----
+Priority:    0
+Status: Done
+ID: truncate-4nfr
+Created: 2025-10-16T16:54:13Z
+Updated: 2025-10-16T16:54:13Z
+
+Implement smarter message truncation for retried LLM responses to avoid repeated failures
+----
+Priority:    0
+Status: Done
+ID: no-quotes-w4jc
+Created: 2025-10-16T16:54:13Z
+Updated: 2025-10-16T16:54:13Z
+
+Don't reply to quote posts
+----
+Priority:    0
+Status: Done
+ID: prompt-sep-ait3
+Created: 2025-10-15T00:08:14Z
+Updated: 2025-10-15T00:08:14Z
+
+Separate the most recent post from thread history in the oblique LLM prompt for better context handling
+----
+Priority:    0
+Status: Done
+ID: bot-ignore-6mcw
+Created: 2025-10-15T00:08:14Z
+Updated: 2025-10-15T00:08:14Z
+
+Add ignore list for known bots that can be updated manually and add exponential backoff timing for replies to bots based on post timestamps
+----
+Priority:    0
+Status: Done
+ID: filter-trdq
+Created: 2025-10-13T18:19:52Z
+Updated: 2025-10-13T18:19:52Z
+
+Implement rules for which notifications to respond to
+----
+Priority:    0
+Status: Done
+ID: refactor-ne3i
+Created: 2025-10-14T19:35:03Z
+Updated: 2025-10-14T19:35:03Z
+
+Rename 'conversation' field to 'messages' throughout the codebase for better clarity and consistency with LLM API conventions. I'm going to let this stand. This mirrors OpenAI terminology.
+----
+Priority:    0
+Status: Done
+ID: llm-retry-7zxt
+Created: 2025-10-14T23:53:04Z
+Updated: 2025-10-14T23:53:04Z
+
+Implement retry logic for LLM calls when response exceeds maximum length constraints
+----
+Priority:    0
+Status: Done
+ID: alt-3suq
+Created: 2025-10-13T18:19:52Z
+Updated: 2025-10-13T18:19:52Z
+
+extract and display alt text from image attachments
+----
+Priority:    0
+Status: Done
+ID: thread-8df4
+Created: 2025-10-13T18:19:52Z
+Updated: 2025-10-13T18:19:52Z
+
+implement full thread reading from notifications
+----
+Priority:    0
+Status: Done
+ID: prompt-bug4
+Created: 2025-10-13T18:19:52Z
+Updated: 2025-10-13T18:19:52Z
+
+fix prompt to llm using system command
+----
+Priority:    0
+Status: Done
+ID: fix-mqsf
+Created: 2025-10-13T18:19:52Z
+Updated: 2025-10-13T18:19:52Z
+
+fix onSuccess and onError
+----
+Priority:    0
+Status: Done
+ID: fix-convo-yqak
+Created: 2025-10-13T18:19:52Z
+Updated: 2025-10-13T18:19:52Z
+
+Fix conversation handling

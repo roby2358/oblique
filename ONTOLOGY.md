@@ -131,14 +131,16 @@ carried because it is part of what was said. *Serves:* G-1.
 
 ### 1.9 Config
 
-Loaded once from `/config.json`, deep-merged over `DEFAULT_CONFIG`, held mutable at module
-level. It is the only source of configuration: the UI sets nothing and the browser stores
-nothing. *Serves:* G-2, G-4.
+Loaded once from `/config.json` and held mutable at module level. That file is the whole
+configuration: there are no defaults in code, the UI sets nothing and the browser stores
+nothing, so every value the page uses can be read in one place. A field missing from the file
+is missing at runtime — `config-example.json` is the complete template to copy. *Serves:* G-2,
+G-4.
 
 | Field | Type | Notes |
 |---|---|---|
 | `openrouter.apiKey` | `string` | Empty means the LLM is unconfigured and no task is created. |
-| `openrouter.models` | `string[]` | OpenRouter slugs, `MODEL_ROTATION_SIZE` of them by default. A list in `config.json` replaces it rather than merging into it. Empty is an error, not a default. |
+| `openrouter.models` | `string[]` | OpenRouter slugs, `MODEL_ROTATION_SIZE` of them in the template. Empty or absent is an error, not a default. |
 | `openrouter.rotate` | `boolean` | True walks the list one entry per UTC day; false always uses the first entry. |
 | `openrouter.baseUrl` | `string` | OpenRouter chat-completions endpoint. |
 | `bluesky.handle` | `string` | The bot's own handle. |
@@ -545,22 +547,26 @@ the response is shown in the page, not posted.
 *Serves:* G-2, G-4.
 
 ```
-loadConfigWithFallbacks():
-  result = structuredClone(DEFAULT_CONFIG)
+loadConfig():
   try:  r = await fetch('/config.json')
-        if r.ok -> deepMerge(result, await r.json())
-        else    -> warn
-  catch: warn
-  -> result
+        if r.ok -> return await r.json()
+        else    -> warn, return {}
+  catch: warn, return {}
 ```
 
-Deep-merged over defaults so a partial `config.json` is valid: a file that sets only an API
-key still gets the default model and base URL. A missing or malformed file is a warning, not a
-failure — the page loads unconfigured and says so.
+One file, loaded once, used as written. Nothing is merged over it and nothing is merged into
+it, so what the page runs on is exactly what the file says — the cost of hunting through two
+sources to answer "what model is it using" was judged higher than the convenience of partial
+files. A field left out is absent at runtime, not defaulted: `openrouter.models` missing makes
+the daily model throw, and `ignoreList` missing makes the restraint gate throw. Copy
+`config-example.json`, which carries every field.
 
-One source, loaded once. The Configure panel is a note explaining where `config.json` lives
-and that it is gitignored; it has no fields and writes nothing. A configuration change means
-editing the file and reloading the page.
+A missing or malformed file is a warning, not a failure — `loadConfig` yields `{}` and the
+page loads unconfigured and says so, rather than failing to start.
+
+The Configure panel is a note explaining where `config.json` lives and that it is gitignored;
+it has no fields and writes nothing. A configuration change means editing the file and
+reloading the page.
 
 ### 4.20 The LLM client response **[D]**
 
@@ -695,13 +701,13 @@ tests. The code is the single source; the value here is a copy.
 | `SAFE_BASE32_ALPHABET` | `abcdefghijkmnpqrstuvwxyz23456789` | — | `safebase32.ts` | D-3 |
 | `TOKEN_REFRESH_BUFFER_MS` | 300000 | ms (5 min) | `BlueskyClient` | D-12 |
 | `TOKEN_DEFAULT_TTL` | 86400000 | ms (1 day) | `getDefaultTokenExpiration` | D-12 |
-| `MODEL_ROTATION_SIZE` | 15 | models | `DEFAULT_CONFIG.openrouter.models`, overridable in `config.json` | D-5 |
+| `MODEL_ROTATION_SIZE` | 15 | models | `config.json` → `openrouter.models` | D-5 |
 | `GENDER_ROTATION_SIZE` | 25 | entries | `prompts/oblique.ts` | D-5 |
-| `DEFAULT_MODEL` | `anthropic/claude-3.5-haiku` | — | `DEFAULT_CONFIG` | D-4 |
 
-Only `MAX_BLUESKY_REPLY_CHARS`, `TOKEN_REFRESH_BUFFER_MS`, `SAFE_BASE32_ALPHABET` and
-`DEFAULT_CONFIG` are named constants in the code today; the rest are literals at their use
-site. Naming them is an open question in `ARCHITECTURE_LOG.md`.
+Only `MAX_BLUESKY_REPLY_CHARS`, `TOKEN_REFRESH_BUFFER_MS` and `SAFE_BASE32_ALPHABET` are named
+constants in the code today; the rest are literals at their use site, except
+`MODEL_ROTATION_SIZE`, which is the length of a list in `config.json`. Naming them is an open
+question in `ARCHITECTURE_LOG.md`.
 
 ---
 

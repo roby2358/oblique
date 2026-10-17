@@ -43,19 +43,23 @@ settled), **History** (dated entries, newest first).
   needs; the length is for legibility, not collision resistance. Serves G-3.
 - **Evidence:** `npm test` — R-22 asserts the alphabet and the exclusions.
 
-### D-4 One `config.json`, deep-merged over defaults, and nothing else — *Decided*
+### D-4 One `config.json`, complete, with no defaults in code — *Decided*
 
 - **Alternatives:** environment variables through Vite's `import.meta.env`; `localStorage`
-  written by a settings UI; a settings UI as the source of truth.
+  written by a settings UI; a settings UI as the source of truth; a `DEFAULT_CONFIG` in code
+  that `config.json` is deep-merged over (what it was until 2026-10-17).
 - **Why:** the page is served statically and has no build step per deployment, so a file
-  fetched at startup is the only thing that can be changed without rebuilding. Deep-merging
-  means a `config.json` that sets only an API key is valid. A second writable source is the
-  part that was tried and rejected: two places holding the same API key means a precedence
-  rule to remember, a stale copy in a browser that outlives the file, and a secret sitting in
-  `localStorage` where any script on the origin can read it — all to avoid editing a file that
-  has to exist anyway. The Configure panel is a note pointing at the file. Serves G-2, G-4.
-- **Evidence:** `npm test` — R-19 covers the defaults, the three failure modes of the fetch,
-  and the partial-file merge.
+  fetched at startup is the only thing that can be changed without rebuilding. A second
+  writable source was tried and rejected: two places holding the same API key means a
+  precedence rule to remember, a stale copy in a browser that outlives the file, and a secret
+  where any script on the origin can read it. Defaults in code are the same problem in
+  quieter form — answering "what model is it using" meant reading a file and a constant and
+  working out the merge, and the merge had its own rules to remember (objects merge, arrays
+  replace). One complete file costs a longer template and loses the partial-config
+  convenience; it buys a configuration you can read in one place. The Configure panel is a
+  note pointing at the file. Serves G-2, G-4.
+- **Evidence:** `npm test` — R-19 covers a complete file, a partial one, and the three
+  failure modes of the fetch.
 
 ### D-5 Model and voice rotate daily; the lens rotates per reply — *Decided*
 
@@ -309,6 +313,28 @@ so, as `ONTOLOGY.md` now does.
 
 ## History
 
+### 2026-10-17 — `DEFAULT_CONFIG` removed; `config.json` carries every value
+
+Configuration was a `DEFAULT_CONFIG` object in `src/config.ts` with `config.json` deep-merged
+over it. Answering "what is this actually running with" meant reading both and applying the
+merge rules in your head — and those rules had a wrinkle, since `deepMerge` merges objects but
+assigns arrays, so `models` replaced while `openrouter` merged. The defaults are now the
+contents of `config-example.json`, which is tracked, and `config.json` is the whole
+configuration.
+
+`loadConfigWithFallbacks` becomes `loadConfig`: fetch, parse, return, with `{}` and a warning
+on any failure so the page still loads and says it is unconfigured. There is nothing left to
+merge, so `src/utils/deep-merge.ts` is deleted along with its only caller, and
+`test/utils/index.test.ts` goes with the `DEFAULT_CONFIG` it asserted.
+
+The trade is explicit and recorded in D-4: a partial `config.json` is no longer valid. A file
+missing `openrouter.models` makes the daily model throw; one missing `ignoreList` makes the
+restraint gate throw. That is the point — a field absent from the file is absent at runtime
+rather than quietly supplied from somewhere else. `config-example.json` now carries all 15
+model slugs so a fresh copy works.
+
+R-19 is rewritten for the new contract. `npm test` runs 17 suites and 156 tests.
+
 ### 2026-10-17 — `CONSTRAINTS.md` renamed to `CRITERIA.md`
 
 The `ontology_spec` skill names the doc set ONTOLOGY / CRITERIA / RATIONALE /
@@ -326,10 +352,8 @@ rename, and the single file is working.
 ### 2026-10-17 — The model list moves to `config.json`; `rotate` replaces `model`
 
 `prompts/oblique.ts` held a hardcoded map of 15 OpenRouter slugs to display names that nothing
-read. It is now `DEFAULT_CONFIG.openrouter.models`, an array of slugs, overridable from
-`config.json` — and because `deepMerge` assigns arrays rather than merging them, a list in the
-file replaces the default outright instead of being unioned with it, which is the behaviour a
-list wants.
+read. It is now `openrouter.models` in `config.json`, an array of slugs. (It landed first in
+a `DEFAULT_CONFIG` that `config.json` merged over; the entry below removes that layer.)
 
 `openrouter.rotate` replaces `openrouter.model`. True keeps the daily walk; false always takes
 `models[0]`, so pinning a model means reordering the list rather than setting a second field

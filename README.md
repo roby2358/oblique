@@ -55,18 +55,18 @@ Copy `config-example.json` to `config.json` and fill it in:
 }
 ```
 
-The file is fetched at startup and deep-merged over the defaults, so a partial `config.json`
-is valid — set only `openrouter.apiKey` and the rest fall back. A missing or malformed file
-is a warning, not a failure: the page loads unconfigured and says so.
+The file is the whole configuration — there are no defaults in code, so copy
+`config-example.json` and keep every field. A field left out is absent at runtime rather than
+defaulted. A missing or malformed file is a warning, not a failure: the page loads
+unconfigured and says so.
 
 `config.json` is gitignored, so the API key and app password stay out of the repository. It
 is the only source of configuration — the **Configure** panel is a note pointing at it, with
 nothing to type in. Changing configuration means editing the file and reloading the page.
 
-`models` is the list the bot speaks through; it ships with 15 entries and a list here
-replaces that default rather than adding to it. `rotate` true walks the list one entry per UTC
-day, so the bot has one character a day and a different one tomorrow; false always uses the
-first entry, which makes pinning a model a matter of putting it first.
+`models` is the list the bot speaks through; the template ships 15. `rotate` true walks the
+list one entry per UTC day, so the bot has one character a day and a different one tomorrow;
+false always uses the first entry, which makes pinning a model a matter of putting it first.
 
 `ignoreList` holds handles never replied to. `botList` holds handles treated as bots, which
 the attenuation rule uses to stop bot-to-bot loops.

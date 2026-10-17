@@ -54,6 +54,36 @@ Updated: 2026-10-17T01:00:44Z
 
 The Bluesky reply path ignores the daily model rotation. src/oblique-task-factory.ts:232 logs `getDailyModel()` for display, but generateLLMResponseWithRetry (called at line 238) builds its request as `{ conversation, temperature, maxTokens }` with no `model` field, so the OpenRouter client falls back to `config.openrouter.model` and every public reply uses the configured model. The chat path (createObliqueMessageTask) does pass `getDailyModel()`, so the two paths silently disagree and the console log claims a model that was not used. The rotation exists so 15 models can be compared on identical public traffic, which only works on the reply path. Fix: pass `model: getDailyModel()` into the reply path's request, and assert in a test that the model reaching the client matches the daily rotation.
 ----
+Priority:   65
+Status: ToDo
+ID: obstaskio-tn5t
+Created: 2026-10-17T07:02:28Z
+Updated: 2026-10-17T07:02:28Z
+
+Show the prompt, the response and the error on each task in the Observer panel, so a reply can be diagnosed from the page instead of the browser console.
+
+Today `src/orchestratorPanel.ts` renders each task in `#task-list` as two lines — `task.description`, then `status (version) • createdAt → doneAt`. Clicking a task calls `displayTaskDetails`, which dumps a hand-picked subset of fields as JSON into `#task-detail`: taskId, version, status, description, work, conversation, retryCount, createdAt, doneAt. `src/queuePanel.ts` renders the same two lines for queued tasks and has no detail pane at all.
+
+Three things are hard or impossible to see:
+
+1. **The prompt.** The conversation actually sent to the LLM is built by `createObliqueConversation` inside the promise chain in `createSendToLLMTask` (`src/oblique-task-factory.ts`) and handed straight to `generateLLMResponseWithRetry`. The waiting snapshot's `conversation` is `baseTask.conversation || []`, which for a reply chain is just `[{ role: 'user', content: notificationText }]` — the system prompt, the chosen lens, the voice and the assembled thread history never reach a snapshot. They only appear on the v3 post task, after the fact. Carry the real conversation onto the waiting snapshot when the chain builds it.
+
+2. **The response.** `work` on the succeeded LLM snapshot holds the *extracted* text — the content of the `# Response` section after trimming. The raw model output is only `console.log`ged. When extraction returns nothing useful, or a retry fires because the response was too long, the snapshot shows the end result with no trace of what the model actually said. Store the raw content alongside the extracted text, and record which attempt produced it when the length retry loop ran more than once.
+
+3. **Errors.** A failure is a string stuffed into `work` with a prefix — `Error: <message>`, `Failed to post: <message>`. It renders in the detail JSON like any other `work`, with no distinction from a successful one and no stack. Give a dead task a field of its own for the error so the list can mark it and the detail can show it plainly.
+
+Also show the model used. The chain picks it with `getDailyModel()` at request time and nothing on the snapshot records which one answered, so comparing behaviour across the rotation means correlating against the console.
+
+Scope and acceptance:
+- Add the fields to `DrakidionTask` in `src/drakidion/drakidion-types.ts` and populate them in the factories in `src/oblique-task-factory.ts`. They are optional on the type, since the drakidion core is generic and should not know about prompts.
+- Extend `displayTaskDetails` to render prompt, raw response, extracted response, model and error as labelled sections rather than one JSON blob, and mark failed tasks in the list.
+- Give the Queue panel the same detail pane, or drop its duplicate list rendering and reuse the Observer's.
+- Keep the drakidion core free of oblique-specific vocabulary — the orchestrator, task map, queue and waiting set must not read any of the new fields.
+- Add a rule to `ONTOLOGY.md` for what a snapshot carries, a row in `CRITERIA.md`, and a dated entry in `ARCHITECTURE_LOG.md`.
+- Tests assert that a reply chain's snapshots carry the prompt, the raw and extracted responses and the model, and that a failed chain carries the error.
+
+Context: this came out of a session where Oblique posted an empty reply to Bluesky. Diagnosing it meant reading source and reasoning about a chain of silent fallbacks; the task snapshots recorded a `succeeded` post with empty text and nothing that would have pointed at the cause. The Observer is the right place for that evidence.
+----
 Priority:   60
 Status: ToDo
 ID: dupwaitset-tu5f

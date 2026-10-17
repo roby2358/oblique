@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { getConfig, DEFAULT_CONFIG } from '../../src/config.js';
+import { getConfig } from '../../src/config.js';
 import { getDailyModel } from '../../src/prompts/oblique.js';
 import { 
   obliquePrompt, 
@@ -190,10 +190,6 @@ describe('Oblique Prompts', () => {
       getConfig().openrouter = { models: [], rotate: true };
 
       expect(() => getDailyModel()).toThrow('No models configured');
-    });
-
-    it('ships a non-empty default list', () => {
-      expect(DEFAULT_CONFIG.openrouter.models.length).toBeGreaterThan(0);
     });
   });
 

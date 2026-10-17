@@ -327,6 +327,10 @@ already set to: the first entry in `models` is used until someone turns the walk
 stands — the daily rotation is the design — but it is now something you opt into rather than
 the out-of-the-box behaviour. The voice rotation in `genders` is unaffected and still daily.
 
+With the walk off, the first entry is the whole choice, so `~deepseek/deepseek-flash-latest`
+leads the list in both the template and the live config. It was already first by accident of
+the order the list was imported in; it is now first on purpose.
+
 ### 2026-10-17 — The build step is removed; `tsc` is `noEmit` and only type-checks
 
 `npm run build` was `tsc && vite build`, and the two halves did not feed each other. `tsc`

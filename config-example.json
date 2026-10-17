@@ -2,8 +2,8 @@
   "openrouter": {
     "apiKey": "sk-or-v1-...",
     "models": [
-      "cognitivecomputations/dolphin-mistral-24b-venice-edition",
       "~deepseek/deepseek-flash-latest",
+      "cognitivecomputations/dolphin-mistral-24b-venice-edition",
       "~deepseek/deepseek-pro-latest",
       "~google/gemini-flash-latest",
       "~google/gemini-pro-latest",

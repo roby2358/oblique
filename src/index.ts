@@ -6,7 +6,6 @@ import { updateQueuePanel } from './queuePanel.js';
 import { updateWaitingPanel } from './waitingPanel.js';
 import { createHandleSendMessage } from './chatPanel.js';
 import { createHandleCheckBluesky, createHandleTogglePolling, createHandlePollIntervalChange } from './bluesky-panel.js';
-import { createHandleConfigure } from './configurePanel.js';
 
 // jQuery is loaded via CDN in index.html
 // Note: Run 'npm install' to get jQuery type definitions from @types/jquery
@@ -82,7 +81,6 @@ $(document).ready(() => {
   const handleCheckBluesky = createHandleCheckBluesky();
   const handleTogglePolling = createHandleTogglePolling();
   const handlePollIntervalChange = createHandlePollIntervalChange();
-  const handleConfigure = createHandleConfigure();
 
   // Event listeners
   $('#send-button').on('click', handleSendMessage);
@@ -101,8 +99,6 @@ $(document).ready(() => {
     const panelId = href.substring(1); // Remove the #
     switchToPanel(panelId);
   });
-
-  $('#save-config').on('click', handleConfigure);
 
   $('#check-bluesky').on('click', handleCheckBluesky);
 

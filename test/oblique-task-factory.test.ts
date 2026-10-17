@@ -117,6 +117,12 @@ describe('createSendToLLMTask quote post handling', () => {
     config.botList = [];
     config.ignoreList = [];
     config.bluesky = config.bluesky || { handle: '', password: '' };
+    config.openrouter = {
+      apiKey: 'sk-or-v1-test',
+      models: ['anthropic/claude-sonnet-4.5', 'openai/gpt-5'],
+      rotate: true,
+      baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    };
 
     mockLLMClient = {
       generateResponse: jest.fn()
@@ -262,5 +268,121 @@ describe('createSendToLLMTask quote post handling', () => {
     );
 
     expect(task.description).toBe('Oblique: (no text provided)');
+  });
+});
+
+// R-16: posting the reply, including the refusal to post nothing
+describe('createPostReplyTask', () => {
+  const notification: BlueskyMessage = {
+    uri: 'at://did:plc:test/app.bsky.feed.post/abc',
+    cid: 'cid-abc',
+    author: 'user.test',
+    text: 'Hello there',
+    createdAt: new Date('2025-01-01T00:00:00Z'),
+    reason: 'reply',
+  };
+
+  const replyTo = {
+    root: { uri: 'at://did:plc:test/app.bsky.feed.post/root', cid: 'cid-root' },
+    parent: { uri: notification.uri, cid: notification.cid },
+  };
+
+  let blueskyClient: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+
+    blueskyClient = {
+      notificationReplyTo: jest.fn(() => replyTo),
+      like: jest.fn(),
+      post: jest.fn(),
+    };
+  });
+
+  const buildTask = async (replyText: string) => {
+    const { createPostReplyTask } = await import('../src/oblique-task-factory.js');
+    const { newReadyTask } = await import('../src/drakidion/task-factories.js');
+    return createPostReplyTask(
+      notification,
+      replyText,
+      blueskyClient as BlueskyClient,
+      [],
+      newReadyTask('Post reply')
+    );
+  };
+
+  it('likes then posts, and succeeds', async () => {
+    const task = await buildTask('A door is not a question.');
+
+    const successor = task.process!() as DrakidionTask;
+
+    expect(blueskyClient.like).toHaveBeenCalledWith(notification.uri);
+    expect(blueskyClient.post).toHaveBeenCalledWith({
+      text: 'A door is not a question.',
+      replyTo,
+    });
+    expect(blueskyClient.like.mock.invocationCallOrder[0])
+      .toBeLessThan(blueskyClient.post.mock.invocationCallOrder[0]);
+    expect(successor.status).toBe('succeeded');
+    expect(successor.work).toContain('Posted:');
+  });
+
+  it('refuses to post an empty reply', async () => {
+    const task = await buildTask('');
+
+    const successor = task.process!() as DrakidionTask;
+
+    expect(blueskyClient.post).not.toHaveBeenCalled();
+    expect(blueskyClient.like).not.toHaveBeenCalled();
+    expect(successor.status).toBe('dead');
+    expect(successor.work).toBe('Failed to post: Refusing to post an empty reply');
+  });
+
+  it('refuses to post a whitespace-only reply', async () => {
+    const task = await buildTask('   \n  ');
+
+    const successor = task.process!() as DrakidionTask;
+
+    expect(blueskyClient.post).not.toHaveBeenCalled();
+    expect(successor.status).toBe('dead');
+  });
+
+  it('dies when resolving the reply target throws', async () => {
+    blueskyClient.notificationReplyTo.mockImplementation(() => {
+      throw new Error('no reply info');
+    });
+    const task = await buildTask('A door is not a question.');
+
+    const successor = task.process!() as DrakidionTask;
+
+    expect(blueskyClient.like).not.toHaveBeenCalled();
+    expect(successor.status).toBe('dead');
+    expect(successor.work).toBe('Failed to post: no reply info');
+  });
+
+  it('dies when liking throws', async () => {
+    blueskyClient.like.mockImplementation(() => {
+      throw new Error('like failed');
+    });
+    const task = await buildTask('A door is not a question.');
+
+    const successor = task.process!() as DrakidionTask;
+
+    expect(blueskyClient.post).not.toHaveBeenCalled();
+    expect(successor.status).toBe('dead');
+    expect(successor.work).toBe('Failed to post: like failed');
+  });
+
+  it('dies when posting throws', async () => {
+    blueskyClient.post.mockImplementation(() => {
+      throw new Error('network down');
+    });
+    const task = await buildTask('A door is not a question.');
+
+    const successor = task.process!() as DrakidionTask;
+
+    expect(successor.status).toBe('dead');
+    expect(successor.work).toBe('Failed to post: network down');
   });
 });

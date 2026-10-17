@@ -14,6 +14,12 @@ describe('Task ID Threading', () => {
     config.botList = [];
     config.ignoreList = [];
     config.bluesky = config.bluesky || { handle: '', password: '' };
+    config.openrouter = {
+      apiKey: 'sk-or-v1-test',
+      models: ['anthropic/claude-sonnet-4.5', 'openai/gpt-5'],
+      rotate: true,
+      baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    };
   });
 
   // Mock notification

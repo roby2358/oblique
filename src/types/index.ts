@@ -32,7 +32,7 @@ export interface Conversation {
 
 export interface LLMRequest {
   conversation: { role: string; content: string }[];
-  model?: string;
+  model: string;
   temperature?: number;
   maxTokens?: number;
 }

@@ -87,6 +87,7 @@ const generateLLMResponseWithRetry = async (
     
     const response = await llmClient.generateResponse({
       conversation,
+      model: getDailyModel(),
       temperature: 0.8,
       maxTokens: 2000,
     });
@@ -300,6 +301,11 @@ export const createPostReplyTask = (
     work: replyText,
     conversation,
     process: () => {
+      // An empty reply is never worth posting, and Bluesky accepts it silently
+      if (replyText.trim().length === 0) {
+        return createPostReplyDeadTask(task, new Error('Refusing to post an empty reply'));
+      }
+
       try {
         // Get reply threading info for the notification
         const replyTo = blueskyClient.notificationReplyTo(originalNotification);

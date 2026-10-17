@@ -8,7 +8,6 @@ export interface LLMClient {
 
 export interface LLMConfig {
   apiKey: string;
-  model: string;
   baseUrl: string;
   temperature?: number;
   maxTokens?: number;

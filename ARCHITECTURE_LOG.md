@@ -1,7 +1,7 @@
 # Oblique — Architecture Log
 
 The only document in this set that carries *why* and *when*. `ONTOLOGY.md` and
-`CONSTRAINTS.md` describe the current state and nothing else; everything historical — what a
+`CRITERIA.md` describe the current state and nothing else; everything historical — what a
 thing replaced, what else was considered, what was measured, what is still unsettled — lives
 here.
 
@@ -43,19 +43,26 @@ settled), **History** (dated entries, newest first).
   needs; the length is for legibility, not collision resistance. Serves G-3.
 - **Evidence:** `npm test` — R-22 asserts the alphabet and the exclusions.
 
-### D-4 One `config.json`, deep-merged over defaults — *Decided*
+### D-4 One `config.json`, deep-merged over defaults, and nothing else — *Decided*
 
-- **Alternatives:** environment variables through Vite's `import.meta.env`; `localStorage`;
-  a settings UI as the source of truth.
+- **Alternatives:** environment variables through Vite's `import.meta.env`; `localStorage`
+  written by a settings UI; a settings UI as the source of truth.
 - **Why:** the page is served statically and has no build step per deployment, so a file
   fetched at startup is the only thing that can be changed without rebuilding. Deep-merging
-  means a `config.json` that sets only an API key is valid. Serves G-4.
-- **Evidence:** none. R-19 is not yet covered.
+  means a `config.json` that sets only an API key is valid. A second writable source is the
+  part that was tried and rejected: two places holding the same API key means a precedence
+  rule to remember, a stale copy in a browser that outlives the file, and a secret sitting in
+  `localStorage` where any script on the origin can read it — all to avoid editing a file that
+  has to exist anyway. The Configure panel is a note pointing at the file. Serves G-2, G-4.
+- **Evidence:** `npm test` — R-19 covers the defaults, the three failure modes of the fetch,
+  and the partial-file merge.
 
 ### D-5 Model and voice rotate daily; the lens rotates per reply — *Decided*
 
 - **Alternatives:** a fixed model; a random model per reply; a model chosen by thread length
-  or cost.
+  or cost. For where the list lives: a hardcoded map in `prompts/oblique.ts` (what it was),
+  one model name in `config.json` beside a separate rotation list, a remote list.
+  For switching rotation off: a `model` field that wins when set, versus a `rotate` flag.
 - **Why:** a per-reply model makes the bot incoherent within a conversation. A fixed model
   makes it monotonous across weeks. Day-granularity gives it a consistent character for a day
   and a different one tomorrow, which also turns the rotation into a cheap comparison across
@@ -63,7 +70,15 @@ settled), **History** (dated entries, newest first).
   probability — male and female recur through it so the daily cycle lands on them more often
   while still reaching every entry — because an array index is the whole mechanism and a
   weights table would be more machinery than the effect is worth. Serves G-1.
-- **Evidence:** none. X-5 is unmeasured.
+
+  The list is `config.openrouter.models`, not code: which models the bot speaks through is a
+  deployment choice, and changing it should not be a rebuild. `rotate: false` pins the bot to
+  the first entry, so pinning is a reordering rather than a second field that can disagree
+  with the list. There is no config-level `model`, so both LLM paths must name one on the
+  request and no call can go out unnamed — which is what let the reply path silently diverge
+  from the rotation.
+- **Evidence:** `npm test` — R-12 covers the rotation, the `rotate: false` pin and the empty
+  list. X-5 is unmeasured.
 
 ### D-6 Restraint is two gates, cheap then expensive — *Decided*
 
@@ -171,6 +186,8 @@ settled), **History** (dated entries, newest first).
   reintroduce an entity that owns a queue.
 - **A storage interface.** Removed 2025-10-11 and not missed. Its presence implied a
   persistence story that did not exist (D-14).
+- **Credentials in `localStorage`.** Built on 2026-10-17 and removed the same day. See D-4:
+  one API key in two places is worse than retyping it into a file.
 - **Concurrency.** One task at a time is a design property, not a performance ceiling to be
   lifted. R-32 would change this and has not been accepted.
 
@@ -258,20 +275,12 @@ rejected. The code carries a `TODO` saying so. **Recommendation:** make it a wai
 resumes from the post promise, like the LLM step already does. This is the single largest gap
 between what the task graph claims and what happened.
 
-### Q-9 The reply path ignores the daily model — *tracked as `dailymodel-t46y`*
+### Q-10 `window.oblique.getState` calls `require()` — *tracked as `getstate-viig`*
 
-`createSendToLLMTask` logs `getDailyModel()` and then calls the LLM without a `model`, so the
-Bluesky path uses `config.openrouter.model` while the chat path uses the daily rotation. One
-of the two is wrong. **Recommendation:** pass the daily model on the reply path — the rotation
-exists for the public replies, which is where D-5's comparison value lies.
-
-### Q-10 Two configure-panel defects — *tracked as `cfgsave-5vpt` and `getstate-viig`*
-
-`configurePanel.ts` reads `config.openrouter?.baseUrl.openrouter.baseUrl`, which throws
-because `baseUrl` is a string — saving configuration from the UI always fails (U-8).
-Separately, `index.ts`'s `window.oblique.getState` calls `require()` inside an ES module
-bundle and will throw in the browser. Both are bugs, not design questions; they are here
-because the conversion found them. **Recommendation:** fix both as a separate change.
+`index.ts`'s `window.oblique.getState` calls `require()` inside an ES module bundle and will
+throw in the browser. A bug, not a design question; it is here because the conversion found
+it. **Recommendation:** fix it as a separate change. The configure-panel save defect this
+question also carried is gone with the panel's fields; see the History entry.
 
 ### Q-11 The reply-length numbers disagree — *tracked as `replylen-6a9i`*
 
@@ -299,6 +308,85 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-17 — `CONSTRAINTS.md` renamed to `CRITERIA.md`
+
+The `ontology_spec` skill names the doc set ONTOLOGY / CRITERIA / RATIONALE /
+ARCHITECTURE_LOG. This repo had called the second one `CONSTRAINTS.md` since the conversion
+from SPEC.md, for no reason anyone could name — the content was always the skill's CRITERIA:
+R/U/X tables, the four Instrument forms, a dated Status section. The name also read wrong,
+suggesting limits the system must respect rather than the checks that say it is right. Only
+the name changed; no row, ID or instrument moved. The earlier conversion entry below still
+says CONSTRAINTS, which is what the file was called on that date.
+
+The second divergence from the skill stands: there is no `RATIONALE.md`, and the D-n decisions
+live in this file above the history. Splitting them back out is a real change rather than a
+rename, and the single file is working.
+
+### 2026-10-17 — The model list moves to `config.json`; `rotate` replaces `model`
+
+`prompts/oblique.ts` held a hardcoded map of 15 OpenRouter slugs to display names that nothing
+read. It is now `DEFAULT_CONFIG.openrouter.models`, an array of slugs, overridable from
+`config.json` — and because `deepMerge` assigns arrays rather than merging them, a list in the
+file replaces the default outright instead of being unioned with it, which is the behaviour a
+list wants.
+
+`openrouter.rotate` replaces `openrouter.model`. True keeps the daily walk; false always takes
+`models[0]`, so pinning a model means reordering the list rather than setting a second field
+that could contradict it. `getDailyModel` throws when the list is empty instead of inventing a
+model.
+
+Removing `openrouter.model` removed the fallback that `openrouter.ts` used when a request named
+no model, so `LLMConfig` loses `model`, `LLMRequest.model` becomes required, and the reply path
+now passes `getDailyModel()` the way the chat path already did. That settles Q-9, which existed
+because the reply path logged the daily model and then quietly used the config one.
+
+R-12 gains the pin and the empty-list error; R-19 covers list replacement. `npm test` runs 18
+suites and 159 tests.
+
+### 2026-10-17 — Oblique posted an empty reply; two silent coercions removed
+
+A reply went out with `text: ""`. Two places turned "no content" into a value that looked
+fine. `openrouter.ts` ended `generateResponse` with `data.choices[0]?.message?.content || ''`,
+so a 200 carrying an empty `choices` array, a null `content`, or a model that spent its token
+budget before emitting anything became an empty string reported as success. Nothing
+downstream disagreed: `extractResponseContent('')` returns null, `null || ''` is `''`, `''` is
+under the length gate, and `blueskyClient.post({ text: '' })` is accepted by Bluesky without
+complaint.
+
+The client now throws `OpenRouter returned no content for model <model>`, which lands the
+chain in `dead` with the model named — useful, since D-5 rotates through 15 of them and this
+is the kind of fault one model has and the others do not. `createPostReplyTask.process()`
+also refuses blank text as its first guard clause, before the like, so the invariant holds
+whatever produced the text.
+
+Both were instances of the inline-default habit the conventions warn about: supplying `''`
+for a missing value turns a loud failure into a quiet wrong answer. R-16 is now `automated`
+and covers the refusal; R-35 is new for the client. `npm test` runs 18 suites and 151 tests.
+
+### 2026-10-17 — The Configure panel loses its fields; `config.json` is the only source
+
+The panel's save had never worked: `configurePanel.ts` read
+`config.openrouter?.baseUrl.openrouter.baseUrl`, and since `baseUrl` is a string, `.openrouter`
+was undefined and the final `.baseUrl` threw (U-8). The fix landed first, briefly followed by
+remembering `{ apiKey, model }` in `localStorage` so a key typed into the panel survived a
+reload. Both are now removed in favour of the simpler answer: there is one place configuration
+comes from. A writable second source would mean a precedence rule, a browser copy that can go
+stale against the file, and an API key in `localStorage` for any script on the origin to read —
+for a file that has to exist anyway.
+
+`src/configurePanel.ts` and `src/credentials.ts` are deleted and the panel is now three
+paragraphs of prose: where `config.json` lives, that it is gitignored so the key and app
+password stay out of the repository, and where to get a key. `index.ts` no longer binds
+`#save-config`. Settles half of Q-10 and closes `cfgsave-5vpt` by removing the code it was
+about; D-14 is untouched, since nothing is persisted at all.
+
+`loadConfigWithFallbacks` also stopped logging the whole merged config, which printed the API
+key to the console on every load, and split the fetch into `mergeConfigFile` so the warning
+paths read in one place.
+
+R-19 is now `automated` rather than a gap. U-8 is retired, with U-9 covering the panel as a
+note. `npm test` runs 17 suites and 140 tests.
 
 ### 2026-10-17 — `dadabot.ts` renamed to `dadabot.md`; `npm run build` is green
 

@@ -16,7 +16,7 @@ export const createOpenRouterClient = (config: LLMConfig): LLMClient => {
           'X-Title': 'Oblique Bot',
         },
         body: JSON.stringify({
-          model: request.model || config.model,
+          model: request.model,
           messages: request.conversation,
           temperature: request.temperature ?? config.temperature ?? 0.7,
           max_tokens: request.maxTokens ?? config.maxTokens ?? 500,
@@ -40,8 +40,13 @@ export const createOpenRouterClient = (config: LLMConfig): LLMClient => {
         usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
       };
       
+      const content = data.choices[0]?.message?.content;
+      if (typeof content !== 'string' || content.trim().length === 0) {
+        throw new Error(`OpenRouter returned no content for model ${data.model}`);
+      }
+
       return {
-        content: data.choices[0]?.message?.content || '',
+        content,
         model: data.model,
         usage: {
           promptTokens: data.usage?.prompt_tokens || 0,

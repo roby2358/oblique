@@ -1,7 +1,10 @@
 {
   "openrouter": {
     "apiKey": "",
-    "model": "anthropic/claude-3.5-haiku",
+    "models": [
+      "anthropic/claude-sonnet-4.5"
+    ],
+    "rotate": false,
     "baseUrl": "https://openrouter.ai/api/v1/chat/completions"
   },
   "bluesky": {
@@ -11,4 +14,3 @@
   "ignoreList": [],
   "botList": []
 }
-

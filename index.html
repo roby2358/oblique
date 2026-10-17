@@ -39,28 +39,18 @@
     <main>
       <div id="configure-panel" class="panel hidden">
         <div class="panel-content">
-          <h3>OpenRouter Configuration</h3>
-          <div class="form-group">
-            <label for="api-key">API Key:</label>
-            <input 
-              type="password" 
-              id="api-key" 
-              placeholder="sk-or-v1-..." 
-              autocomplete="off"
-            >
-          </div>
-          <div class="form-group">
-            <label for="model">Model:</label>
-            <input 
-              type="text" 
-              id="model" 
-              placeholder="anthropic/claude-3.5-haiku"
-              value="anthropic/claude-3.5-haiku"
-            >
-          </div>
-          <button id="save-config" class="btn-primary">Save Configuration</button>
+          <h3>Configuration</h3>
           <p class="config-note">
-            Get your API key at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>
+            Oblique is configured from <code>config.json</code> beside this page, fetched at
+            startup and deep-merged over the defaults. It is the only source of configuration;
+            nothing is set or stored here, and reloading the page is how a change takes effect.
+          </p>
+          <p class="config-note">
+            <code>config.json</code> is gitignored, so the API key and app password stay out of
+            the repository. Copy <code>config-example.json</code> to start one.
+          </p>
+          <p class="config-note">
+            Get an API key at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a>
           </p>
         </div>
       </div>

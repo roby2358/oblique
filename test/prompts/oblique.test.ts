@@ -1,4 +1,6 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
+import { getConfig, DEFAULT_CONFIG } from '../../src/config.js';
+import { getDailyModel } from '../../src/prompts/oblique.js';
 import { 
   obliquePrompt, 
   systemPrompt, 
@@ -154,6 +156,45 @@ describe('Oblique Prompts', () => {
       expect(result[1].content).toContain('@user1: First post');
     });
 
+  });
+
+  describe('getDailyModel', () => {
+    const models = ['first/model', 'second/model', 'third/model'];
+
+    beforeEach(() => {
+      const config = getConfig();
+      config.openrouter = { models, rotate: true };
+    });
+
+    it('returns a model from the configured list', () => {
+      expect(models).toContain(getDailyModel());
+    });
+
+    it('returns the same model twice in a row while the day does not change', () => {
+      expect(getDailyModel()).toBe(getDailyModel());
+    });
+
+    it('always returns the first entry when rotate is false', () => {
+      getConfig().openrouter.rotate = false;
+
+      expect(getDailyModel()).toBe('first/model');
+    });
+
+    it('follows a reordered list when rotate is false', () => {
+      getConfig().openrouter = { models: ['third/model', 'first/model'], rotate: false };
+
+      expect(getDailyModel()).toBe('third/model');
+    });
+
+    it('throws when no models are configured', () => {
+      getConfig().openrouter = { models: [], rotate: true };
+
+      expect(() => getDailyModel()).toThrow('No models configured');
+    });
+
+    it('ships a non-empty default list', () => {
+      expect(DEFAULT_CONFIG.openrouter.models.length).toBeGreaterThan(0);
+    });
   });
 
   describe('dailyCircularKey', () => {

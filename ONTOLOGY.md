@@ -3,7 +3,7 @@
 This is the implementation reference: what exists, what each thing carries, and how it
 behaves. It describes the **current state only**. Every *why*, every alternative considered
 and every dated change lives in `ARCHITECTURE_LOG.md`; every check that proves a rule lives in
-`CONSTRAINTS.md`.
+`CRITERIA.md`.
 
 **Tags**
 
@@ -13,7 +13,7 @@ and every dated change lives in `ARCHITECTURE_LOG.md`; every check that proves a
 - **[T]** tunable number, expected to change under measurement.
 - **Serves:** which §0 goal or quality the item exists for.
 - **IDs:** goals `G-n`, decisions `D-n` (in `ARCHITECTURE_LOG.md`), criteria `R-n`/`U-n`/`X-n`
-  (in `CONSTRAINTS.md`). Cite IDs, never section numbers.
+  (in `CRITERIA.md`). Cite IDs, never section numbers.
 
 ---
 
@@ -132,12 +132,14 @@ carried because it is part of what was said. *Serves:* G-1.
 ### 1.9 Config
 
 Loaded once from `/config.json`, deep-merged over `DEFAULT_CONFIG`, held mutable at module
-level. *Serves:* G-2, G-4.
+level. It is the only source of configuration: the UI sets nothing and the browser stores
+nothing. *Serves:* G-2, G-4.
 
 | Field | Type | Notes |
 |---|---|---|
 | `openrouter.apiKey` | `string` | Empty means the LLM is unconfigured and no task is created. |
-| `openrouter.model` | `string` | Default `anthropic/claude-3.5-haiku`. |
+| `openrouter.models` | `string[]` | OpenRouter slugs, `MODEL_ROTATION_SIZE` of them by default. A list in `config.json` replaces it rather than merging into it. Empty is an error, not a default. |
+| `openrouter.rotate` | `boolean` | True walks the list one entry per UTC day; false always uses the first entry. |
 | `openrouter.baseUrl` | `string` | OpenRouter chat-completions endpoint. |
 | `bluesky.handle` | `string` | The bot's own handle. |
 | `bluesky.password` | `string` | App password. |
@@ -405,7 +407,11 @@ chain as `null` and silently ends the chain without a post.
 ```
 getRandomTextLens() -> uniform pick of { supertext, subtext, architext, psychotext }
 dailyCircularKey(n) -> floor(now / 86400s) mod n
-getDailyModel()     -> models[dailyCircularKey(|models|)]
+getDailyModel():
+  models = config.openrouter.models
+  if models is empty -> throw "No models configured"
+  if not config.openrouter.rotate -> models[0]
+  -> models[dailyCircularKey(|models|)]
 getDailyGender()    -> genders[dailyCircularKey(|genders|)]
 ```
 
@@ -414,9 +420,11 @@ The lens is per reply, so a thread does not settle into one register. Model and 
 `genders` array is weighted by repetition rather than by probability — male and female recur
 through it, so the daily cycle lands on them more often while still reaching every entry.
 
-Model selection is applied on the chat path only. The Bluesky reply path logs the daily model
-and then calls the LLM without one, so it uses `config.openrouter.model`. See
-`ARCHITECTURE_LOG.md`.
+The model list lives in `config.openrouter.models`, not in code, so it is deployment data like
+the API key. `config.openrouter.rotate` turns the daily walk off: with it false the first entry
+is always used, which makes pinning a model a matter of reordering the list rather than editing
+a second field that could disagree with it. Both LLM paths name the model on the request —
+there is no config-level model to fall back to, so a request can never go out unnamed.
 
 ### 4.13 Response extraction **[D]**
 
@@ -477,6 +485,8 @@ directly under it.
 
 ```
 createPostReplyTask(...).process():
+  if replyText.trim() is empty                       # nothing to say is not a reply
+    -> createDeadTask(task) with work = "Failed to post: Refusing to post an empty reply"
   try:
     replyTo = blueskyClient.notificationReplyTo(originalNotification)
     blueskyClient.like(originalNotification.uri)     # not awaited
@@ -485,6 +495,10 @@ createPostReplyTask(...).process():
   catch:
     -> createDeadTask(task) with work = "Failed to post: <message>"
 ```
+
+Blank text is refused before the like, not after: Bluesky accepts an empty post without
+complaint, so nothing downstream would catch it. The chain goes `dead` so the refusal is
+visible in the observer panel rather than silent.
 
 The like precedes the post: an acknowledgement should land even if the reply does not. Because
 `process` is synchronous and neither call is awaited, the snapshot succeeds on *dispatch*, not
@@ -528,14 +542,14 @@ the response is shown in the page, not posted.
 
 ### 4.19 Configuration load **[D]**
 
-*Serves:* G-4.
+*Serves:* G-2, G-4.
 
 ```
 loadConfigWithFallbacks():
   result = structuredClone(DEFAULT_CONFIG)
   try:  r = await fetch('/config.json')
-        if not r.ok -> warn, return result
-        deepMerge(result, await r.json())
+        if r.ok -> deepMerge(result, await r.json())
+        else    -> warn
   catch: warn
   -> result
 ```
@@ -544,7 +558,30 @@ Deep-merged over defaults so a partial `config.json` is valid: a file that sets 
 key still gets the default model and base URL. A missing or malformed file is a warning, not a
 failure — the page loads unconfigured and says so.
 
-### 4.20 Authentication refresh — `ensureAuth` **[D]**
+One source, loaded once. The Configure panel is a note explaining where `config.json` lives
+and that it is gitignored; it has no fields and writes nothing. A configuration change means
+editing the file and reloading the page.
+
+### 4.20 The LLM client response **[D]**
+
+*Serves:* G-1.
+
+```
+generateResponse(request):
+  r = await fetch(config.baseUrl, { model, messages, temperature, max_tokens })
+  if not r.ok -> throw "OpenRouter API error: <status> <body>"
+  content = r.json().choices[0]?.message?.content
+  if content is not a non-blank string
+    -> throw "OpenRouter returned no content for model <model>"
+  -> { content, model, usage }
+```
+
+A 200 carrying no usable content — an empty `choices` array, a null `content`, a model that
+spent its budget before emitting any — is a failure, not an empty reply. Throwing lands the
+chain in `dead` with the model named, where returning `''` would travel all the way to a blank
+post.
+
+### 4.21 Authentication refresh — `ensureAuth` **[D]**
 
 *Serves:* G-4. Called before every Bluesky operation.
 
@@ -567,9 +604,9 @@ Refreshing early, rather than on a 401, avoids losing a reply to a token that ex
 State is cleared before the attempt so a failed login cannot leave the client believing it is
 authenticated.
 
-### 4.21 Not yet built **[D, unbuilt]**
+### 4.22 Not yet built **[D, unbuilt]**
 
-Designed, deliberately deferred, each with a `not yet covered` row in `CONSTRAINTS.md` so the
+Designed, deliberately deferred, each with a `not yet covered` row in `CRITERIA.md` so the
 gap stays visible:
 
 - **Persistence.** TaskMap, TaskQueue and WaitingSet backed by IndexedDB; every snapshot
@@ -658,7 +695,7 @@ tests. The code is the single source; the value here is a copy.
 | `SAFE_BASE32_ALPHABET` | `abcdefghijkmnpqrstuvwxyz23456789` | — | `safebase32.ts` | D-3 |
 | `TOKEN_REFRESH_BUFFER_MS` | 300000 | ms (5 min) | `BlueskyClient` | D-12 |
 | `TOKEN_DEFAULT_TTL` | 86400000 | ms (1 day) | `getDefaultTokenExpiration` | D-12 |
-| `MODEL_ROTATION_SIZE` | 15 | models | `prompts/oblique.ts` | D-5 |
+| `MODEL_ROTATION_SIZE` | 15 | models | `DEFAULT_CONFIG.openrouter.models`, overridable in `config.json` | D-5 |
 | `GENDER_ROTATION_SIZE` | 25 | entries | `prompts/oblique.ts` | D-5 |
 | `DEFAULT_MODEL` | `anthropic/claude-3.5-haiku` | — | `DEFAULT_CONFIG` | D-4 |
 

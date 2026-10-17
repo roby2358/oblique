@@ -21,7 +21,8 @@ describe('DEFAULT_CONFIG', () => {
     expect(DEFAULT_CONFIG).toEqual({
       openrouter: {
         apiKey: '',
-        model: 'anthropic/claude-3.5-haiku',
+        models: DEFAULT_CONFIG.openrouter.models,
+        rotate: true,
         baseUrl: 'https://openrouter.ai/api/v1/chat/completions'
       },
       bluesky: {

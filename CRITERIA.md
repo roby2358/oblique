@@ -1,4 +1,4 @@
-# Oblique — Constraints
+# Oblique — Criteria
 
 How we know Oblique is correct, usable and good. Every rule in `ONTOLOGY.md` owns a row here;
 every row carries an **Instrument** that says, honestly, how it is checked.
@@ -29,19 +29,21 @@ IDs are never renumbered. Rules are cited by ID, never by section number.
 | R-9 | Threads: empty; last author is a bot appearing 4 of the last 8; the same bot appearing 3 of 8; last author human appearing 6 of 8; length `THREAD_MAX_POSTS + 1`; a normal thread | `null`, `null`, the thread, the thread (humans are never attenuated), `null`, the thread. | automated |
 | R-10 | `getHistory` for a `quote` notification; a notification with no `replyInfo.parent.uri`; a reply; each of those with the upstream fetch failing | Quote → `[quoted post, the quote]`; standalone → `[quoted?, the post]`; reply → ancestors oldest-first with the notification last, at most `THREAD_MAX_DEPTH` deep. Every failure degrades to `[{ author, text }]` and never throws. Alt texts are carried on every path. | automated |
 | R-11 | `createObliqueConversation(thread)` for a multi-post thread, a single post, a post with alt texts, and `null` | Two messages (`system`, `user`); the last post becomes the reply target and the rest the history; each alt text appears as its own `  image:` line; `null` in yields `null` out. | automated |
-| R-12 | `getRandomTextLens` over many calls; `getDailyModel` / `getDailyGender` with the clock pinned to several days | The lens varies across calls and is always one of the four. Model and gender are constant within a day and advance by one position per day, wrapping at `MODEL_ROTATION_SIZE` / `GENDER_ROTATION_SIZE`. | automated |
+| R-12 | `getRandomTextLens` over many calls; `getDailyModel` / `getDailyGender` with the clock pinned to several days; `getDailyModel` with `rotate` false, with a reordered list, and with an empty list | The lens varies across calls and is always one of the four. Model and gender are constant within a day and advance by one position per day, wrapping at `MODEL_ROTATION_SIZE` / `GENDER_ROTATION_SIZE`. With `rotate` false the model is always `models[0]`, whatever the list order. An empty list throws `No models configured` rather than returning a model. | automated |
 | R-13 | LLM content with a `# Response` section; with the section wrapped in backticks; with no such section | Returns the trimmed section with backticks stripped; returns `null` when the header is absent. | not yet covered |
 | R-14 | Text under `MAX_BLUESKY_REPLY_CHARS`; text over it ending in each of `. ! ? , : ; — – … (` and newline; text over it with no punctuation; punctuation at index 0; empty string. Separately: a model returning an over-long response then a short one; a model over-long on all `LLM_MAX_ATTEMPTS` | Short text is returned unchanged. Over-long text is cut at the last punctuation at or before `MAX_BLUESKY_REPLY_CHARS`, with the mark itself dropped; with no punctuation it is cut at `MAX_BLUESKY_REPLY_CHARS`; punctuation at index 0 falls through to the plain cut. The retry loop returns the first response under `REPLY_LENGTH_GATE` and truncates only after the last attempt. | automated |
 | R-15 | `notificationReplyTo` for a message with `replyInfo.root`, and for one without | With `replyInfo`: root is the thread root, parent is the message. Without: both root and parent are the message itself. | not yet covered |
-| R-16 | `createPostReplyTask(...).process()` when the client succeeds, and when `notificationReplyTo` or `like` throws | Success yields a `succeeded` successor with `work` prefixed `Posted:`; a throw yields a `dead` successor with `work` prefixed `Failed to post:`. The like is dispatched before the post. | not yet covered |
+| R-16 | `createPostReplyTask(...).process()` with text; with `''`; with whitespace only; when `notificationReplyTo`, `like` or `post` throws | Success yields a `succeeded` successor with `work` prefixed `Posted:`; the like is dispatched before the post. Blank text posts nothing and does not even like, yielding a `dead` successor with `work` `Failed to post: Refusing to post an empty reply`. A throw yields a `dead` successor with `work` prefixed `Failed to post:`. | automated |
 | R-17 | The full reply chain v1 → v2 → v3 driven through the orchestrator | All three snapshots share one `taskId` with versions 1, 2, 3; sorting a chain's snapshots by version reproduces the execution trace; v2 is `waiting`, v1 and v3 are `ready`. | automated |
 | R-18 | `createObliqueMessageTask` with a client that resolves, and one that rejects | Returns a `waiting` snapshot immediately. On resolve, `onComplete` receives a `succeeded` successor whose `work` is the extracted response and whose `conversation` gains the assistant turn. On reject, a `dead` successor whose `work` starts `Error:`. | automated |
-| R-19 | `/config.json` absent; returning a non-OK status; containing malformed JSON; containing only `openrouter.apiKey` | The first three warn and yield `DEFAULT_CONFIG` unchanged. The fourth yields the key merged over the defaults, with `model` and `baseUrl` still at their default values and `ignoreList` / `botList` still present. | not yet covered |
+| R-19 | `/config.json` absent; returning a non-OK status; containing malformed JSON; containing only `openrouter.apiKey`; containing an `openrouter.models` list | The first three warn and yield `DEFAULT_CONFIG` unchanged. The fourth yields the key merged over the defaults, with `model` and `baseUrl` still at their default values and `ignoreList` / `botList` still present. A `models` list in the file replaces the default list rather than merging into it. `DEFAULT_CONFIG` itself is never mutated across loads. | automated |
 | R-20 | `ensureAuth` with no prior session; with a token expiring beyond `TOKEN_REFRESH_BUFFER_MS`; with one expiring inside it; a login that rejects; a session JWT with no `exp`, with a malformed payload, and with fewer than three segments | Logs in in cases 1 and 3, skips in case 2. A rejected login leaves `authenticated` false and `tokenExpiresAt` null. Each malformed-JWT case falls back to `TOKEN_DEFAULT_TTL` rather than throwing. | not yet covered |
 | R-21 | `checkNotifications` with no Bluesky client; with no LLM client; with an empty batch; with a batch where some notifications pass R-8 and some do not; with `#mark-as-seen` checked | Each missing client reports its own reason and creates nothing. An empty batch creates nothing. Otherwise exactly one task per passing notification, with the created and filtered counts reported. `markNotificationsAsSeen` is called once for the batch, before the per-notification loop, and only when checked. | not yet covered |
 | R-22 | `generateSafeBase32(n)`, `generateTaskId()`, `generateCorrelationId()` over many calls | Length `n` / `TASK_ID_LENGTH` / `TASK_ID_LENGTH`; every character is in `SAFE_BASE32_ALPHABET`; `l`, `1`, `o` and `0` never appear; a correlation id always begins `x`; collisions do not occur across a large sample. | automated |
 | R-23 | TaskMap, TaskQueue and WaitingSet exercised through their `*Ops` modules | TaskMap keeps one snapshot per `taskId` and replaces on re-set; `getTasksByStatus` filters correctly; removing a missing key is a no-op. TaskQueue is FIFO, `peek` does not consume, `remove` is by value, `getAllTaskIds` returns a copy. WaitingSet rejects duplicates and tolerates removing an absent id. | automated |
 | R-24 | `createTaskFromFunction(d, fn)` where `fn` returns a partial, returns `{}`, returns a custom status, throws an `Error`, and throws a non-`Error` | Returns a `ready` task. On success the partial is merged over a succeeded successor, but `taskId`, `version` and `doneAt` are never overridden and the status defaults to `succeeded`. On a throw the result is a `dead` successor with the message appended to `work`; a non-`Error` throw yields `Unknown error`. | automated |
+
+| R-35 | `generateResponse` with a normal payload, checking the request body names the model; with `choices: []`; with `content: null`; with whitespace-only content; with a non-OK status | The normal payload yields the content, model and usage. Each of the next three throws `OpenRouter returned no content for model <model>` rather than returning `''`. A non-OK status throws `OpenRouter API error: <status> <body>`. | automated |
 
 ### Unbuilt rules
 
@@ -69,11 +71,12 @@ the gap is visible, not so it looks covered.
 | U-1 | The status line shows live queue and waiting counts, and they change within one animation frame of a task being processed. | manual — watch `#status` while sending a chat message |
 | U-2 | The observer, queue and waiting panels each refresh on panel switch and on their refresh button, and list every task with its `taskId`, version, status and description. | manual — switch panels with tasks in flight |
 | U-3 | A chain can be followed end to end in the UI by its `taskId` alone, in version order. | manual — send a message, then read the observer panel |
-| U-4 | Posting with no API key configured shows the "no API key" notice and creates no task. | manual — clear the key, reload, send |
+| U-4 | Posting with no API key configured shows the "no API key" notice and creates no task. | manual — blank `openrouter.apiKey` in `config.json`, reload, send |
 | U-5 | Notification text rendered into the Bluesky panel is HTML-escaped; a post containing `<script>` renders as text. | manual — inspect a crafted notification |
 | U-6 | While polling, the interval input is disabled and the countdown to the next check updates every second. | manual — start polling, watch `#next-check` |
 | U-7 | The poll interval input clamps to `POLL_MIN_S`…`POLL_MAX_S` on change and on blur. | automated |
-| U-8 | Saving configuration from the Configure panel updates the running orchestrator without a reload. | manual — currently fails; see the configure-panel entry in `ARCHITECTURE_LOG.md` |
+| U-8 | *Saving configuration from the Configure panel updates the running orchestrator without a reload.* | retired — the panel has no fields; `config.json` is the only source |
+| U-9 | The Configure panel says where `config.json` lives and that it is gitignored, and offers nothing to type into. | manual — open the Configure panel |
 
 ---
 
@@ -97,16 +100,16 @@ anything until one exists.
 
 ## Status
 
-**As of 2026-10-17.** `npm test` runs 16 suites, 135 tests, and passes. `npm run build`
+**As of 2026-10-17.** `npm test` runs 18 suites, 159 tests, and passes. `npm run build`
 (`tsc && vite build`) passes: `tsc` reports no errors and Vite emits `dist/`.
 
 ### Not yet covered
 
-R-6, R-13, R-15, R-16, R-19, R-20, R-21, and every unbuilt row R-25 … R-33.
+R-6, R-13, R-15, R-20, R-21, and every unbuilt row R-25 … R-33.
 
-R-15, R-16 and R-20 are the ones that matter most: reply threading, posting, and token
-refresh are the three places where a defect reaches Bluesky rather than the console. R-13 and
-R-19 are cheap to close. R-21 needs the poller's dependencies injected rather than imported.
+R-15 and R-20 are the ones that matter most: reply threading and token refresh are the two
+remaining places where a defect reaches Bluesky rather than the console. R-13 is cheap to
+close. R-21 needs the poller's dependencies injected rather than imported.
 
 ### Partial coverage
 
@@ -114,8 +117,9 @@ R-19 are cheap to close. R-21 needs the poller's dependencies injected rather th
   `getQuotedHistory`/`getOnePostHistory`, and the threaded branch through `getThreadHistory`.
   The `getHistory` dispatcher that chooses between them is exercised only indirectly, and the
   `THREAD_MAX_DEPTH` cap itself is not asserted.
-- **R-12** — the daily rotation is covered through a pinned clock. The claim that the rotation
-  is *perceptible* is X-5 and is unmeasured.
+- **R-12** — the list, the `rotate` pin and the empty-list error are covered; the day-to-day
+  advance is covered only through `dailyCircularKey` with a pinned clock, not through
+  `getDailyModel` itself. The claim that the rotation is *perceptible* is X-5 and is unmeasured.
 - **R-14** — `truncateAtLastPunctuation` is covered in detail. The retry loop around it is not:
   nothing asserts that a short second response is accepted, nor that truncation happens only
   on the final attempt. One existing test is named "should use default maxLength of 279" while
@@ -129,7 +133,7 @@ R-19 are cheap to close. R-21 needs the poller's dependencies injected rather th
 
 ### Manual only
 
-U-1 … U-6 and U-8. There is no browser-driving script committed, so none of them runs in CI
+U-1 … U-6 and U-9. There is no browser-driving script committed, so none of them runs in CI
 and all of them are checked by opening the page.
 
 ### Conventions not yet adopted
@@ -140,4 +144,5 @@ it does not have and nothing would catch it. Adopting the convention is a separa
 
 ### Retired
 
-None.
+- **U-8** — the Configure panel's save. The panel no longer has fields to save; `config.json`
+  is the only source of configuration. The ID is not reused.

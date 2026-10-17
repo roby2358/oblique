@@ -10,10 +10,10 @@ no background process.
 | Document | What it answers |
 |---|---|
 | [`ONTOLOGY.md`](ONTOLOGY.md) | What exists and how it behaves. The implementation reference. |
-| [`CONSTRAINTS.md`](CONSTRAINTS.md) | How we know it is correct, and where the gaps are. |
+| [`CRITERIA.md`](CRITERIA.md) | How we know it is correct, and where the gaps are. |
 | [`ARCHITECTURE_LOG.md`](ARCHITECTURE_LOG.md) | Why each choice was made, what is unsettled, and what changed when. |
 
-`ONTOLOGY.md` and `CONSTRAINTS.md` describe the current state only. Anything historical or
+`ONTOLOGY.md` and `CRITERIA.md` describe the current state only. Anything historical or
 speculative belongs in `ARCHITECTURE_LOG.md`.
 
 ## Getting started
@@ -42,7 +42,8 @@ Copy `config-example.json` to `config.json` and fill it in:
 {
   "openrouter": {
     "apiKey": "sk-or-v1-...",
-    "model": "anthropic/claude-3.5-haiku",
+    "models": ["anthropic/claude-sonnet-4.5", "openai/gpt-5"],
+    "rotate": true,
     "baseUrl": "https://openrouter.ai/api/v1/chat/completions"
   },
   "bluesky": {
@@ -57,6 +58,15 @@ Copy `config-example.json` to `config.json` and fill it in:
 The file is fetched at startup and deep-merged over the defaults, so a partial `config.json`
 is valid — set only `openrouter.apiKey` and the rest fall back. A missing or malformed file
 is a warning, not a failure: the page loads unconfigured and says so.
+
+`config.json` is gitignored, so the API key and app password stay out of the repository. It
+is the only source of configuration — the **Configure** panel is a note pointing at it, with
+nothing to type in. Changing configuration means editing the file and reloading the page.
+
+`models` is the list the bot speaks through; it ships with 15 entries and a list here
+replaces that default rather than adding to it. `rotate` true walks the list one entry per UTC
+day, so the bot has one character a day and a different one tomorrow; false always uses the
+first entry, which makes pinning a model a matter of putting it first.
 
 `ignoreList` holds handles never replied to. `botList` holds handles treated as bots, which
 the attenuation rule uses to stop bot-to-bot loops.
@@ -80,7 +90,7 @@ The page has five panels:
   that passes the restraint rules becomes a task.
 - **Observer**, **Queue**, **Waiting** — the live task state. Every task shows its `taskId`,
   version, status and description; a chain can be followed end to end by its `taskId`.
-- **Configure** — update the API key and model at runtime.
+- **Configure** — where `config.json` lives and what it holds. Read-only.
 
 The status line shows queue and waiting counts. `window.oblique` exposes `getState()`,
 `processNext()` and `processAll()` for console debugging.
@@ -116,7 +126,7 @@ test/                    # Jest, organized by source file
 
 - `npm test` must pass.
 - A change to a rule or a number updates its rule in `ONTOLOGY.md`, its row in
-  `CONSTRAINTS.md`, and a dated entry in `ARCHITECTURE_LOG.md` — in the same change as the code.
+  `CRITERIA.md`, and a dated entry in `ARCHITECTURE_LOG.md` — in the same change as the code.
 - Cite stable IDs (`D-7`, `R-9`, `G-2`) in code comments, tests and commit messages, never
   section numbers.
 - Refer to tunable numbers by name, never by value.

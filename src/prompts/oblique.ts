@@ -1,5 +1,6 @@
 // Oblique response generation prompts
 import type { BlueskyHistoryEntry } from '../hooks/bluesky/bluesky-client.js';
+import { getConfig } from '../config.js';
 
 
 export type ObliqueTextLens = 'supertext' | 'subtext' | 'architext' | 'psychotext';
@@ -100,25 +101,6 @@ const lenses: { [key in ObliqueTextLens]: string } = {
 
 const lensKeys = Object.keys(lenses) as ObliqueTextLens[];
 
-const models: { [key in string]: string } = {
-  'anthropic/claude-sonnet-4.5': 'Anthropic: Claude Sonnet 4.5',
-  'deepcogito/cogito-v2-preview-llama-405b': 'Deep Cogito: Cogito V2 Preview Llama 405B',
-  'deepseek/deepseek-v3.2-exp': 'DeepSeek: DeepSeek V3.2 Exp',
-  'google/gemini-2.5-pro': 'Google: Gemini 2.5 Pro',
-  // 'gryphe/mythomax-l2-13b': 'MythoMax 13B',
-  'openai/gpt-4o': 'OpenAI: GPT-4o',
-  'openai/gpt-5': 'OpenAI: GPT-5',
-  'openai/gpt-5-mini': 'OpenAI: GPT-5 Mini',
-  'meta-llama/llama-3.1-405b-instruct': 'Meta: Llama 3.1 405B Instruct',
-  'meta-llama/llama-3.3-70b-instruct': 'Meta: Llama 3.3 70B Instruct',
-  'meta-llama/llama-4-maverick:free': 'Meta: Llama 4 Maverick',
-  'moonshotai/kimi-k2': 'MoonshotAI: Kimi K2 0711',
-  'openai/o3-mini': 'OpenAI: o3 Mini',
-  'mistralai/mistral-large-2411': 'Mistral: Mistral Large 2411',
-  'qwen/qwen3-235b-a22b-2507': 'Qwen: Qwen3 235B A22B Instruct 2507',
-  'qwen/qwen3-235b-a22b-thinking-2507': 'Qwen: Qwen3 235B A22B Thinking 2507'
-}
-
 const genders = [
   'male',
   'female',
@@ -163,8 +145,18 @@ const dailyCircularKey = (count: number, now = new Date()): number => {
   return daysSinceEpoch % count;
 };
 
+/**
+ * The model for today. Rotates one entry per UTC day through `openrouter.models`, or
+ * always returns the first entry when `openrouter.rotate` is false.
+ */
 export const getDailyModel = (): string => {
-  return pickDailyCircularOne(Object.keys(models));
+  const openrouter = getConfig().openrouter;
+
+  if (!openrouter?.models?.length) {
+    throw new Error('No models configured: set openrouter.models in config.json');
+  }
+
+  return openrouter.rotate ? pickDailyCircularOne(openrouter.models) : openrouter.models[0];
 };
 
 export const getDailyGender = (): string => {

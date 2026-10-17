@@ -85,12 +85,10 @@ export const initializeOrchestrator = (config: any) => {
 
   // Config is passed in as parameter
   const apiKey = config.openrouter?.apiKey;
-  const model = config.openrouter?.model;
   const baseUrl = config.openrouter?.baseUrl;
   
   llmClient = apiKey ? createOpenRouterClient({
     apiKey,
-    model,
     baseUrl,
   }) : undefined;
 
@@ -117,7 +115,7 @@ export const initializeOrchestrator = (config: any) => {
   stopOrchestrator = result.stop;
 
   if (!llmClient) {
-    addMessage('⚠️ No API key configured. Go to "Configure" to add your OpenRouter API key.', 'system');
+    addMessage('⚠️ No API key configured. Set openrouter.apiKey in config.json and reload; see the "Configure" panel.', 'system');
   } else {
     addMessage('🔮 Oblique initialized. Type a message to receive an oblique response.', 'system');
   }

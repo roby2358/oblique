@@ -1,5 +1,6 @@
 // Tests for Task Factories
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { getConfig } from '../../src/config.js';
 import { 
   newReadyTask,
   newWaitingTask,
@@ -70,6 +71,16 @@ describe('Task Factories', () => {
   });
 
   describe('createObliqueMessageTask', () => {
+    beforeEach(() => {
+      const config = getConfig();
+      config.openrouter = {
+        apiKey: 'sk-or-v1-test',
+        models: ['anthropic/claude-sonnet-4.5', 'openai/gpt-5'],
+        rotate: true,
+        baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
+      };
+    });
+
     // Mock LLM client
     const createMockLLMClient = (response?: string, shouldFail = false): LLMClient => {
       const generateResponse = async () => {

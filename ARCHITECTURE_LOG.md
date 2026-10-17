@@ -173,10 +173,11 @@ settled), **History** (dated entries, newest first).
 ### D-13 Like before replying — *Decided*
 
 - **Alternatives:** like after a confirmed post; do not like at all; like only on mentions.
-- **Why:** the like is the acknowledgement and should land even if the reply does not. Since
-  neither call is awaited, ordering the dispatch this way is the only control available over
-  which happens first. Serves G-1.
-- **Evidence:** none. R-16 is not yet covered.
+- **Why:** the like is the acknowledgement and should land even if the reply does not. It is
+  dispatched first and never awaited, so a slow like cannot delay the reply and a rejected one
+  is logged rather than carried into the chain. Serves G-1.
+- **Evidence:** R-16 asserts that the like is dispatched before the post and that a rejected
+  like still leaves a succeeded reply.
 
 ### D-14 No persistence, deliberately — *Decided*
 
@@ -207,6 +208,21 @@ settled), **History** (dated entries, newest first).
   same call at 8000 finished, spending 5053 of 5118 tokens on reasoning for a 228-character
   answer at $0.0040. With reasoning off at 2000, the same call finished in 276 tokens at
   $0.00035 — a tenth of the cost, with a longer document to extract from.
+
+### D-16 A reply succeeds only when Bluesky confirms it — *Decided*
+
+- **Alternatives:** keep succeeding on dispatch and read failures out of the console; await the
+  post inside `process()` and block the orchestrator until Bluesky answers; fire and forget,
+  but mark the snapshot `succeeded (unconfirmed)`.
+- **Why:** a `succeeded` snapshot carrying the placeholder URI `reply-posted` for a reply that
+  never landed is the task graph lying about the one thing it exists to record, and the
+  rejection surfaced only as an unhandled promise in the console. The post now drives a waiting
+  snapshot the same way the LLM call does, so the chain reports what happened and carries the
+  URI Bluesky returned. Awaiting inside `process()` was rejected for the reason D-2 gives: the
+  worker loop is single-threaded and must not block. Serves G-3, and G-1 through not claiming a
+  reply that is not there. Settles Q-8.
+- **Evidence:** R-16 covers both the resolve and the reject path; the resolve path asserts the
+  returned URI rather than a placeholder.
 
 ### Deliberately left out
 
@@ -297,14 +313,6 @@ literals at their use site, so tuning means finding them. **Recommendation:** ex
 one module per area and have the ontology's table quote the names. Until then the table and
 the code can drift silently.
 
-### Q-8 Posting succeeds on dispatch, not on confirmation — *tracked as `postconfirm-t9r8`*
-
-`createPostReplyTask.process()` is synchronous and awaits neither `like` nor `post`, so the
-chain reports `succeeded` with the placeholder URI `reply-posted` even when the post is
-rejected. The code carries a `TODO` saying so. **Recommendation:** make it a waiting task that
-resumes from the post promise, like the LLM step already does. This is the single largest gap
-between what the task graph claims and what happened.
-
 ### Q-10 `window.oblique.getState` calls `require()` — *tracked as `getstate-viig`*
 
 `index.ts`'s `window.oblique.getState` calls `require()` inside an ES module bundle and will
@@ -338,6 +346,31 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-17 — A reply is reported when Bluesky confirms it, not when it is dispatched
+
+`createPostReplyTask.process()` was synchronous and awaited neither `like` nor `post`. It
+returned a `succeeded` snapshot carrying the string `reply-posted` as the URI, so a rejected
+post left a chain claiming a reply that did not exist, no dead snapshot, and an unhandled
+rejection in the console — the largest gap between what the orchestrator reported and what
+actually happened.
+
+`process()` now returns a `waiting` snapshot and resumes from the post promise through
+`onWaitingTaskComplete`, exactly as the LLM step does, so the reply chain is five snapshots
+rather than three: v4 is the post in flight and v5 is `succeeded` with the URI Bluesky
+returned, or `dead` with the rejection's message. The like keeps its dispatch-and-forget
+shape — it is an acknowledgement, not the reply — but now has a `catch` that logs, which is
+the other unhandled rejection gone.
+
+The three synchronous failures before dispatch (blank text, a thrown `notificationReplyTo`, a
+client that throws rather than rejecting) still yield `dead` straight from `process()` with no
+waiting snapshot, so the orchestrator never sees a chain waiting on a promise that was never
+made.
+
+Q-8 is settled as D-16. `createPostReplyTask` takes `onWaitingTaskComplete` ahead of its base
+task; `sendReply` is its only caller. R-16 gains the resolve and reject paths and the rejected
+like; R-17's chain description grows to v5, with the integration test's stopping at v3 named
+under partial coverage. `just check` passes: 17 suites, 161 tests.
 
 ### 2026-10-17 — The OpenRouter client stops logging its own API key
 

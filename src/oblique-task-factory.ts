@@ -196,6 +196,7 @@ const sendReply = (
     response.content,
     blueskyClient,
     conversation,
+    onWaitingTaskComplete,
     nextTask(task) // Pass the base task properties
   );
   
@@ -282,8 +283,22 @@ const createPostReplyDeadTask = (
 };
 
 /**
+ * Waiting version of post reply task: the post is in flight
+ * Keeps `work` as the reply text, so the succeeded snapshot can quote it back
+ */
+const createPostReplyWaitingTask = (
+  task: DrakidionTask
+): DrakidionTask => {
+  return {
+    ...nextTask(task),
+    status: 'waiting',
+    conversation: task.conversation,
+  };
+};
+
+/**
  * Step 3: Create a task to post reply to Bluesky
- * This is a READY task that posts the response and succeeds
+ * This is a READY task that dispatches the post and waits for Bluesky to confirm it
  * Successor task (inherits taskId from predecessor, version = predecessor.version + 1)
  */
 export const createPostReplyTask = (
@@ -291,6 +306,7 @@ export const createPostReplyTask = (
   replyText: string,
   blueskyClient: BlueskyClient,
   conversation: ConversationMessage[] | undefined,
+  onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void,
   baseTask: Partial<DrakidionTask>
 ): DrakidionTask => {
   const description = `Post reply to @${originalNotification.author}`;
@@ -312,16 +328,37 @@ export const createPostReplyTask = (
 
         // Like the original post first
         console.log(`Liking post ${originalNotification.uri} before replying...`);
-        blueskyClient.like(originalNotification.uri);
+        // The like is an acknowledgement, not the reply: a rejected like is logged and
+        // never reaches the chain, so a reply still lands (D-13).
+        blueskyClient.like(originalNotification.uri).catch(error => {
+          console.warn(`Failed to like ${originalNotification.uri}:`, error);
+        });
 
-        // Post the reply to Bluesky
+        // Post the reply to Bluesky. The chain waits for Bluesky to confirm it rather
+        // than reporting success on dispatch (D-16).
+        const waitingTask = createPostReplyWaitingTask(task);
+
         blueskyClient.post({
           text: replyText,
           replyTo,
-        });
+        })
+          .then(result => {
+            onWaitingTaskComplete(
+              waitingTask.taskId,
+              createPostReplySucceededTask(waitingTask, result.uri)
+            );
+          })
+          .catch(error => {
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            console.error(`Post task ${waitingTask.taskId} failed:`, errorMsg);
 
-        // Succeeds on dispatch, not on confirmation. See ARCHITECTURE_LOG.md Q-8.
-        return createPostReplySucceededTask(task, 'reply-posted');
+            onWaitingTaskComplete(
+              waitingTask.taskId,
+              createPostReplyDeadTask(waitingTask, error)
+            );
+          });
+
+        return waitingTask;
       } catch (error) {
         // Return dead version on error
         return createPostReplyDeadTask(task, error);

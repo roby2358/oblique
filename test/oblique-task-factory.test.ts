@@ -271,7 +271,7 @@ describe('createSendToLLMTask quote post handling', () => {
   });
 });
 
-// R-16: posting the reply, including the refusal to post nothing
+// R-16: posting the reply — the refusal to post nothing, and success only on confirmation
 describe('createPostReplyTask', () => {
   const notification: BlueskyMessage = {
     uri: 'at://did:plc:test/app.bsky.feed.post/abc',
@@ -287,45 +287,101 @@ describe('createPostReplyTask', () => {
     parent: { uri: notification.uri, cid: notification.cid },
   };
 
+  const postedUri = 'at://did:plc:test/app.bsky.feed.post/posted';
+  const replyText = 'A door is not a question.';
+
   let blueskyClient: any;
+  let completions: { taskId: string; successor: DrakidionTask }[];
+
+  // Let the post promise settle, the way the orchestrator's event loop would
+  const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+
+  const onWaitingTaskComplete = (taskId: string, successor: DrakidionTask) => {
+    completions.push({ taskId, successor });
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    completions = [];
 
     blueskyClient = {
       notificationReplyTo: jest.fn(() => replyTo),
-      like: jest.fn(),
-      post: jest.fn(),
+      like: jest.fn(async () => ({ uri: 'at://did:plc:test/app.bsky.feed.like/1', cid: 'cid-like' })),
+      post: jest.fn(async () => ({ uri: postedUri, cid: 'cid-posted' })),
     };
   });
 
-  const buildTask = async (replyText: string) => {
+  const buildTask = async (text: string) => {
     const { createPostReplyTask } = await import('../src/oblique-task-factory.js');
     const { newReadyTask } = await import('../src/drakidion/task-factories.js');
     return createPostReplyTask(
       notification,
-      replyText,
+      text,
       blueskyClient as BlueskyClient,
       [],
+      onWaitingTaskComplete,
       newReadyTask('Post reply')
     );
   };
 
-  it('likes then posts, and succeeds', async () => {
-    const task = await buildTask('A door is not a question.');
+  it('likes, posts, and waits for Bluesky before claiming success', async () => {
+    const task = await buildTask(replyText);
 
     const successor = task.process!() as DrakidionTask;
 
     expect(blueskyClient.like).toHaveBeenCalledWith(notification.uri);
-    expect(blueskyClient.post).toHaveBeenCalledWith({
-      text: 'A door is not a question.',
-      replyTo,
-    });
+    expect(blueskyClient.post).toHaveBeenCalledWith({ text: replyText, replyTo });
     expect(blueskyClient.like.mock.invocationCallOrder[0])
       .toBeLessThan(blueskyClient.post.mock.invocationCallOrder[0]);
-    expect(successor.status).toBe('succeeded');
-    expect(successor.work).toContain('Posted:');
+
+    // Nothing is claimed while the post is in flight
+    expect(successor.status).toBe('waiting');
+    expect(completions).toHaveLength(0);
+
+    await flush();
+
+    expect(completions).toHaveLength(1);
+    expect(completions[0].taskId).toBe(successor.taskId);
+    expect(completions[0].successor.status).toBe('succeeded');
+    expect(completions[0].successor.version).toBe(successor.version + 1);
+  });
+
+  it('records the URI Bluesky returned, not a placeholder', async () => {
+    const task = await buildTask(replyText);
+
+    task.process!();
+    await flush();
+
+    expect(completions[0].successor.work).toBe(`Posted: ${replyText} (${postedUri})`);
+  });
+
+  it('dies when the post is rejected', async () => {
+    blueskyClient.post.mockRejectedValue(new Error('network down'));
+    const task = await buildTask(replyText);
+
+    const successor = task.process!() as DrakidionTask;
+    expect(successor.status).toBe('waiting');
+
+    await flush();
+
+    expect(completions).toHaveLength(1);
+    expect(completions[0].successor.status).toBe('dead');
+    expect(completions[0].successor.work).toBe('Failed to post: network down');
+  });
+
+  it('still posts when the like is rejected', async () => {
+    blueskyClient.like.mockRejectedValue(new Error('like failed'));
+    const task = await buildTask(replyText);
+
+    task.process!();
+    await flush();
+
+    expect(blueskyClient.post).toHaveBeenCalled();
+    expect(completions[0].successor.status).toBe('succeeded');
   });
 
   it('refuses to post an empty reply', async () => {
@@ -352,7 +408,7 @@ describe('createPostReplyTask', () => {
     blueskyClient.notificationReplyTo.mockImplementation(() => {
       throw new Error('no reply info');
     });
-    const task = await buildTask('A door is not a question.');
+    const task = await buildTask(replyText);
 
     const successor = task.process!() as DrakidionTask;
 
@@ -361,11 +417,11 @@ describe('createPostReplyTask', () => {
     expect(successor.work).toBe('Failed to post: no reply info');
   });
 
-  it('dies when liking throws', async () => {
+  it('dies when liking throws before the post is dispatched', async () => {
     blueskyClient.like.mockImplementation(() => {
       throw new Error('like failed');
     });
-    const task = await buildTask('A door is not a question.');
+    const task = await buildTask(replyText);
 
     const successor = task.process!() as DrakidionTask;
 
@@ -374,15 +430,15 @@ describe('createPostReplyTask', () => {
     expect(successor.work).toBe('Failed to post: like failed');
   });
 
-  it('dies when posting throws', async () => {
+  it('dies when dispatching the post throws', async () => {
     blueskyClient.post.mockImplementation(() => {
-      throw new Error('network down');
+      throw new Error('no network');
     });
-    const task = await buildTask('A door is not a question.');
+    const task = await buildTask(replyText);
 
     const successor = task.process!() as DrakidionTask;
 
     expect(successor.status).toBe('dead');
-    expect(successor.work).toBe('Failed to post: network down');
+    expect(successor.work).toBe('Failed to post: no network');
   });
 });

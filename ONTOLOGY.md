@@ -493,9 +493,13 @@ createPostReplyTask(...).process():
     -> createDeadTask(task) with work = "Failed to post: Refusing to post an empty reply"
   try:
     replyTo = blueskyClient.notificationReplyTo(originalNotification)
-    blueskyClient.like(originalNotification.uri)     # not awaited
-    blueskyClient.post({ text: replyText, replyTo }) # not awaited
-    -> createSucceededTask(task) with work = "Posted: <text> (reply-posted)"
+    blueskyClient.like(originalNotification.uri)     # not awaited; a rejection is logged
+    blueskyClient.post({ text: replyText, replyTo })
+      .then(result -> onWaitingTaskComplete(taskId,
+              createSucceededTask(task) with work = "Posted: <text> (<result.uri>)"))
+      .catch(error -> onWaitingTaskComplete(taskId,
+              createDeadTask(task) with work = "Failed to post: <message>"))
+    -> waiting successor, work unchanged             # the reply text, for the quote above
   catch:
     -> createDeadTask(task) with work = "Failed to post: <message>"
 ```
@@ -504,14 +508,16 @@ Blank text is refused before the like, not after: Bluesky accepts an empty post 
 complaint, so nothing downstream would catch it. The chain goes `dead` so the refusal is
 visible in the observer panel rather than silent.
 
-The like precedes the post: an acknowledgement should land even if the reply does not. Because
-`process` is synchronous and neither call is awaited, the snapshot succeeds on *dispatch*, not
-on confirmation — a rejected post leaves a `succeeded` chain and the placeholder URI
-`reply-posted`. Tracked in `ARCHITECTURE_LOG.md`.
+The like precedes the post and is not awaited: an acknowledgement should land even if the
+reply does not, and a rejected like is logged rather than carried into the chain. The post is
+awaited — the snapshot succeeds on *confirmation*, carrying the URI Bluesky returned, and a
+rejected post leaves a `dead` chain. A throw before the post is dispatched (resolving the
+reply target, or the client failing synchronously) is caught here and yields `dead` without a
+waiting snapshot.
 
 ### 4.17 The reply chain **[D]**
 
-*Serves:* G-1, G-3. Three snapshots, one `taskId`.
+*Serves:* G-1, G-3. Five snapshots, one `taskId`.
 
 ```
 v1  createReplyTask          ready    process() -> v2
@@ -521,14 +527,18 @@ v2  createSendToLLMTask      waiting  side effect: getHistory
                                         -> generateLLMResponseWithRetry
                                         -> onWaitingTaskComplete(taskId, v3)
                                       on reject -> onWaitingTaskComplete(taskId, dead v3)
-v3  createPostReplyTask      ready    process() -> succeeded | dead v4
+v3  createPostReplyTask      ready    process() -> v4
+                                      refusal or a throw before dispatch -> dead v4
+v4  (post in flight)         waiting  side effect: like, then post
+                                        -> onWaitingTaskComplete(taskId, succeeded v5)
+                                      on reject -> onWaitingTaskComplete(taskId, dead v5)
 ```
 
-The promise chain is started inside `createSendToLLMTask` and the waiting snapshot is returned
-immediately, so the orchestrator never blocks. A `null` anywhere in the chain (either restraint
-gate) means `sendReply` logs and returns without calling back — the chain stays `waiting`
-forever and is garbage only when the tab closes. Deliberate: a refusal is not a failure, and
-there is no "abandoned" status to move it to.
+Both promise chains are started inside the factory and the waiting snapshot is returned
+immediately, so the orchestrator never blocks. A `null` anywhere in the LLM chain (either
+restraint gate) means `sendReply` logs and returns without calling back — the chain stays
+`waiting` forever and is garbage only when the tab closes. Deliberate: a refusal is not a
+failure, and there is no "abandoned" status to move it to.
 
 ### 4.18 The chat chain **[D]**
 

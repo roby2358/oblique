@@ -14,6 +14,14 @@ Updated: 2026-10-17T07:38:20Z
 
 Saving configuration from the Configure panel always throws. src/configurePanel.ts:22 reads `config.openrouter?.baseUrl.openrouter.baseUrl` — but `baseUrl` is a string, so `.openrouter` is undefined and the final `.baseUrl` raises a TypeError. The handler dies before `initializeOrchestrator(config)` runs, so clicking Save never takes effect and the user sees only the optimistic "Configuration updated" message that was already appended. Fix: use `config.openrouter?.baseUrl` (falling back to the OpenRouter default URL when absent). Add a test that saves a key and model and asserts the orchestrator is reinitialized with the preserved base URL.
 ----
+Priority:   75
+Status: Done
+ID: postconfirm-t9r8
+Created: 2026-10-17T01:00:14Z
+Updated: 2026-10-17T16:01:27Z
+
+A Bluesky reply is reported as succeeded on dispatch, not on confirmation. In src/oblique-task-factory.ts, createPostReplyTask's `process()` is synchronous and awaits neither `blueskyClient.like()` nor `blueskyClient.post()`, then unconditionally returns a succeeded snapshot carrying the placeholder URI string 'reply-posted'. A rejected post therefore leaves a succeeded task chain, no dead snapshot, and an unhandled promise rejection in the console — the task graph claims a reply exists when none does. This is the largest gap between what the orchestrator reports and what actually happened. Fix: make posting a waiting task that resumes from the post promise, the way the LLM step already does, and record the real post URI in `work`. Cover the resolve and reject paths with tests.
+----
 Priority:   65
 Status: Done
 ID: dailymodel-t46y

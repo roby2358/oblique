@@ -1,11 +1,3 @@
-Priority:   75
-Status: ToDo
-ID: postconfirm-t9r8
-Created: 2026-10-17T01:00:14Z
-Updated: 2026-10-17T01:00:14Z
-
-A Bluesky reply is reported as succeeded on dispatch, not on confirmation. In src/oblique-task-factory.ts, createPostReplyTask's `process()` is synchronous and awaits neither `blueskyClient.like()` nor `blueskyClient.post()`, then unconditionally returns a succeeded snapshot carrying the placeholder URI string 'reply-posted'. A rejected post therefore leaves a succeeded task chain, no dead snapshot, and an unhandled promise rejection in the console — the task graph claims a reply exists when none does. This is the largest gap between what the orchestrator reports and what actually happened. Fix: make posting a waiting task that resumes from the post promise, the way the LLM step already does, and record the real post URI in `work`. Cover the resolve and reject paths with tests.
-----
 Priority:   70
 Status: ToDo
 ID: stalecb-k59i

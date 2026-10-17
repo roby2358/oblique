@@ -283,6 +283,24 @@ Updated: 2026-10-17T01:01:28Z
 
 errorWaitingTask and resumeWaitingTask in src/drakidion/orchestrator.ts have byte-identical bodies — same taskMap lookup, same warn, same waitingSet removal, same transition. The only difference is in what the caller passes as the successor, so the two names imply a distinction the code does not make, and any fix applied to one will silently miss the other. Fix: either have errorWaitingTask delegate to resumeWaitingTask so the duplication cannot drift, or give it a real difference by asserting the successor is in a terminal state and warning when it is not. Keep both names regardless — the call sites read better for having them.
 ----
+Priority:   25
+Status: ToDo
+ID: rmdadabot-tqce
+Created: 2026-10-17T02:17:30Z
+Updated: 2026-10-17T02:31:21Z
+
+Review whether to delete `src/prompts/dadabot.md`, then delete it if the review still says so.
+
+The file is a complete second-persona prompt — "the ghost of Tristan Tzara reborn in a machine", with its own principles, form, tone and six generative operations. It was written as an alternate personality for the bot, was never wired to anything, and the alternate-personality direction was dropped. No code references it, and nothing in `ONTOLOGY.md` describes a bot with more than one voice. On that basis the current intent is to remove it — but that intent is not binding, and this ticket exists partly so the call gets looked at once more with fresh eyes rather than executed on reflex.
+
+Step 1 — review. Read the file. Ask whether a second voice has become interesting again since the direction was dropped, and whether anything in the prompt is worth keeping even if DadaBot itself is not: the six generative operations (word collage, phonetic inversion, chance operations, semantic drift, surreal causality, fragmented manifesto) are reusable craft, and some could inform the existing oblique lenses rather than die with the file. Keeping it costs nothing — it is inert Markdown that no longer breaks the build.
+
+Step 2 — if the review says keep, close this ticket without deleting and record in `ARCHITECTURE_LOG.md` that the question was reopened and settled the other way. That is a legitimate outcome, not a failure to finish.
+
+Step 3 — if the review says delete: `git rm src/prompts/dadabot.md`; confirm nothing imports it (`grep -rni dadabot --include='*.ts' --include='*.html' src test`); run `npm run build` and `npm test`, both of which should stay green since nothing depended on it. The content stays recoverable from git history afterward, so no copy needs keeping outside the repo.
+
+Docs, whichever way it goes: update open question Q-12 in `ARCHITECTURE_LOG.md` — it asks whether DadaBot is a planned second persona or dead material — and add a dated History entry recording what was decided, that Q-12 is what it settled, and the reason in one line. Nothing in `ONTOLOGY.md` or `CONSTRAINTS.md` references the file, so neither should need an edit; verify rather than assume.
+----
 Priority:   20
 Status: ToDo
 ID: getstate-viig

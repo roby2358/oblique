@@ -30,6 +30,10 @@ speculative belongs in `ARCHITECTURE_LOG.md`.
 npm install
 ```
 
+Install on the platform you build from. Vite's `rollup` and `esbuild` ship per-platform
+binaries, so a `node_modules/` installed from Windows and reused from WSL (or the reverse)
+fails at `vite build` with `Cannot find module '@rollup/rollup-linux-x64-gnu'`.
+
 ### Configure
 
 Copy `config-example.json` to `config.json` and fill it in:
@@ -60,7 +64,7 @@ the attenuation rule uses to stop bot-to-bot loops.
 ### Run
 
 ```
-npm run dev      # Vite dev server, usually http://localhost:5173
+npm run dev      # Vite dev server on http://localhost:5173
 npm run build    # tsc + vite build
 npm start        # preview the production build
 npm test         # Jest

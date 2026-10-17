@@ -280,14 +280,17 @@ because the conversion found them. **Recommendation:** fix both as a separate ch
 named for a 279 limit that no longer exists. **Recommendation:** pick one number, name it, and
 interpolate it into the prompt rather than restating it.
 
-### Q-12 `src/prompts/dadabot.ts` breaks the build — *tracked as `buildbreak-4s8x`*
+### Q-12 Is DadaBot a planned second persona, or dead material? — *tracked as `buildbreak-4s8x`*
 
-The file is a Markdown prompt — a second persona, "the ghost of Tristan Tzara reborn in a
-machine" — saved with a `.ts` extension. It is not TypeScript, it is imported by nothing, and
-because `npm run build` is `tsc && vite build`, `tsc` fails on it and the build never reaches
-Vite. `npm test` passes only because Jest compiles what is imported. **Recommendation:**
-rename it `dadabot.md`, or make it a `.ts` file exporting the prompt as a string the way
-`oblique.ts` does — then decide whether it is a planned second persona or dead material.
+`src/prompts/dadabot.md` holds a complete second-persona prompt — "the ghost of Tristan Tzara
+reborn in a machine", with its own principles, form, tone and six generative operations. No
+code references it, and nothing in the ontology describes a bot with more than one voice. Its
+`${threadHistory}` and `${userMessage}` placeholders mirror `obliquePrompt`, so it was written
+to be wired in. **Options:** build it as a second persona, which needs an entity and a
+selection rule in `ONTOLOGY.md`; keep it as unwired material in `src/prompts/`, beside
+`system.20251016.1012.txt`; or delete it. **Recommendation:** keep it as material until there
+is a reason to choose a voice at runtime. A second persona is a product decision, not a
+cleanup, and the file costs nothing where it sits.
 
 Separately, `createTaskFromFunction` is exported from `drakidion.ts` and tested but used by no
 application code. **Recommendation:** keep it as public API of the orchestration layer and say
@@ -296,6 +299,19 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-17 — `dadabot.ts` renamed to `dadabot.md`; `npm run build` is green
+
+The file was never TypeScript: a Markdown prompt saved with a `.ts` extension, on which `tsc`
+reported 399 syntax errors, so `npm run build` never reached Vite. Renaming it
+`src/prompts/dadabot.md` leaves `npx tsc --noEmit` clean. Nothing imported it, so no code
+changed and the 135 tests pass unchanged; it now sits beside `system.20251016.1012.txt`, which
+already holds prompt material that is not code. This settles the build half of Q-12 and leaves
+the persona question open there.
+
+Building on Linux also needed `@rollup/rollup-linux-x64-gnu` and `@esbuild/linux-x64`:
+`node_modules/` had been installed from Windows and carried only the `win32-x64` binaries.
+That is a checkout artifact rather than a repo defect, and is now noted in the README.
 
 ### 2026-10-17 — ONTOLOGY / CONSTRAINTS / ARCHITECTURE_LOG.md replace SPEC.md and its companions
 

@@ -97,11 +97,8 @@ anything until one exists.
 
 ## Status
 
-**As of 2026-10-17.** `npm test` runs 16 suites, 135 tests, and passes.
-
-`npm run build` **fails**. `tsc` rejects `src/prompts/dadabot.ts`, a Markdown prompt saved
-with a `.ts` extension, and the build never reaches Vite. Jest is unaffected because it only
-compiles what is imported. See Q-12 in `ARCHITECTURE_LOG.md`.
+**As of 2026-10-17.** `npm test` runs 16 suites, 135 tests, and passes. `npm run build`
+(`tsc && vite build`) passes: `tsc` reports no errors and Vite emits `dist/`.
 
 ### Not yet covered
 

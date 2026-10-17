@@ -26,7 +26,7 @@
       "~openai/gpt-mini-latest",
       "~openai/gpt-terra-latest"
     ],
-    "rotate": true,
+    "rotate": false,
     "baseUrl": "https://openrouter.ai/api/v1/chat/completions"
   },
   "bluesky": {

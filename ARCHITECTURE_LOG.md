@@ -80,7 +80,9 @@ settled), **History** (dated entries, newest first).
   floating `~vendor/model-latest` alias, the list uses it rather than a dated slug, so a
   vendor's own releases reach the rotation without an edit; the bot drifting under us is the
   point, since D-5 wants variety rather than a fixed set. Vendors with no alias stay pinned
-  and go stale. `rotate: false` pins the bot to
+  and go stale. `rotate` ships **false**, so a fresh install speaks with one voice until
+  someone turns the walk on — the rotation is worth opting into, not worth inflicting on
+  someone who has not read this far. `rotate: false` pins the bot to
   the first entry, so pinning is a reordering rather than a second field that can disagree
   with the list. There is no config-level `model`, so both LLM paths must name one on the
   request and no call can go out unnamed — which is what let the reply path silently diverge
@@ -316,6 +318,14 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-17 — `rotate` ships false
+
+`config-example.json` had `rotate: true`, so a fresh install would speak with a different
+model every day without being asked. It now ships false, matching what the live config was
+already set to: the first entry in `models` is used until someone turns the walk on. D-5 still
+stands — the daily rotation is the design — but it is now something you opt into rather than
+the out-of-the-box behaviour. The voice rotation in `genders` is unaffected and still daily.
 
 ### 2026-10-17 — The build step is removed; `tsc` is `noEmit` and only type-checks
 

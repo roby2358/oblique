@@ -141,7 +141,7 @@ G-4.
 |---|---|---|
 | `openrouter.apiKey` | `string` | Empty means the LLM is unconfigured and no task is created. |
 | `openrouter.models` | `string[]` | OpenRouter slugs, `MODEL_ROTATION_SIZE` of them in the template. Empty or absent is an error, not a default. |
-| `openrouter.rotate` | `boolean` | True walks the list one entry per UTC day; false always uses the first entry. |
+| `openrouter.rotate` | `boolean` | False, the shipped default, always uses the first entry. True walks the list one entry per UTC day. |
 | `openrouter.baseUrl` | `string` | OpenRouter chat-completions endpoint. |
 | `bluesky.handle` | `string` | The bot's own handle. |
 | `bluesky.password` | `string` | App password. |
@@ -423,9 +423,11 @@ The lens is per reply, so a thread does not settle into one register. Model and 
 through it, so the daily cycle lands on them more often while still reaching every entry.
 
 The model list lives in `config.openrouter.models`, not in code, so it is deployment data like
-the API key. `config.openrouter.rotate` turns the daily walk off: with it false the first entry
-is always used, which makes pinning a model a matter of reordering the list rather than editing
-a second field that could disagree with it. Both LLM paths name the model on the request —
+the API key. `config.openrouter.rotate` turns the daily walk off, and ships false: the first
+entry is used until someone says otherwise, which makes pinning a model a matter of reordering
+the list rather than editing a second field that could disagree with it. The rotation is there
+to be switched on deliberately, not to surprise a fresh install with a different voice each
+day. Both LLM paths name the model on the request —
 there is no config-level model to fall back to, so a request can never go out unnamed.
 
 ### 4.13 Response extraction **[D]**

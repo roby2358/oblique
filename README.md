@@ -42,8 +42,8 @@ Copy `config-example.json` to `config.json` and fill it in:
 {
   "openrouter": {
     "apiKey": "sk-or-v1-...",
-    "models": ["anthropic/claude-sonnet-4.5", "openai/gpt-5"],
-    "rotate": true,
+    "models": ["~anthropic/claude-sonnet-latest", "~openai/gpt-sol-latest"],
+    "rotate": false,
     "baseUrl": "https://openrouter.ai/api/v1/chat/completions"
   },
   "bluesky": {
@@ -64,9 +64,11 @@ unconfigured and says so.
 is the only source of configuration — the **Configure** panel is a note pointing at it, with
 nothing to type in. Changing configuration means editing the file and reloading the page.
 
-`models` is the list the bot speaks through; the template ships 15. `rotate` true walks the
-list one entry per UTC day, so the bot has one character a day and a different one tomorrow;
-false always uses the first entry, which makes pinning a model a matter of putting it first.
+`models` is the list the bot speaks through; the template ships 23, preferring OpenRouter's
+floating `~vendor/model-latest` aliases over dated slugs so a vendor's releases arrive without
+an edit. `rotate` false — the shipped default — always uses the first entry, so pinning a
+model means putting it first. Set it true to walk the list one entry per UTC day, giving the
+bot one character a day and a different one tomorrow.
 
 `ignoreList` holds handles never replied to. `botList` holds handles treated as bots, which
 the attenuation rule uses to stop bot-to-bot loops.

@@ -153,7 +153,11 @@ G-4.
 `src/types/index.ts` also declares `Task`, `PendingTask`, `Conversation`, `StorageData`,
 `TaskId`, `UserId` and `ConversationId`. **Nothing imports them.** They are the vocabulary of
 a superseded design; only `BlueskyMessage`, `BlueskyPost`, `LLMRequest` and `LLMResponse` are
-live. Removing them is tracked as an open question in `ARCHITECTURE_LOG.md`.
+live. Three generators in `src/utils/index.ts` are unreferenced for the same reason —
+`generateConversationId`, `generateId` and `wait` — as is `generateCorrelationId`, which the
+barrel exports and the tests exercise but no application code calls. `BlueskyClient`'s
+`hasRepliesToPost` is live code with no caller: the notification gate reads the thread's
+`replies` itself. Removing all of it is Q-1 in `ARCHITECTURE_LOG.md`.
 
 ---
 
@@ -225,7 +229,7 @@ line of a chain is written by the factory that starts it. The stub `process` thr
 successor that forgets to define one fails loudly rather than silently doing nothing.
 
 A convenience builder wraps a plain function as a one-step chain. It is public API of the
-orchestration layer; no application code uses it today.
+orchestration layer, exported from `drakidion.ts`; no application code uses it today.
 
 ```
 createTaskFromFunction(description, fn) -> { ...newReadyTask(description), process }
@@ -233,7 +237,7 @@ createTaskFromFunction(description, fn) -> { ...newReadyTask(description), proce
     try:    partial = fn()
             -> { ...createSucceededTask(base), ...partial,
                  taskId, version, doneAt from the successor,      # never overridable
-                 status: partial.status ?? 'succeeded' }
+                 status: partial.status || 'succeeded' }
     catch:  -> createDeadTask(base) with work + ['[Function failed: …]']
 ```
 
@@ -282,7 +286,11 @@ processNextTask(state):
 
 The `running` snapshot deliberately keeps the predecessor's version: it is a marker that work
 is in flight, not a step in the chain. The catch path does **not** set `doneAt`, which
-contradicts the §2 invariant — see the open question in `ARCHITECTURE_LOG.md`.
+contradicts the invariant on terminal snapshots — tracked as `doneat-76kf`.
+
+`processNextTask`, `processAllTasks` and the loop body are declared `async` and return
+promises, although nothing inside them awaits: `process` is synchronous, so the promise
+resolves in the same turn. Whether to keep the shape is Q-13 in `ARCHITECTURE_LOG.md`.
 
 ### 4.5 Draining the queue — `processAllTasks` **[D]**
 
@@ -324,8 +332,9 @@ resumeWaitingTask(state, taskId, successor):
   transitionTask(state, taskId, successor)
 ```
 
-`errorWaitingTask` is byte-identical. The distinction is in the successor the caller hands
-over — a dead snapshot rather than a ready one — not in the orchestrator.
+`errorWaitingTask` is the same function under another name — identical apart from its
+comments. The distinction is in the successor the caller hands over — a dead snapshot rather
+than a ready one — not in the orchestrator.
 
 Only a chain that is *currently* waiting can be resumed. A callback that arrives twice, or
 after the chain has already settled, finds the chain gone from the WaitingSet and is logged
@@ -556,7 +565,10 @@ v1  createObliqueMessageTask waiting  side effect: generateResponse({ model: get
 ```
 
 No restraint gates apply — a human typed it, so it is always answered. No length retry either:
-the response is shown in the page, not posted.
+the response is shown in the page, not posted. When the model answers without a `# Response`
+section the chain still succeeds, carrying the literal line
+`error extracting response content`. The caller may override `LLM_TEMPERATURE` through an
+optional argument; the chat panel, its only caller, does not.
 
 ### 4.19 Configuration load **[D]**
 
@@ -672,7 +684,8 @@ rule a human-triggered path is subject to.
 
 ```
 startPolling():
-  interval = clamp(#poll-interval value, POLL_MIN_S, POLL_MAX_S) else POLL_DEFAULT_S
+  interval = #poll-interval value, or POLL_DEFAULT_S when absent or outside
+             POLL_MIN_S…POLL_MAX_S   # the input itself is clamped on change and blur (U-7)
   schedule():
     setTimeout(interval):
       if still polling: await checkNotifications(); schedule()
@@ -731,8 +744,8 @@ tests. The code is the single source; the value here is a copy.
 
 Only `MAX_BLUESKY_REPLY_CHARS`, `TOKEN_REFRESH_BUFFER_MS` and `SAFE_BASE32_ALPHABET` are named
 constants in the code today; the rest are literals at their use site, except
-`MODEL_ROTATION_SIZE`, which is the length of a list in `config.json`. Naming them is an open
-question in `ARCHITECTURE_LOG.md`.
+`MODEL_ROTATION_SIZE`, which is the length of a list in `config.json`. Naming them is Q-7 in
+`ARCHITECTURE_LOG.md`.
 
 ---
 
@@ -748,16 +761,16 @@ the shape is what a second client would have to speak.
 | `createOrchestrator()` | always | Returns empty state. | none |
 | `addTask(state, task)` | always | Records in TaskMap; routes by status (4.2). | none |
 | `transitionTask(state, old, successor)` | always | Clears `old` from queue and waiting set, admits `successor` (4.3). | none |
-| `processNextTask(state)` | always | Runs the head of the queue (4.4). | whatever `process` does |
-| `processAllTasks(state)` | always | Drains the queue (4.5). | as above |
+| `processNextTask(state)` | always | Runs the head of the queue (4.4). Returns a promise; nothing inside it awaits. | whatever `process` does |
+| `processAllTasks(state)` | always | Drains the queue (4.5). Returns a promise. | as above |
 | `startLoop(state, onStateChange?)` | `!state.isRunning` | Starts the rAF loop; returns `{ state, stop }`. | schedules frames |
 | `resumeWaitingTask(state, taskId, successor)` | `taskId` is in TaskMap and in the WaitingSet | Resumes a chain (4.7). Otherwise warns and leaves the state unchanged. | none |
 | `errorWaitingTask(state, taskId, successor)` | as resume | Identical to resume (4.7). | none |
 
-Every command returns the state object. **The state is mutated in place** — the returned
-reference is the same object, not a copy. Callers reassign by convention, not because they must.
-This is the one place the system is not functional, and it is why there is exactly one
-orchestrator per page.
+Every command returns the state object, the two drain commands wrapped in a promise.
+**The state is mutated in place** — the returned reference is the same object, not a copy.
+Callers reassign by convention, not because they must. This is the one place the system is
+not functional, and it is why there is exactly one orchestrator per page.
 
 Illegal input never throws: a missing task, a wrong status or an empty queue produces a
 `console.warn` and `{ processed: false }`.
@@ -771,7 +784,7 @@ Illegal input never throws: a missing task, a wrong status or an empty queue pro
 | `TaskMapOps.getTasksByStatus(map, status)` | latest snapshots with that status |
 | `TaskQueueOps.getAllTaskIds(queue)` | queued ids, FIFO order (a copy) |
 | `WaitingSetOps.getAllWaitingTaskIds(set)` | waiting ids |
-| `window.oblique.getState()` | `{ orchestrator, hasLLM, hasBluesky }` — console debugging |
+| `window.oblique.getState()` | `{ orchestrator, hasLLM, hasBluesky }` — console debugging. Throws today: it calls `require` in an ES module (`getstate-viig`). |
 
 ### 7.3 Events
 

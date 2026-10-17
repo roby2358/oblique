@@ -294,13 +294,18 @@ Each is a real decision for the designer, not a task.
 ### Q-1 The dead vocabulary in `src/types/index.ts` — *tracked as `deadtypes-mrsf`*
 
 `Task`, `PendingTask`, `Conversation`, `StorageData`, `TaskId`, `UserId` and `ConversationId`
-are imported by nothing. They are the vocabulary of the pre-2025-10-11 design.
-**Recommendation:** delete them, keeping `BlueskyMessage`, `BlueskyPost`, `LLMRequest` and
-`LLMResponse`. Risk is zero — the TypeScript build proves nothing imports them.
+are imported by nothing. They are the vocabulary of the pre-2025-10-11 design. The same is
+true of `generateConversationId`, `generateId` and `wait` in `src/utils/index.ts`, of
+`generateCorrelationId`, which the barrel exports and the tests exercise but no application
+code calls, and of `BlueskyClient.hasRepliesToPost`, whose job the notification gate does for
+itself. **Recommendation:** delete them, keeping `BlueskyMessage`, `BlueskyPost`,
+`LLMRequest` and `LLMResponse`. Risk is zero — the TypeScript build proves nothing imports
+them — but `hasRepliesToPost` and `generateCorrelationId` take their tests with them.
 
 ### Q-3 `errorWaitingTask` is identical to `resumeWaitingTask` — *tracked as `errwait-rwzm`*
 
-Both do exactly the same thing; the difference is only in the successor the caller passes.
+Both do exactly the same thing — the bodies differ only in their comments — and the
+difference is only in the successor the caller passes.
 **Recommendation:** keep both names — the call sites read better — but make
 `errorWaitingTask` delegate, so the duplication cannot drift. Alternatively give it a real
 difference: assert the successor is terminal.
@@ -312,6 +317,17 @@ When either restraint gate returns `null`, `sendReply` logs and returns without 
 scans the set and the tab clears it, but it means `waitingSize` overstates real work.
 **Recommendation:** add a `canceled` successor on the refusal path, which is what the status
 exists for. R-27's timeout would also catch it, less precisely.
+
+### Q-13 The orchestrator's commands are async but never await — *tracked as `asyncorch-fenk`*
+
+`processNextTask` and `processAllTasks` are declared `async`, and `startLoop`'s frame body
+awaits the first of them, yet nothing inside any of them awaits: `process` is synchronous by
+invariant, so the promise always resolves in the same turn. The shape costs a microtask per
+frame and tells a reader the core is asynchronous when the whole design says it is not.
+**Recommendation:** drop `async` from all three and let the commands return the state
+directly; `await` at the call sites keeps working either way. Against: if a future step ever
+needs to await, the signature is already there — but the invariant says that step belongs in
+a factory closure, not in the orchestrator.
 
 ### Q-6 Prompt injection has no mechanical prevention
 
@@ -361,6 +377,25 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-17 — Ontology review: the docs are reconciled with the code
+
+A pass over `ONTOLOGY.md` against `src/`. Seven places where the reference no longer matched:
+the `createTaskFromFunction` builder was described as public API of the orchestration layer
+but was missing from the `drakidion.ts` barrel (now exported, which is what the description
+assumed); `errorWaitingTask` was called byte-identical to `resumeWaitingTask`, true until
+D-17 gave each its own comment; the `doneAt` gap in `processNextTask`'s catch path pointed at
+an open question that does not exist and now cites `doneat-76kf`; the function builder's
+pseudocode used `??` where the code uses `||`; the poller was documented as clamping the poll
+interval when it falls back to `POLL_DEFAULT_S` and only the input is clamped; the chat
+chain's `error extracting response content` fallback and its caller-settable temperature were
+undocumented; and the orchestrator's async command shape was documented nowhere, which is now
+Q-13 (`asyncorch-fenk`). `src/panels.ts` also exported a `Config` interface describing a
+configuration shape that has not existed since D-4 — unused, and deleted. The unreferenced
+generators in `src/utils/index.ts` and `BlueskyClient.hasRepliesToPost` join the dead
+vocabulary and Q-1. In `CRITERIA.md` a stray blank line had split the R table in two.
+
+No rule changed and no behavior changed; `just check` stays at 18 suites, 167 tests.
 
 ### 2026-10-17 — The duplicate `waiting-map.ts` is gone and its tests point at the module in use
 

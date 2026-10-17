@@ -7,19 +7,6 @@ import { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
 
 declare const $: any;
 
-// Configuration interface
-export interface Config {
-  openrouter?: {
-    apiKey?: string;
-    model?: string;
-    baseUrl?: string;
-  };
-  bluesky?: {
-    handle?: string;
-    password?: string;
-  };
-}
-
 // Shared state
 let orchestratorState: OrchestratorState;
 let llmClient: LLMClient | undefined;

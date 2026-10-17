@@ -28,6 +28,10 @@ export * as Orchestrator from './orchestrator.js';
 // Task factories
 export * as TaskFactories from './task-factories.js';
 
+// Function builder
+export { createTaskFromFunction } from './functions.js';
+export type { TaskFunction } from './functions.js';
+
 // Work product
 export { latestWork } from './task-work.js';
 

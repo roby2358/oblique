@@ -133,9 +133,9 @@ Priority:   35
 Status: ToDo
 ID: namenums-vnzy
 Created: 2026-10-17T01:01:17Z
-Updated: 2026-10-17T01:01:17Z
+Updated: 2026-10-17T17:50:48Z
 
-Nineteen of the twenty-three tunable numbers are bare literals at their use site, so tuning means hunting for them and the documented table can drift from the code without anything noticing. Only MAX_BLUESKY_REPLY_CHARS, TOKEN_REFRESH_BUFFER_MS, SAFE_BASE32_ALPHABET and DEFAULT_CONFIG are named today. The unnamed ones include: the thread length cap 60 and the bot window 8 / limit 4 in bluesky-polling.ts; thread depth 25 in bluesky-client.ts getHistory; notification batch 3 and poll interval 60/10/3600 in bluesky-panel.ts; LLM attempts 5, temperature 0.8, max tokens 2000 and the 300 retry gate in oblique-task-factory.ts; the OpenRouter fallbacks 0.7 and 500; token default TTL of one day; task id length 24. Fix: extract each to a named export near the code that owns it, refer to it by name in tests, and keep the table in the ontology quoting names rather than values.
+Most of the tunable numbers are bare literals at their use site, so tuning means hunting for them and the documented table can drift from the code without anything noticing. Only MAX_BLUESKY_REPLY_CHARS, TOKEN_REFRESH_BUFFER_MS and SAFE_BASE32_ALPHABET are named today. The unnamed ones include: the thread length cap 60 and the bot window 8 / limit 4 in bluesky-polling.ts; thread depth 25 in bluesky-client.ts getHistory; notification batch 3 and poll interval 60/10/3600 in bluesky-panel.ts; LLM attempts 5, temperature 0.8, max tokens 8000 and the 300 retry gate in oblique-task-factory.ts; the OpenRouter fallbacks 0.7 and 500; the one-day token default TTL; task id length 24. Fix: extract each to a named export near the code that owns it, refer to it by name in tests, and keep the table in the ontology quoting names rather than values.
 ----
 Priority:   30
 Status: ToDo
@@ -282,6 +282,14 @@ Step 2 — if the review says keep, close this ticket without deleting and recor
 Step 3 — if the review says delete: `git rm src/prompts/dadabot.md`; confirm nothing imports it (`grep -rni dadabot --include='*.ts' --include='*.html' src test`); run `npm run build` and `npm test`, both of which should stay green since nothing depended on it. The content stays recoverable from git history afterward, so no copy needs keeping outside the repo.
 
 Docs, whichever way it goes: update open question Q-12 in `ARCHITECTURE_LOG.md` — it asks whether DadaBot is a planned second persona or dead material — and add a dated History entry recording what was decided, that Q-12 is what it settled, and the reason in one line. Nothing in `ONTOLOGY.md` or `CONSTRAINTS.md` references the file, so neither should need an edit; verify rather than assume.
+----
+Priority:   25
+Status: ToDo
+ID: asyncorch-fenk
+Created: 2026-10-17T17:50:36Z
+Updated: 2026-10-17T17:50:36Z
+
+The orchestrator's commands are declared async but nothing inside them ever awaits. src/drakidion/orchestrator.ts declares processNextTask and processAllTasks as `async`, and startLoop's frame body awaits processNextTask — yet no await appears inside any of them. A task's process() is synchronous by invariant (asynchronous work is started as a side effect in a factory closure and resolved through the resume path), so these promises always resolve in the same turn. The cost is a microtask per animation frame and a signature that tells a reader the core is asynchronous when the whole design says it is not. Fix: drop `async` from processNextTask, processAllTasks and the startLoop frame body, and let the commands return the state directly. `await` on a non-promise still works, so the call sites in src/panels.ts, src/index.ts (window.oblique.processNext / processAll) and the Jest suite keep working unchanged; update them anyway so nothing reads as asynchronous. Update the command table in ONTOLOGY.md, which now records the promise shape, and close the open question that tracks this. Against doing it: if a future step ever needs to await, the signature is already there — but the invariant says such a step belongs in a factory closure, not in the orchestrator.
 ----
 Priority:   20
 Status: ToDo

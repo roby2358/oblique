@@ -697,7 +697,7 @@ tests. The code is the single source; the value here is a copy.
 | `REPLY_LENGTH_GATE` | 300 | characters | `generateLLMResponseWithRetry` | D-9 |
 | `LLM_MAX_ATTEMPTS` | 5 | attempts | `generateLLMResponseWithRetry` | D-9 |
 | `LLM_TEMPERATURE` | 0.8 | — | both LLM paths | D-10 |
-| `LLM_MAX_TOKENS` | 2000 | tokens | both LLM paths | D-10 |
+| `LLM_MAX_TOKENS` | 8000 | tokens | both LLM paths | D-10 |
 | `OPENROUTER_FALLBACK_TEMPERATURE` | 0.7 | — | `openrouter.ts` | D-10 |
 | `OPENROUTER_FALLBACK_MAX_TOKENS` | 500 | tokens | `openrouter.ts` | D-10 |
 | `THREAD_MAX_POSTS` | 60 | posts | `shouldRespondToThread` | D-7 |

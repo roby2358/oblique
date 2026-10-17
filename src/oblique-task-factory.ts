@@ -89,7 +89,7 @@ const generateLLMResponseWithRetry = async (
       conversation,
       model: getDailyModel(),
       temperature: 0.8,
-      maxTokens: 2000,
+      maxTokens: 8000,
     });
     
     console.log('LLM response:', response.content);
@@ -396,7 +396,7 @@ export const createObliqueMessageTask = (
     conversation: messages,
     model: model,
     temperature: options?.temperature ?? 0.8,
-    maxTokens: 2000,
+    maxTokens: 8000,
   })
     .then(response => {
       console.log('LLM response:', response.content);

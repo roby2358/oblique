@@ -141,11 +141,11 @@ settled), **History** (dated entries, newest first).
 ### D-10 LLM parameters are set per call site, not per client — *Decided*
 
 - **Alternatives:** one set of parameters in `LLMConfig`; parameters in `config.json`.
-- **Why:** the OpenRouter client carries conservative fallbacks (temperature 0.7, 500 tokens)
-  so a bare call is safe, and each call site overrides them for what it needs — both Oblique
-  paths ask for temperature 0.8 and 2000 tokens because the prompt demands a long document at
-  some creative temperature. The fallbacks exist for a future call site that has not been
-  written.
+- **Why:** the OpenRouter client carries conservative fallbacks
+  (`OPENROUTER_FALLBACK_TEMPERATURE`, `OPENROUTER_FALLBACK_MAX_TOKENS`) so a bare call is safe,
+  and each call site overrides them for what it needs — both Oblique paths ask for
+  `LLM_TEMPERATURE` and `LLM_MAX_TOKENS` because the prompt demands a long document at some
+  creative temperature. The fallbacks exist for a future call site that has not been written.
 - **Evidence:** none.
 
 ### D-11 Poll a small batch frequently — *Decided*
@@ -338,6 +338,21 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-17 — `LLM_MAX_TOKENS` raised from 2000 to 8000
+
+Turning reasoning off earlier today did not end the no-content failures, so the budget was
+the remaining suspect. `LLM_MAX_TOKENS` goes to 8000 at both Oblique call sites.
+
+The entry below claimed 2000 was ample with reasoning off. It was ample in the one measured
+call, which is not the same thing: the prompt asks for a seven-section document — three
+500-word sections and three insights — and a model that takes that instruction at its word
+needs several times 2000 tokens before it reaches `# Response`. The measurement generalised
+from a model that answered tersely. Where a provider also ignores `reasoning: { enabled:
+false }`, the larger budget absorbs that too; the `finish_reason` now carried in the error
+says which case a failure is.
+
+No reduction in the prompt's demands accompanies this, so the change is one variable.
 
 ### 2026-10-17 — Reasoning is turned off for every model
 

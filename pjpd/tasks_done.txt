@@ -6,6 +6,22 @@ Updated: 2026-10-17T07:32:21Z
 
 `npm run build` fails. src/prompts/dadabot.ts is a Markdown prompt ("# DadaBot / You are DadaBot, the ghost of Tristan Tzara reborn in a machine...") saved with a .ts extension, so `tsc` rejects it with ~40 syntax errors and the build never reaches `vite build`. Nothing imports it, and `npm test` passes because Jest only compiles what is imported, so the break is invisible until someone builds. Fix: either rename it dadabot.md, or make it a real .ts module exporting the prompt as a string the way src/prompts/oblique.ts does. Then decide whether DadaBot is a planned second persona or dead material. Verify with `npx tsc --noEmit`, which should report zero errors.
 ----
+Priority:   85
+Status: Done
+ID: cfgsave-5vpt
+Created: 2026-10-17T01:00:06Z
+Updated: 2026-10-17T07:38:20Z
+
+Saving configuration from the Configure panel always throws. src/configurePanel.ts:22 reads `config.openrouter?.baseUrl.openrouter.baseUrl` — but `baseUrl` is a string, so `.openrouter` is undefined and the final `.baseUrl` raises a TypeError. The handler dies before `initializeOrchestrator(config)` runs, so clicking Save never takes effect and the user sees only the optimistic "Configuration updated" message that was already appended. Fix: use `config.openrouter?.baseUrl` (falling back to the OpenRouter default URL when absent). Add a test that saves a key and model and asserts the orchestrator is reinitialized with the preserved base URL.
+----
+Priority:   65
+Status: Done
+ID: dailymodel-t46y
+Created: 2026-10-17T01:00:44Z
+Updated: 2026-10-17T07:38:20Z
+
+The Bluesky reply path ignores the daily model rotation. src/oblique-task-factory.ts:232 logs `getDailyModel()` for display, but generateLLMResponseWithRetry (called at line 238) builds its request as `{ conversation, temperature, maxTokens }` with no `model` field, so the OpenRouter client falls back to `config.openrouter.model` and every public reply uses the configured model. The chat path (createObliqueMessageTask) does pass `getDailyModel()`, so the two paths silently disagree and the console log claims a model that was not used. The rotation exists so 15 models can be compared on identical public traffic, which only works on the reply path. Fix: pass `model: getDailyModel()` into the reply path's request, and assert in a test that the model reaching the client matches the daily rotation.
+----
 Priority:    0
 Status: Done
 ID: extract-resp-juwa

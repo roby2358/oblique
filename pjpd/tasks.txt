@@ -1,11 +1,3 @@
-Priority:   85
-Status: ToDo
-ID: cfgsave-5vpt
-Created: 2026-10-17T01:00:06Z
-Updated: 2026-10-17T01:00:06Z
-
-Saving configuration from the Configure panel always throws. src/configurePanel.ts:22 reads `config.openrouter?.baseUrl.openrouter.baseUrl` — but `baseUrl` is a string, so `.openrouter` is undefined and the final `.baseUrl` raises a TypeError. The handler dies before `initializeOrchestrator(config)` runs, so clicking Save never takes effect and the user sees only the optimistic "Configuration updated" message that was already appended. Fix: use `config.openrouter?.baseUrl` (falling back to the OpenRouter default URL when absent). Add a test that saves a key and model and asserts the orchestrator is reinitialized with the preserved base URL.
-----
 Priority:   75
 Status: ToDo
 ID: postconfirm-t9r8
@@ -37,14 +29,6 @@ Created: 2025-10-19T19:33:57Z
 Updated: 2025-10-19T19:33:57Z
 
 Refactor createSendToLLMTask to move notification handling logic higher up in the call stack and pass only the final prompt to the function instead of raw notification data
-----
-Priority:   65
-Status: ToDo
-ID: dailymodel-t46y
-Created: 2026-10-17T01:00:44Z
-Updated: 2026-10-17T01:00:44Z
-
-The Bluesky reply path ignores the daily model rotation. src/oblique-task-factory.ts:232 logs `getDailyModel()` for display, but generateLLMResponseWithRetry (called at line 238) builds its request as `{ conversation, temperature, maxTokens }` with no `model` field, so the OpenRouter client falls back to `config.openrouter.model` and every public reply uses the configured model. The chat path (createObliqueMessageTask) does pass `getDailyModel()`, so the two paths silently disagree and the console log claims a model that was not used. The rotation exists so 15 models can be compared on identical public traffic, which only works on the reply path. Fix: pass `model: getDailyModel()` into the reply path's request, and assert in a test that the model reaching the client matches the daily rotation.
 ----
 Priority:   65
 Status: ToDo

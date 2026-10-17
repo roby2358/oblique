@@ -34,7 +34,7 @@ IDs are never renumbered. Rules are cited by ID, never by section number.
 | R-14 | Text at or under `MAX_BLUESKY_REPLY_CHARS`; text over it ending in each of `. ! ? , : ; — – … (` and newline; text over it with no punctuation; punctuation at index 0; empty string. Separately: a model returning an over-long response then a short one; a model over-long on all `LLM_MAX_ATTEMPTS` | Short text is returned unchanged. Over-long text is cut at the last punctuation at or before `MAX_BLUESKY_REPLY_CHARS`, with the mark itself dropped; with no punctuation it is cut at `MAX_BLUESKY_REPLY_CHARS`; punctuation at index 0 falls through to the plain cut. The retry loop returns the first response at or under `MAX_BLUESKY_REPLY_CHARS` and truncates only after the last attempt. | automated |
 | R-15 | `notificationReplyTo` for a message with `replyInfo.root`, and for one without | With `replyInfo`: root is the thread root, parent is the message. Without: both root and parent are the message itself. | not yet covered |
 | R-16 | `createPostReplyTask(...).process()` with text, for a post that resolves and one that rejects; with a like that rejects; with `''`; with whitespace only; when `notificationReplyTo`, `like` or `post` throws synchronously | Text yields a `waiting` successor and nothing is claimed until Bluesky answers: the like is dispatched before the post, and on resolve the callback receives a `succeeded` successor one version later whose `work` is the reply text plus an appended line `Posted: <the URI Bluesky returned>`. On reject the callback receives a `dead` successor whose appended `work` line is prefixed `Failed to post:`. A rejected like is logged and the reply still succeeds. Blank text posts nothing and does not even like, yielding a `dead` successor whose appended `work` line is `Failed to post: Refusing to post an empty reply`. A synchronous throw yields a `dead` successor, with no waiting snapshot. | automated |
-| R-17 | The full reply chain v1 → v5 driven through the orchestrator | Every snapshot shares one `taskId`, with versions 1 … 5; sorting a chain's snapshots by version reproduces the execution trace, which `work` carries too — one appended line per step, none of them overwritten; v2 and v4 are `waiting`, v1 and v3 are `ready`, v5 is terminal. | automated |
+| R-17 | The full reply chain v1 → v5 driven through the orchestrator; separately `createReplyTask` alone, for a notification with text and one without | Every snapshot shares one `taskId`, with versions 1 … 5; sorting a chain's snapshots by version reproduces the execution trace, which `work` carries too — one appended line per step, none of them overwritten; v2 and v4 are `waiting`, v1 and v3 are `ready`, v5 is terminal. v1 states its own fields over the factory base: `work` is `['<thinking>']` and `conversation` is the notification text as a single `user` message, or the fallback text when the notification has none. | automated |
 | R-18 | `createObliqueMessageTask` with a client that resolves, and one that rejects | Returns a `waiting` snapshot immediately. On resolve, `onComplete` receives a `succeeded` successor whose `work` gains the extracted response as its last line and whose `conversation` gains the assistant turn. On reject, a `dead` successor whose appended `work` line starts `Error:`. | automated |
 | R-19 | `/config.json` complete; partial; absent; returning a non-OK status; containing malformed JSON. Separately, `initializeConfig` then `getConfig` | A complete file is returned exactly as written, with nothing added. A partial file stays partial — no field is filled in. The last three warn and yield `{}` rather than throwing, so the page still loads. `getConfig` returns what was loaded. | automated |
 | R-20 | `ensureAuth` with no prior session; with a token expiring beyond `TOKEN_REFRESH_BUFFER_MS`; with one expiring inside it; a login that rejects; a session JWT with no `exp`, with a malformed payload, and with fewer than three segments | Logs in in cases 1 and 3, skips in case 2. A rejected login leaves `authenticated` false and `tokenExpiresAt` null. Each malformed-JWT case falls back to `TOKEN_DEFAULT_TTL` rather than throwing. | not yet covered |
@@ -100,8 +100,8 @@ anything until one exists.
 
 ## Status
 
-**As of 2026-10-17.** `npm test` runs 18 suites, 178 tests, and passes, and `npx tsc --noEmit`
-reports no errors. There is no build step to check.
+**As of 2026-10-17.** `npm test` passes and `npx tsc --noEmit` reports no errors. There is no
+build step to check. Counts come from the test command and are not copied here.
 
 ### Not yet covered
 
@@ -125,8 +125,10 @@ close. R-21 needs the poller's dependencies injected rather than imported.
   `MAX_BLUESKY_REPLY_CHARS` is accepted without a second call, one character over is asked
   again and the short second response is the one posted. Not covered: that truncation happens
   only on the final attempt.
-- **R-17** — the integration test follows the chain to v3 and stops there; it does not process
-  the post task, so the `waiting` v4 and the terminal v5 are covered only by R-16.
+- **R-17** — v1's own fields are covered directly, but the integration test follows the chain
+  to v3 and stops there; it does not process the post task, so the `waiting` v4 and the
+  terminal v5 are covered only by R-16, and v2 inheriting v1's `conversation` is covered only
+  by R-1.
 - **R-18** — construction and the resolve path are covered; the reject path is not.
 - **R-21** — only the polling *toggle* handler and the interval clamp (U-7) are covered;
   `checkNotifications` itself is not.

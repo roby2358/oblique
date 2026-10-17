@@ -1,5 +1,5 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
-import { createSendToLLMTask, truncateAtLastPunctuation } from '../src/oblique-task-factory.js';
+import { createReplyTask, createSendToLLMTask, truncateAtLastPunctuation } from '../src/oblique-task-factory.js';
 import { MAX_BLUESKY_REPLY_CHARS } from '../src/reply-length.js';
 import { getConfig } from '../src/config.js';
 import type { BlueskyMessage } from '../src/types/index.js';
@@ -62,6 +62,45 @@ describe('truncateAtLastPunctuation', () => {
     const text = `${filler(200)}, ${filler(MAX_BLUESKY_REPLY_CHARS - 201)}`;
     expect(text.length).toBe(MAX_BLUESKY_REPLY_CHARS + 1);
     expect(truncateAtLastPunctuation(text)).toBe(filler(200));
+  });
+});
+
+// R-17: the first snapshot of a reply chain carries the message it is answering
+describe('createReplyTask', () => {
+  const llmClient = {} as LLMClient;
+  const blueskyClient = {} as BlueskyClient;
+  const onWaitingTaskComplete = jest.fn();
+
+  const notification: BlueskyMessage = {
+    uri: 'at://did:plc:test/app.bsky.feed.post/first123',
+    cid: 'bafyfirst123',
+    author: 'testuser.bsky.social',
+    text: 'Hello Oblique!',
+    createdAt: new Date(),
+    reason: 'mention',
+  };
+
+  it('carries the notification text as the conversation of v1', () => {
+    const task = createReplyTask(notification, llmClient, blueskyClient, onWaitingTaskComplete);
+
+    expect(task.version).toBe(1);
+    expect(task.conversation).toEqual([{ role: 'user', content: 'Hello Oblique!' }]);
+  });
+
+  it('falls back to the placeholder when the notification has no text', () => {
+    const textless = { ...notification, text: undefined } as unknown as BlueskyMessage;
+
+    const task = createReplyTask(textless, llmClient, blueskyClient, onWaitingTaskComplete);
+
+    expect(task.conversation).toEqual([{ role: 'user', content: '(no text provided)' }]);
+  });
+
+  it('keeps its own work and process rather than the factory defaults', () => {
+    const task = createReplyTask(notification, llmClient, blueskyClient, onWaitingTaskComplete);
+
+    expect(task.work).toEqual(['<thinking>']);
+    expect(task.status).toBe('ready');
+    expect(task.description).toBe('Notification from @testuser.bsky.social');
   });
 });
 

@@ -252,8 +252,7 @@ settled), **History** (dated entries, newest first).
   that every step appends to makes the latest snapshot carry the whole trace, which is what
   the observer, queue and waiting panels already serialize, and what a retry or a longer chain
   will keep adding to. A record per line carries metadata nothing reads today. Serves G-3, G-4.
-- **Evidence:** R-36 covers the append rule and `latestWork`; R-17 checks the trace end to end;
-  `just check` passes 18 suites, 167 tests.
+- **Evidence:** R-36 covers the append rule and `latestWork`; R-17 checks the trace end to end.
 
 ### D-19 One enforced limit, a smaller one advertised to the model — *Decided*
 
@@ -267,7 +266,7 @@ settled), **History** (dated entries, newest first).
   10-character margin for the overshoot. Both live in `src/reply-length.ts` because neither
   makes sense without the other, and the prompt interpolates its number rather than restating
   it in prose. Serves G-1 and the *terse* quality.
-- **Evidence:** `just check` — 18 suites, 178 tests. R-14 asserts the gate at both edges.
+- **Evidence:** `npm test` — R-14 asserts the gate at both edges.
 
 ### Deliberately left out
 
@@ -386,6 +385,18 @@ so, as `ONTOLOGY.md` now does.
 
 ## History
 
+### 2026-10-17 — The notification text survives into the first snapshot of a reply chain
+
+`createReplyTask` built v1 with `conversation` stated *before* `...newReadyTask(description)`,
+and the factory base states `conversation: undefined`, so the spread overwrote the field and
+every chain's first snapshot carried no conversation at all. Nothing broke — the conversation
+sent to the model is rebuilt from the fetched thread before the LLM call — but the Waiting and
+Observer panels showed an empty conversation for a task whose whole subject is that message.
+The spread now comes first and the explicit fields follow it, which is how the other factory
+site (`createObliqueMessageTask`) was already written. ONTOLOGY's succession rule now says the
+base is spread first and why; R-17 covers v1's own fields, with and without notification text.
+Closes `convoclob-bynk`.
+
 ### 2026-10-17 — One reply-length limit, enforced at 300 and advertised as 290
 
 Four numbers were in play and they disagreed: `MAX_BLUESKY_REPLY_CHARS` was 299, the retry
@@ -393,7 +404,7 @@ gate accepted anything under 300, and the system prompt said "less than 279 char
 one line and "299 characters or less" in another, with a third line capping the `# Response`
 section at 300. `src/reply-length.ts` now holds both numbers the system uses:
 `MAX_BLUESKY_REPLY_CHARS` 300, enforced by the gate and the truncation point alike, and
-`ADVERTISED_REPLY_CHARS` 290, interpolated into the two places the prompt states a limit. The
+`ADVERTISED_REPLY_CHARS` 290, interpolated into the three places the prompt states a limit. The
 redundant "Be terse, limit all responses to 299 characters or less" bullet lost its number
 and kept "Be terse". Settles Q-11 as D-19; `REPLY_LENGTH_GATE` leaves the numbers table,
 since the gate no longer has a number of its own. `truncateAtLastPunctuation` is exported and

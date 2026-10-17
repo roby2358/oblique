@@ -224,7 +224,9 @@ createDeadTask(prev)        -> { ...nextTask(prev), status: dead,      doneAt: n
 ```
 
 Each returns a base to be spread over; the caller supplies `process` and a `work` list made of
-the base's lines plus its own. Both factories start a chain with no lines at all, so the first
+the base's lines plus its own. The base states every field, `conversation` included, so it is
+spread *first* and the caller's fields follow it — a field written before the spread is
+silently overwritten by the base's default. Both factories start a chain with no lines at all, so the first
 line of a chain is written by the factory that starts it. The stub `process` throws, so a
 successor that forgets to define one fails loudly rather than silently doing nothing.
 
@@ -552,6 +554,13 @@ v4  (post in flight)         waiting  side effect: like, then post
                                         -> onWaitingTaskComplete(taskId, succeeded v5)
                                       on reject -> onWaitingTaskComplete(taskId, dead v5)
 ```
+
+v1 carries the notification text as its `conversation`, a single `user` message, so the
+Waiting and Observer panels show what the chain is answering; v2 inherits it. The
+conversation actually sent to the model is rebuilt from the fetched thread by
+`createObliqueConversation` and reaches the chain on v3. Because `newReadyTask` supplies a
+`conversation` of its own (`undefined`), v1 spreads the factory base *first* and states its
+own fields after it.
 
 Both promise chains are started inside the factory and the waiting snapshot is returned
 immediately, so the orchestrator never blocks. A `null` anywhere in the LLM chain (either

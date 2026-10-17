@@ -150,11 +150,12 @@ export const createReplyTask = (
   const notificationText = coalesceText(notification?.text, FALLBACK_NOTIFICATION_TEXT);
 
   const task: DrakidionTask = {
-    // This is where we need to build the conversation
-    conversation: [{ role: 'user', content: notificationText }],
-
-    // Starts new chain: fresh taskId, version 1
+    // Starts new chain: fresh taskId, version 1. Spread first, so the fields
+    // below override the factory's defaults rather than being overwritten by them.
     ...newReadyTask(description),
+
+    // The notification is the first thing said in the chain's conversation
+    conversation: [{ role: 'user', content: notificationText }],
     work: ["<thinking>"],
     process: () => {
       // When we process this task, we create a new SendToLLMTask (waiting task)

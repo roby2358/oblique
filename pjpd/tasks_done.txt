@@ -40,6 +40,14 @@ Stale and duplicate async callbacks are accepted instead of ignored. In src/drak
 ----
 Priority:   65
 Status: Done
+ID: convoclob-bynk
+Created: 2026-10-17T01:01:08Z
+Updated: 2026-10-17T18:58:32Z
+
+The notification text is silently discarded from the first snapshot of every reply chain. src/oblique-task-factory.ts:154 sets `conversation: [{ role: 'user', content: notificationText }]` and then spreads `...newReadyTask(description)` on the next line — but newReadyTask returns `conversation: undefined`, so the later spread overwrites the earlier field and v1 carries no conversation at all. The successor then falls back to `baseTask.conversation || []`. Nothing breaks, because the real conversation is rebuilt from the fetched thread before the LLM call, but the Waiting and Observer panels show an empty conversation for a task whose whole purpose is that message. Fix: move the spread first, so explicit fields override the factory defaults, and add a test asserting v1 carries the notification text.
+----
+Priority:   65
+Status: Done
 ID: dailymodel-t46y
 Created: 2026-10-17T01:00:44Z
 Updated: 2026-10-17T07:38:20Z

@@ -19,7 +19,7 @@ export const createHandleConfigure = () => {
     config.openrouter = {
       apiKey,
       model: model,
-      baseUrl: config.openrouter?.baseUrl.openrouter.baseUrl
+      baseUrl: config.openrouter?.baseUrl
     };
     
     addMessage('✅ Configuration updated. Reinitializing orchestrator...', 'system');

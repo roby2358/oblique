@@ -401,6 +401,37 @@ settled), **History** (dated entries, newest first).
   repositories, with the parent liked in the same second. The whole chain ran unattended —
   notification, thread history, generation, length check, like, reply, confirmation.
 
+### D-24 A declined reply ends the chain where it is declined — *Decided*
+
+- **Alternatives:** leave the chain `waiting` forever, which is what it did; end it
+  `succeeded`, since nothing failed; end it `dead`, as the empty-reply refusal does; run the
+  thread gate in the poll loop so no task is created at all; let R-27's unbuilt timeout sweep
+  the abandoned chains up later.
+- **Why:** restraint is normal operation, not an error, and it fires routinely — the
+  attenuation rule exists precisely because some agents need throttling. A chain that is
+  declined and never completed stays in the WaitingSet for the life of the tab, so the
+  waiting count and the Waiting panel overstate in-flight work exactly when restraint is
+  working as designed. `canceled` was declared in the status set and produced by nothing;
+  this is what it is for. `succeeded` would claim a reply that was never sent and `dead`
+  would report a failure that never happened.
+
+  Running the gate before the task is created was rejected on cost: it needs `getHistory`,
+  an ancestor walk up to `THREAD_MAX_DEPTH`, and doing up to `NOTIFICATION_BATCH` of those
+  serially inside the poll pass puts the expensive async work in the one place the
+  architecture keeps it out of. The cheap gate already runs before queuing. R-27's timeout
+  would catch the leak eventually and less precisely, and it is unbuilt.
+
+  The refusal is now acted on once, where it is made, rather than carried onward as a `null`
+  through the conversation builder, the LLM call and the post for each to re-check — the
+  last of which dropped the chain without ending it. Three null guards went with it, and
+  `shouldRespondToThread` was replaced by `threadRestraintReason`, which names the reason the
+  way `postUnreadableReason` does at the first gate. The reason is the declined chain's last
+  work line, so the Observer panel says which rule declined a reply and about whom.
+  Settles Q-5. Serves G-2 and G-3.
+- **Evidence:** `npm test` — R-42 asserts one terminal `canceled` successor, the reason in
+  the work product, and that neither the LLM nor the post is reached; R-9 asserts the reasons
+  themselves.
+
 ### Deliberately left out
 
 - **Multi-turn memory of its own.** Context is re-read from the Bluesky thread on every pass.
@@ -422,8 +453,8 @@ can write.
 
 | Abuse | Prevention | Criteria |
 |---|---|---|
-| Bot-to-bot loop burning quota | `skipForBotAttenuation`: stop when a `botList` handle holds `BOT_ATTENUATION_LIMIT` of the last `BOT_WINDOW` posts | R-9, X-4 |
-| Unbounded thread growth | `THREAD_MAX_POSTS` cap in `shouldRespondToThread` | R-9 |
+| Bot-to-bot loop burning quota | `botAttenuationReason`: stop when a `botList` handle holds `BOT_ATTENUATION_LIMIT` of the last `BOT_WINDOW` posts, and end the chain `canceled` | R-9, R-42, X-4 |
+| Unbounded thread growth | `THREAD_MAX_POSTS` cap in `threadRestraintReason` | R-9 |
 | A persistent harasser | `config.ignoreList`, checked first | R-8 |
 | Quote-post farming — quoting the bot to force a reply | Quotes are answered only when the text contains the bot's handle | R-8 |
 | Dogpiling an already-answered post | Non-mentions are skipped when the post has replies | R-8 |
@@ -456,14 +487,6 @@ difference is only in the successor the caller passes.
 **Recommendation:** keep both names — the call sites read better — but make
 `errorWaitingTask` delegate, so the duplication cannot drift. Alternatively give it a real
 difference: assert the successor is terminal.
-
-### Q-5 Refused chains leak a WaitingSet entry — *tracked as `waitleak-duk4`*
-
-When either restraint gate returns `null`, `sendReply` logs and returns without calling
-`onWaitingTaskComplete`. The chain stays `waiting` forever — harmless today because nothing
-scans the set and the tab clears it, but it means `waitingSize` overstates real work.
-**Recommendation:** add a `canceled` successor on the refusal path, which is what the status
-exists for. R-27's timeout would also catch it, less precisely.
 
 ### Q-13 The orchestrator's commands are async but never await — *tracked as `asyncorch-fenk`*
 
@@ -517,6 +540,26 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-18 — A declined reply ends its chain instead of waiting forever
+`shouldRespondToThread` returning `null` meant `sendReply` logged "Task creation aborted due
+to thread-level checks" and returned without calling `onWaitingTaskComplete`, so every chain
+the second gate refused stayed `waiting` until the tab closed. Nothing scanned the set, so no
+work was wasted, but `waitingSize` and the Waiting panel counted refusals as work in flight —
+misleading exactly when restraint was doing its job, and it does that job routinely.
+
+The refusal now ends the chain with a `canceled` successor, which is the status the state
+machine declared and nothing produced (D-24, settling Q-5). `createCanceledTask` joins
+`createSucceededTask` and `createDeadTask`; `createDeclinedTask` puts the reason in the work
+product. The gate is asked in one place, `runReplyChain`, and acted on there: a declined
+reply never reaches the LLM. It never did — `generateLLMResponseWithRetry` guarded against a
+null conversation — but the decision was carried through three stages that each re-checked
+it, and those three null guards are gone with it.
+
+`shouldRespondToThread` is replaced by `threadRestraintReason`, which names the reason rather
+than answering a boolean, as `postUnreadableReason` does at the first gate. R-9 is restated
+against it and now covers all six cases its row claimed; only two were written before. R-42
+is new.
 
 ### 2026-10-18 — Oblique answers on delve.town, which turned out to be its own network
 Begun as "point the client at another PDS" and finished somewhere else. `oblique.delve.town`

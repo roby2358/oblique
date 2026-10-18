@@ -56,6 +56,14 @@ The Bluesky reply path ignores the daily model rotation. src/oblique-task-factor
 ----
 Priority:   60
 Status: Done
+ID: waitleak-duk4
+Created: 2026-10-17T01:00:59Z
+Updated: 2026-10-18T08:56:04Z
+
+Chains refused by a restraint gate leak a waiting entry forever. In src/oblique-task-factory.ts, when shouldRespondToThread or createObliqueConversation returns null, sendReply logs "Task creation aborted due to thread-level checks" and returns without calling onWaitingTaskComplete. The chain therefore stays in the waitingSet with status 'waiting' for the life of the tab. Nothing scans the set so no work is wasted, but the waiting count shown in the status line and the Waiting panel overstates real in-flight work, which makes the UI misleading exactly when restraint is working as designed. Fix: have sendReply call onWaitingTaskComplete with a canceled successor — that is what the 'canceled' status exists for and nothing currently produces it. Assert in a test that a refused thread leaves the waitingSet empty and the chain terminal.
+----
+Priority:   60
+Status: Done
 ID: dupwaitset-tu5f
 Created: 2026-10-17T01:00:47Z
 Updated: 2026-10-17T17:41:19Z

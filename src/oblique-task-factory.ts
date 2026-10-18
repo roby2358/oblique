@@ -6,8 +6,8 @@ import type { BlueskyMessage } from './types/index.js';
 import type { LLMClient } from './hooks/llm/llm-client.js';
 import type { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
 import { createObliqueConversation, getDailyModel, getDailyGender } from './prompts/oblique.js';
-import { nextTask, createSucceededTask, createDeadTask, newReadyTask, newWaitingTask } from './drakidion/task-factories.js';
-import { shouldRespondToThread } from './bluesky-polling.js';
+import { nextTask, createSucceededTask, createCanceledTask, createDeadTask, newReadyTask, newWaitingTask } from './drakidion/task-factories.js';
+import { threadRestraintReason } from './bluesky-polling.js';
 import { MAX_BLUESKY_REPLY_CHARS } from './reply-length.js';
 
 // Punctuation considered safe boundaries for truncation (omit when cutting)
@@ -68,17 +68,12 @@ const extractResponseContent = (content: string): string | null => {
 /**
  * Generate LLM response with retry logic for length constraints
  * Retries while the response is longer than MAX_BLUESKY_REPLY_CHARS
- * Returns null if conversation is null (aborted)
  */
 const generateLLMResponseWithRetry = async (
   llmClient: LLMClient,
-  conversation: ConversationMessage[] | null,
+  conversation: ConversationMessage[],
   maxAttempts: number = 5
-): Promise<{ conversation: ConversationMessage[]; response: { content: string } } | null> => {
-  // If conversation is null (aborted), return null
-  if (!conversation) {
-    return null;
-  }
+): Promise<{ conversation: ConversationMessage[]; response: { content: string } }> => {
   let attempts = 0;
   
   while (attempts < maxAttempts) {
@@ -118,6 +113,25 @@ const generateLLMResponseWithRetry = async (
   throw new Error('Unexpected error in retry logic');
 };
 
+
+/**
+ * Terminal version of a chain a restraint rule declined.
+ *
+ * Not a failure and not a success: nothing was asked of the LLM and nothing was posted, so
+ * the chain ends `canceled` with the reason as its last work line. Ending it is the point —
+ * a declined chain that never completes sits in the WaitingSet for the life of the tab and
+ * makes the waiting count lie exactly when restraint is working (D-24).
+ */
+const createDeclinedTask = (
+  task: DrakidionTask,
+  reason: string
+): DrakidionTask => {
+  return {
+    ...createCanceledTask(task),
+    work: [...task.work, `Declined: ${reason}`],
+    conversation: task.conversation,
+  };
+};
 
 /**
  * Dead version of LLM task (on error)
@@ -174,20 +188,14 @@ export const createReplyTask = (
 
 /**
  * Send reply from LLM result
- * Handles null result case (aborted due to thread checks)
  */
 const sendReply = (
-  result: { conversation: ConversationMessage[]; response: { content: string } } | null,
+  result: { conversation: ConversationMessage[]; response: { content: string } },
   notification: BlueskyMessage,
   blueskyClient: BlueskyClient,
   task: DrakidionTask,
   onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void
 ): void => {
-  if (!result) {
-    console.log('Task creation aborted due to thread-level checks');
-    return;
-  }
-  
   const { conversation, response } = result;
   console.log('LLM response:', response.content);
 
@@ -202,6 +210,42 @@ const sendReply = (
   
   // Notify that waiting task is complete with the actual successor
   onWaitingTaskComplete(task.taskId, postTask);
+};
+
+/**
+ * Fetch the thread, ask the second gate, and either decline or answer.
+ *
+ * The gate's answer is acted on where it is given: a declined chain ends here, terminal,
+ * and never reaches the LLM. Carrying the refusal onward as a `null` through the conversation
+ * builder, the LLM call and the post would be the same decision re-checked three times, and
+ * the last of those checks used to drop the chain without ending it (D-24).
+ */
+const runReplyChain = async (
+  notification: BlueskyMessage,
+  llmClient: LLMClient,
+  blueskyClient: BlueskyClient,
+  task: DrakidionTask,
+  onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void
+): Promise<void> => {
+  const thread = await blueskyClient.getHistory(notification);
+  const declined = threadRestraintReason(thread);
+
+  if (declined) {
+    console.log(`Declining the reply to @${notification.author}: ${declined}`);
+    onWaitingTaskComplete(task.taskId, createDeclinedTask(task, declined));
+    return;
+  }
+
+  const conversation = createObliqueConversation(thread);
+
+  if (!conversation) {
+    onWaitingTaskComplete(task.taskId, createDeclinedTask(task, 'the thread made no conversation'));
+    return;
+  }
+
+  const result = await generateLLMResponseWithRetry(llmClient, conversation);
+
+  sendReply(result, notification, blueskyClient, task, onWaitingTaskComplete);
 };
 
 /**
@@ -228,17 +272,9 @@ export const createSendToLLMTask = (
     conversation: baseTask.conversation || [],
   };
   
-  // Get the unified message history
-  const getHistoryPromise = blueskyClient.getHistory(notification);
-
   console.log('Model: ', getDailyModel(), ' Gender: ', getDailyGender());
-  
-  // Fetch the thread history and create conversation with thread-level checks
-  getHistoryPromise
-    .then(thread => shouldRespondToThread(thread))
-    .then(thread => createObliqueConversation(thread))
-    .then(conversation => generateLLMResponseWithRetry(llmClient, conversation))
-    .then(result => sendReply(result, notification, blueskyClient, task, onWaitingTaskComplete))
+
+  runReplyChain(notification, llmClient, blueskyClient, task, onWaitingTaskComplete)
     .catch(error => {
       // Create dead task
       const deadTask = createSendToLLMDeadTask(task, error);

@@ -229,11 +229,12 @@ ready ──► running ──► succeeded        (work done)
                 ├──► ready             (next step, re-queued)
                 └──► dead              (threw, or the step failed)
 
-waiting ──► ready | succeeded | dead   (via the resume path, from a callback)
+waiting ──► ready | succeeded | dead | canceled   (via the resume path, from a callback)
 ```
 
-`retry` and `canceled` are declared and routed as non-queued, non-waiting statuses; no rule
-currently produces either. **[D, unbuilt]**
+`canceled` is what a restraint rule produces: terminal, but neither a success nor a failure,
+because nothing was done and nothing went wrong (D-24). `retry` is declared and routed as a
+non-queued, non-waiting status, and no rule produces it. **[D, unbuilt]**
 
 Where a snapshot lands is decided entirely by its status: `ready` → TaskQueue, `waiting` →
 WaitingSet, anything else → TaskMap only.
@@ -435,21 +436,29 @@ but the console says which.
 *Serves:* G-2. The second gate, after the full thread is in hand.
 
 ```
-shouldRespondToThread(thread):
-  if thread empty                                     -> null
-  if skipForBotAttenuation(thread)                    -> null
-  if thread.length > THREAD_MAX_POSTS                 -> null
-  -> thread
+threadRestraintReason(thread):
+  if thread empty                       -> 'the thread came back empty'
+  reason = botAttenuationReason(thread)
+  if reason                             -> reason
+  if thread.length > THREAD_MAX_POSTS   -> 'the thread is <n> posts long'
+  -> null                                                     # answer it
 
-skipForBotAttenuation(thread):
+botAttenuationReason(thread):
   recent = last BOT_WINDOW authors (normalized)
   last   = recent[-1]
-  if last not in config.botList -> false              # humans are never attenuated
-  -> count(recent == last) >= BOT_ATTENUATION_LIMIT
+  if last not in config.botList -> null               # humans are never attenuated
+  n = count(recent == last)
+  if n < BOT_ATTENUATION_LIMIT  -> null
+  -> '@<last> wrote <n> of the last <BOT_WINDOW> posts'
 ```
 
 Two bots can otherwise answer each other forever. The limit only engages when a *bot* spoke
-last, so a human can carry a long exchange without being throttled.
+last, so a human can carry a long exchange without being throttled, and it counts that one
+author rather than bots in general — three bots in rotation never trip it, two alternating do.
+
+The reason is named rather than answered with a boolean, as at the first gate: it becomes the
+last line of the declined chain's work product, so the Observer panel says which rule declined
+a reply and about whom (D-24).
 
 ### 4.10 History assembly — `getHistory` **[D]**
 
@@ -626,8 +635,11 @@ waiting snapshot.
 
 ```
 v1  createReplyTask          ready    process() -> v2
-v2  createSendToLLMTask      waiting  side effect: getHistory
-                                        -> shouldRespondToThread
+v2  createSendToLLMTask      waiting  side effect: runReplyChain
+                                        getHistory
+                                        -> threadRestraintReason
+                                           if declined -> onWaitingTaskComplete(taskId,
+                                                            canceled v3); stop here
                                         -> createObliqueConversation
                                         -> generateLLMResponseWithRetry
                                         -> onWaitingTaskComplete(taskId, v3)
@@ -647,10 +659,14 @@ conversation actually sent to the model is rebuilt from the fetched thread by
 own fields after it.
 
 Both promise chains are started inside the factory and the waiting snapshot is returned
-immediately, so the orchestrator never blocks. A `null` anywhere in the LLM chain (either
-restraint gate) means `sendReply` logs and returns without calling back — the chain stays
-`waiting` forever and is garbage only when the tab closes. Deliberate: a refusal is not a
-failure, and there is no "abandoned" status to move it to.
+immediately, so the orchestrator never blocks.
+
+A refusal ends the chain where the refusal is made. `runReplyChain` asks the second gate as
+soon as the thread is in hand and, if it is declined, completes the chain with a `canceled`
+successor carrying the reason — before the conversation is built, so a declined reply never
+costs an LLM call. The gate's answer is acted on once rather than carried onward as a `null`
+for each later stage to re-check, and the chain leaves the WaitingSet, so the waiting count
+counts work actually in flight (D-24).
 
 ### 4.18 The chat chain **[D]**
 
@@ -914,9 +930,9 @@ tests. The code is the single source; the value here is a copy.
 | `LLM_MAX_TOKENS` | 8000 | tokens | both LLM paths | D-10 |
 | `OPENROUTER_FALLBACK_TEMPERATURE` | 0.7 | — | `openrouter.ts` | D-10 |
 | `OPENROUTER_FALLBACK_MAX_TOKENS` | 500 | tokens | `openrouter.ts` | D-10 |
-| `THREAD_MAX_POSTS` | 60 | posts | `shouldRespondToThread` | D-7 |
-| `BOT_WINDOW` | 8 | posts | `skipForBotAttenuation` | D-7 |
-| `BOT_ATTENUATION_LIMIT` | 4 | posts | `skipForBotAttenuation` | D-7 |
+| `THREAD_MAX_POSTS` | 60 | posts | `threadRestraintReason` | D-7 |
+| `BOT_WINDOW` | 8 | posts | `botAttenuationReason` | D-7 |
+| `BOT_ATTENUATION_LIMIT` | 4 | posts | `botAttenuationReason` | D-7 |
 | `THREAD_MAX_DEPTH` | 25 | ancestors | `getHistory` | D-8 |
 | `NOTIFICATION_BATCH` | 50 | notifications | `checkAccount` | D-11 |
 | `POLL_DEFAULT_S` | 120 | seconds | `getPollIntervalSeconds`, and again as the `#poll-interval` value in `index.html` | D-11 |

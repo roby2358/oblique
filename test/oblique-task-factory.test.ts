@@ -269,6 +269,110 @@ describe('createSendToLLMTask quote post handling', () => {
   });
 });
 
+// R-42: a chain a restraint rule declines ends terminal, and never reaches the LLM
+describe('createSendToLLMTask under thread restraint', () => {
+  let mockLLMClient: LLMClient;
+  let mockBlueskyClient: BlueskyClient;
+  let mockOnWaitingTaskComplete: jest.Mock;
+  let mockPredecessor: DrakidionTask;
+
+  const notification: BlueskyMessage = {
+    uri: 'at://did:plc:test/app.bsky.feed.post/flood',
+    cid: 'bafyflood',
+    author: 'bot.alpha',
+    text: 'again',
+    createdAt: new Date(),
+    reason: 'reply',
+  };
+
+  // bot.alpha holds 4 of the last 8, so the attenuation rule declines the thread
+  const floodedThread = [
+    'user.one', 'user.two', 'bot.alpha', 'user.three',
+    'bot.alpha', 'bot.alpha', 'user.four', 'bot.alpha',
+  ].map(author => ({ author, text: 'x' }));
+
+  beforeEach(() => {
+    const config = getConfig();
+    config.botList = ['bot.alpha'];
+    config.ignoreList = [];
+    config.openrouter = {
+      apiKey: 'sk-or-v1-test',
+      models: ['anthropic/claude-sonnet-4.5'],
+      rotate: false,
+      baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    };
+
+    mockLLMClient = { generateResponse: jest.fn() } as any;
+    mockBlueskyClient = { getHistory: jest.fn(), post: jest.fn(), like: jest.fn() } as any;
+    mockOnWaitingTaskComplete = jest.fn();
+
+    mockPredecessor = {
+      taskId: 'declined-task-1',
+      version: 1,
+      status: 'ready',
+      description: 'Test predecessor',
+      work: ['Test work'],
+      conversation: [{ role: 'user', content: 'again' }],
+      createdAt: new Date(),
+      process: () => ({} as DrakidionTask),
+    };
+
+    (mockBlueskyClient.getHistory as jest.MockedFunction<any>).mockResolvedValue(floodedThread);
+  });
+
+  it('ends the chain rather than leaving it waiting', async () => {
+    createSendToLLMTask(
+      notification,
+      mockLLMClient,
+      mockBlueskyClient,
+      mockOnWaitingTaskComplete,
+      mockPredecessor
+    );
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    expect(mockOnWaitingTaskComplete).toHaveBeenCalledTimes(1);
+
+    const [taskId, successor] = mockOnWaitingTaskComplete.mock.calls[0] as [string, DrakidionTask];
+
+    expect(taskId).toBe('declined-task-1');
+    expect(successor.status).toBe('canceled');
+    expect(successor.doneAt).toBeInstanceOf(Date);
+  });
+
+  it('says which rule declined it, in the work product', async () => {
+    createSendToLLMTask(
+      notification,
+      mockLLMClient,
+      mockBlueskyClient,
+      mockOnWaitingTaskComplete,
+      mockPredecessor
+    );
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    const [, successor] = mockOnWaitingTaskComplete.mock.calls[0] as [string, DrakidionTask];
+
+    expect(successor.work[successor.work.length - 1])
+      .toBe('Declined: @bot.alpha wrote 4 of the last 8 posts');
+  });
+
+  it('never asks the LLM for a reply it has already declined', async () => {
+    createSendToLLMTask(
+      notification,
+      mockLLMClient,
+      mockBlueskyClient,
+      mockOnWaitingTaskComplete,
+      mockPredecessor
+    );
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    expect(mockLLMClient.generateResponse).not.toHaveBeenCalled();
+    expect(mockBlueskyClient.post).not.toHaveBeenCalled();
+  });
+});
+
 // R-16: posting the reply — the refusal to post nothing, and success only on confirmation
 describe('createPostReplyTask', () => {
   const notification: BlueskyMessage = {

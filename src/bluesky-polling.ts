@@ -134,64 +134,53 @@ export const shouldRespondToNotification = (
 };
 
 /**
- * Check if we should skip a thread based on bot activity in recent messages
- * Only applies bot count filtering if the last author is a bot
- * @param thread - The full thread history
- * @returns true if we should skip the thread, false if we should continue
+ * Why the bot that spoke last is being throttled, or `null` when it is not.
+ *
+ * Two bots can otherwise answer each other forever. The count is of that one author, not of
+ * bots in general, and the limit only engages when a bot spoke last — a human can carry a
+ * long exchange without being throttled (D-7).
  */
-const skipForBotAttenuation = (thread: BlueskyHistoryEntry[]): boolean => {
-  const config = getConfig();
-  const botList = config.botList;
-  // Check the last 8 authors in the thread
-  const lastEightMessages = thread.slice(-8);
-  const lastEightAuthors = lastEightMessages.map(entry => normalizeHandle(entry.author));
-  const lastAuthor = lastEightAuthors[lastEightAuthors.length - 1];
-  const isLastAuthorBot = botList.includes(lastAuthor);
+const botAttenuationReason = (thread: BlueskyHistoryEntry[]): string | null => {
+  const recent = thread.slice(-8).map(entry => normalizeHandle(entry.author));
+  const lastAuthor = recent[recent.length - 1];
 
-  console.log(`All bots: ${botList.join('|')}`);
-  console.log(`Last 8 authors: ${lastEightAuthors.join('|')}`);
-  console.log(`Last message author: ${lastAuthor} bot? ${isLastAuthorBot}`);
+  console.log(`Last ${recent.length} authors: ${recent.join('|')}`);
 
-  // Only check bot count if the last author is a bot
-  if (isLastAuthorBot) {
-    const messagesFromLastAuthor = lastEightAuthors.filter(author => author === lastAuthor).length;
-    console.log(`Messages from last author (${lastAuthor}) in last 8: ${messagesFromLastAuthor}`);
-
-    if (messagesFromLastAuthor >= 4) {
-      console.log(`Skipping thread: Last author ${lastAuthor} has ${messagesFromLastAuthor} messages in last 8 (>= 4 limit)`);
-      return true;
-    }
+  if (!getConfig().botList.includes(lastAuthor)) {
+    return null;
   }
 
-  return false;
+  const fromLastAuthor = recent.filter(author => author === lastAuthor).length;
+
+  if (fromLastAuthor < 4) {
+    return null;
+  }
+
+  return `@${lastAuthor} wrote ${fromLastAuthor} of the last ${recent.length} posts`;
 };
 
 /**
- * This is the second check against the whole thread to see if we should respond.
- * This examines the full conversation context to make more sophisticated decisions.
- * @param thread - The full thread history
- * @returns The thread if we should respond, null if we should not
+ * Why the thread should be left alone, or `null` when it should be answered. The second
+ * gate, against the whole conversation rather than the one notification.
+ *
+ * Named rather than answered with a boolean, the way `postUnreadableReason` is at the first
+ * gate: a chain that is declined says in its own work product which rule declined it, so
+ * restraint is legible in the observer panel instead of silent (D-24).
  */
-export const shouldRespondToThread = (thread: BlueskyHistoryEntry[]): BlueskyHistoryEntry[] | null => {
-  // If thread is empty, don't respond
+export const threadRestraintReason = (thread: BlueskyHistoryEntry[]): string | null => {
   if (!thread || thread.length === 0) {
-    return null;
+    return 'the thread came back empty';
   }
 
-  // Check if we should skip due to bot activity
-  if (skipForBotAttenuation(thread)) {
-    console.log(`Skipping thread: Bot attenuation`);
-    return null;
+  const attenuated = botAttenuationReason(thread);
+
+  if (attenuated) {
+    return attenuated;
   }
 
-  // Check if the thread is too long (avoid very long conversations)
   if (thread.length > 60) {
-    console.log(`Skipping thread: Thread is too long (${thread.length} messages)`);
-    return null;
+    return `the thread is ${thread.length} posts long`;
   }
-  
-  // Past both checks: respond. See ARCHITECTURE_LOG.md D-6.
-  console.log(`✓ Thread passed thread-level checks (${thread.length} messages)`);
-  return thread;
-};
 
+  return null;
+};

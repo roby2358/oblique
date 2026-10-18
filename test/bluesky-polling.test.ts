@@ -226,53 +226,83 @@ describe('Bluesky Polling Module', () => {
     });
   });
 
-  describe('shouldRespondToThread', () => {
-    it('skips threads when the last author is a bot with 4 or more of the last 8 posts', async () => {
+  describe('threadRestraintReason', () => {
+    const withBots = (botList: string[]) => {
       getConfigMock.mockReturnValue({
         ignoreList: [],
-        botList: ['bot.alpha'],
+        botList,
         bluesky: { handle: 'oblique.yuwakisa.com' },
       });
+    };
 
-      const thread = [
-        { author: 'user.one' },
-        { author: 'user.two' },
-        { author: '@bot.alpha' },
-        { author: 'user.three' },
-        { author: '@bot.alpha' },
-        { author: '@bot.alpha' },
-        { author: 'user.four' },
-        { author: '@bot.alpha' },
-      ];
+    const posts = (authors: string[]) => authors.map(author => ({ author, text: 'x' }));
 
-      const { shouldRespondToThread } = await import('../src/bluesky-polling.js');
-      const result = shouldRespondToThread(thread as any);
+    it('declines a thread that came back empty', async () => {
+      withBots([]);
 
-      expect(result).toBeNull();
+      const { threadRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(threadRestraintReason([])).toBe('the thread came back empty');
     });
 
-    it('continues threads when the last author bot appears fewer than 4 times in the last 8 posts', async () => {
-      getConfigMock.mockReturnValue({
-        ignoreList: [],
-        botList: ['bot.alpha'],
-        bluesky: { handle: 'oblique.yuwakisa.com' },
-      });
+    it('declines a bot holding 4 of the last 8 posts, and says which bot', async () => {
+      withBots(['bot.alpha']);
 
-      const thread = [
-        { author: 'user.one' },
-        { author: 'user.two' },
-        { author: '@bot.alpha' },
-        { author: 'user.three' },
-        { author: 'user.four' },
-        { author: '@bot.alpha' },
-        { author: 'user.five' },
-        { author: '@bot.alpha' },
-      ];
+      const thread = posts([
+        'user.one', 'user.two', '@bot.alpha', 'user.three',
+        '@bot.alpha', '@bot.alpha', 'user.four', '@bot.alpha',
+      ]);
 
-      const { shouldRespondToThread } = await import('../src/bluesky-polling.js');
-      const result = shouldRespondToThread(thread as any);
+      const { threadRestraintReason } = await import('../src/bluesky-polling.js');
 
-      expect(result).toEqual(thread);
+      // the reason reaches the declined chain's work product, so it names the author
+      expect(threadRestraintReason(thread as any)).toBe('@bot.alpha wrote 4 of the last 8 posts');
+    });
+
+    it('answers a bot holding only 3 of the last 8 posts', async () => {
+      withBots(['bot.alpha']);
+
+      const thread = posts([
+        'user.one', 'user.two', '@bot.alpha', 'user.three',
+        'user.four', '@bot.alpha', 'user.five', '@bot.alpha',
+      ]);
+
+      const { threadRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(threadRestraintReason(thread as any)).toBeNull();
+    });
+
+    it('never attenuates a human, however much of the thread is theirs', async () => {
+      withBots(['bot.alpha']);
+
+      const thread = posts([
+        'user.one', 'chatty.human', 'chatty.human', 'chatty.human',
+        'user.two', 'chatty.human', 'chatty.human', 'chatty.human',
+      ]);
+
+      const { threadRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(threadRestraintReason(thread as any)).toBeNull();
+    });
+
+    it('declines a thread one post past the limit, and says how long it is', async () => {
+      withBots([]);
+
+      const thread = posts(Array.from({ length: 61 }, (_, index) => `user.${index}`));
+
+      const { threadRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(threadRestraintReason(thread as any)).toBe('the thread is 61 posts long');
+    });
+
+    it('answers an ordinary thread', async () => {
+      withBots(['bot.alpha']);
+
+      const thread = posts(['user.one', 'user.two', 'user.one']);
+
+      const { threadRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(threadRestraintReason(thread as any)).toBeNull();
     });
   });
 

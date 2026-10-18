@@ -80,7 +80,24 @@ export const createSucceededTask = (
 };
 
 /**
- * General helper to create a succeeded version of any task
+ * General helper to create a canceled version of any task.
+ *
+ * A chain is canceled when a rule declines it: nothing failed and nothing was done, so it is
+ * neither succeeded nor dead. Terminal, so the chain leaves the WaitingSet rather than
+ * sitting there for the life of the tab (D-24).
+ */
+export const createCanceledTask = (
+  task: DrakidionTask
+): DrakidionTask => {
+  return {
+    ...nextTask(task),
+    status: 'canceled',
+    doneAt: new Date(),
+  };
+};
+
+/**
+ * General helper to create a dead version of any task
  */
 export const createDeadTask = (
   task: DrakidionTask

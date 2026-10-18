@@ -31,7 +31,17 @@
   },
   "bluesky": {
     "handle": "",
-    "password": ""
+    "password": "",
+    "service": "https://bsky.social",
+    "appview": "did:web:api.bsky.app#bsky_appview",
+    "lexicon": "app.bsky"
+  },
+  "delvetown": {
+    "handle": "",
+    "password": "",
+    "service": "https://pds.delve.town",
+    "appview": "did:web:api.delve.town#bsky_appview",
+    "lexicon": "town.delve"
   },
   "ignoreList": [],
   "botList": []

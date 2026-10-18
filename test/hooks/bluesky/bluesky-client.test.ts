@@ -1,13 +1,19 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { BlueskyClient } from '../../../src/hooks/bluesky/bluesky-client.js';
 import type { BlueskyMessage } from '../../../src/types/index.js';
+import { threadAgent } from '../../helpers/thread-agent.js';
+
+
 
 describe('BlueskyClient', () => {
   let client: BlueskyClient;
   let authenticateSpy: jest.SpiedFunction<BlueskyClient['authenticate']>;
   const mockConfig = {
     handle: 'test.bsky.social',
-    appPassword: 'test-password'
+    appPassword: 'test-password',
+    service: 'https://bsky.social',
+    appview: 'did:web:api.bsky.app#bsky_appview',
+    lexicon: 'app.bsky'
   };
 
   const mockNotification: BlueskyMessage = {
@@ -39,9 +45,7 @@ describe('BlueskyClient', () => {
         reason: 'quote',
       };
 
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
       
       // Mock the first call to get the quote post
       (mockAgent.getPostThread as any).mockResolvedValueOnce({
@@ -111,9 +115,7 @@ describe('BlueskyClient', () => {
         reason: 'quote',
       };
 
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
       
       // Mock the first call to get the quote post
       (mockAgent.getPostThread as any).mockResolvedValueOnce({
@@ -180,9 +182,7 @@ describe('BlueskyClient', () => {
         reason: 'quote',
       };
 
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
       (mockAgent.getPostThread as any).mockResolvedValue({
         data: {
           thread: null
@@ -208,9 +208,7 @@ describe('BlueskyClient', () => {
         reason: 'quote',
       };
 
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
       (mockAgent.getPostThread as any).mockRejectedValue(new Error('API Error'));
       (client as any).agent = mockAgent;
 
@@ -232,9 +230,7 @@ describe('BlueskyClient', () => {
         reason: 'quote',
       };
 
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
       
       // Mock the first call to get the quote post with images
       (mockAgent.getPostThread as any).mockResolvedValueOnce({
@@ -303,9 +299,7 @@ describe('BlueskyClient', () => {
         reason: 'quote',
       };
 
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
       
       // Mock the first call to get the quote post
       (mockAgent.getPostThread as any).mockResolvedValueOnce({
@@ -371,9 +365,7 @@ describe('BlueskyClient', () => {
       const mockGetPostThread: any = jest.fn();
       mockGetPostThread.mockRejectedValue(new Error('API Error') as any);
 
-      const mockAgent = {
-        getPostThread: mockGetPostThread,
-      };
+      const mockAgent = threadAgent(mockGetPostThread);
 
       (client as any).agent = mockAgent;
 
@@ -391,9 +383,7 @@ describe('BlueskyClient', () => {
 
   describe('getOnePostHistory', () => {
     it('should return post data with alt texts when post exists', async () => {
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
       
       (mockAgent.getPostThread as any).mockResolvedValue({
         data: {
@@ -431,9 +421,7 @@ describe('BlueskyClient', () => {
     });
 
     it('should include quoted post content when post quotes another post', async () => {
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
       
       // Mock the first call to get the current post
       (mockAgent.getPostThread as any).mockResolvedValueOnce({
@@ -494,9 +482,7 @@ describe('BlueskyClient', () => {
     });
 
     it('should include quoted post content with alt texts when both posts have images', async () => {
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
       
       // Mock the first call to get the current post with images
       (mockAgent.getPostThread as any).mockResolvedValueOnce({
@@ -563,9 +549,7 @@ describe('BlueskyClient', () => {
     });
 
     it('should fallback to basic message when post does not exist', async () => {
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
       
       (mockAgent.getPostThread as any).mockResolvedValue({
         data: {
@@ -584,9 +568,7 @@ describe('BlueskyClient', () => {
     });
 
     it('should fallback to basic message when API call fails', async () => {
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
       
       (mockAgent.getPostThread as any).mockRejectedValue(new Error('API Error'));
       
@@ -601,9 +583,7 @@ describe('BlueskyClient', () => {
     });
 
     it('should continue with current post if quoted post fetch fails', async () => {
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
       
       // Mock the first call to get the current post (with quote)
       (mockAgent.getPostThread as any).mockResolvedValueOnce({
@@ -637,9 +617,7 @@ describe('BlueskyClient', () => {
     });
 
     it('should not fetch quoted post if embed.record.uri is not present', async () => {
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
       
       (mockAgent.getPostThread as any).mockResolvedValue({
         data: {
@@ -668,9 +646,7 @@ describe('BlueskyClient', () => {
 
   describe('hasRepliesToPost', () => {
     it('should return true when post has direct replies', async () => {
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
       (mockAgent.getPostThread as any).mockResolvedValue({
         data: {
           thread: {
@@ -695,9 +671,7 @@ describe('BlueskyClient', () => {
     });
 
     it('should return false when post has no direct replies', async () => {
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
       (mockAgent.getPostThread as any).mockResolvedValue({
         data: {
           thread: {
@@ -714,9 +688,7 @@ describe('BlueskyClient', () => {
     });
 
     it('should return false when replies property is undefined', async () => {
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
       (mockAgent.getPostThread as any).mockResolvedValue({
         data: {
           thread: {
@@ -739,9 +711,7 @@ describe('BlueskyClient', () => {
       const mockGetPostThread: any = jest.fn();
       mockGetPostThread.mockRejectedValue(new Error('AuthMissing') as any);
 
-      const mockAgent = {
-        getPostThread: mockGetPostThread,
-      };
+      const mockAgent = threadAgent(mockGetPostThread);
 
       (client as any).agent = mockAgent;
 

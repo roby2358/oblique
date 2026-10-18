@@ -6,6 +6,9 @@ describe('BlueskyClient like functionality', () => {
   const mockConfig = {
     handle: 'test.bsky.social',
     appPassword: 'test-password',
+    service: 'https://bsky.social',
+    appview: 'did:web:api.bsky.app#bsky_appview',
+    lexicon: 'app.bsky',
   };
   let mockGetRecord: any;
   let mockCreateRecord: any;

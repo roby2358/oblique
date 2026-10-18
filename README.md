@@ -22,7 +22,8 @@ speculative belongs in `ARCHITECTURE_LOG.md`.
 
 - Node.js 18 or later
 - An [OpenRouter API key](https://openrouter.ai/keys)
-- A Bluesky handle and app password, to reply to notifications
+- A Bluesky handle and password, to reply to notifications. One account per network it
+  answers on, each with a credential that network will accept
 
 ### Install
 
@@ -48,7 +49,17 @@ Copy `config-example.json` to `config.json` and fill it in:
   },
   "bluesky": {
     "handle": "your-handle.bsky.social",
-    "password": "your-app-password"
+    "password": "your-app-password",
+    "service": "https://bsky.social",
+    "appview": "did:web:api.bsky.app#bsky_appview",
+    "lexicon": "app.bsky"
+  },
+  "delvetown": {
+    "handle": "your-handle.delve.town",
+    "password": "your-app-password",
+    "service": "https://pds.delve.town",
+    "appview": "did:web:api.delve.town#bsky_appview",
+    "lexicon": "town.delve"
   },
   "ignoreList": [],
   "botList": []
@@ -70,14 +81,41 @@ an edit. `rotate` false — the shipped default — always uses the first entry,
 model means putting it first. Set it true to walk the list one entry per UTC day, giving the
 bot one character a day and a different one tomorrow.
 
+`bluesky` and `delvetown` are **account sections**: Oblique signs in to every one that is
+filled in and polls them all into the same task queue, so one page answers on both networks
+and a reply goes back to the network it came from. Leave a section blank to run on one
+network only. A network is three things, and they vary independently:
+
+- **`service`** — the PDS that holds the account's repository, where it signs in and writes.
+  ATProto authenticates at that PDS, not at a central entryway, so the credential is checked
+  against its own record of the account. An account password is whatever you set there, and
+  two accounts may happily share one; an *app password* is a record its issuing PDS created
+  and no other PDS knows about, so each account needs its own.
+- **`appview`** — who answers reads about it, as an `atproto-proxy` header value. The PDS
+  forwards the call there with a service-auth token. Bluesky's PDS forwards `app.bsky.*` to
+  Bluesky's AppView even without the header, but that is a convenience on its way out and no
+  other PDS offers it.
+- **`lexicon`** — what the records are called. **delve.town is not a Bluesky PDS with another
+  hostname**: it is a separate network whose lexicon is a fork of `app.bsky.*` published as
+  `town.delve.*`. The two share only a DID, and a post in one is invisible in the other.
+
+Adding a third network means a section here with those three endpoints and one entry in
+`ACCOUNT_SECTIONS` in `src/bluesky-accounts.ts`. Nothing else: a lexicon the SDK does not
+ship is fetched from the authority its own NSID names (`town.delve` → `delve.town`).
+
+After changing any of the three, run `just cc-smoke` — a live, read-only check that each
+account can sign in, list its notifications and read a thread. The unit suite never signs in,
+so it cannot tell you this.
+
 `ignoreList` holds handles never replied to. `botList` holds handles treated as bots, which
-the attenuation rule uses to stop bot-to-bot loops.
+the attenuation rule uses to stop bot-to-bot loops. Both apply to every account.
 
 ### Run
 
 ```
 npm run dev      # Vite dev server on http://localhost:5173
 npm test         # Jest
+just cc-smoke    # live read-only check that every configured account is reachable
 npx tsc --noEmit # type-check
 ```
 
@@ -118,8 +156,10 @@ src/
 ├── hooks/
 │   ├── llm/                 # LLMClient interface, OpenRouter implementation
 │   └── bluesky/             # BlueskyClient: auth, notifications, history, post, like
+│                             # lexicon.ts: teaching the SDK a network's own lexicon
 ├── prompts/oblique.ts   # system prompt, the four lenses, daily model and voice rotation
 ├── oblique-task-factory.ts  # the reply chain and the chat chain
+├── bluesky-accounts.ts  # the config sections that name an account, and the clients built from them
 ├── bluesky-polling.ts   # the two restraint gates
 ├── config.ts            # config.json loading
 ├── types/index.ts       # shared wire types

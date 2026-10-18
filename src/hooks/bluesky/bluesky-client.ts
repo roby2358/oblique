@@ -1,11 +1,32 @@
 // Bluesky API client
 import { BskyAgent } from '@atproto/api';
 import { XRPCError } from '@atproto/xrpc';
+import { registerLexicon } from './lexicon.js';
 import type { BlueskyPost, BlueskyMessage } from '../../types/index.js';
 
 export interface BlueskyConfig {
   handle: string;
   appPassword: string;
+  /**
+   * The PDS that hosts this account, e.g. `https://bsky.social` or `https://pds.delve.town`.
+   * ATProto authenticates at the host, not at a central entryway: the credential is checked
+   * against this PDS's own record of the account, so the wrong value here fails at login
+   * (R-38).
+   */
+  service: string;
+  /**
+   * The AppView that answers this account's reads, as an `atproto-proxy` header value:
+   * `<did>#<service id>`. The PDS forwards the call there with a service-auth token. The
+   * reference PDS forwards `app.bsky.*` to Bluesky's AppView by default, but that is a
+   * convenience on its way out and no other PDS owes it, so the AppView is always named
+   * (D-23).
+   */
+  appview: string;
+  /**
+   * The NSID prefix of the lexicon this network speaks — `app.bsky` for Bluesky,
+   * `town.delve` for delve.town. Every method and record type is built from it.
+   */
+  lexicon: string;
 }
 
 export interface BlueskyHistoryEntry {
@@ -21,8 +42,48 @@ export class BlueskyClient {
   // Re-authenticate 5 minutes before expiration to be safe
   private readonly TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
+  private lexiconRegistered = false;
+
   constructor(private config: BlueskyConfig) {
-    this.agent = new BskyAgent({ service: 'https://bsky.social' });
+    this.agent = new BskyAgent({ service: config.service });
+    // Service proxying is an HTTP header, and the SDK's own `withProxy` predates it: its
+    // types admit `atproto_labeler` and nothing else. The header is set directly instead.
+    this.agent.api.xrpc.setHeader('atproto-proxy', config.appview);
+  }
+
+  /** This network's name for a method or record type, e.g. `town.delve.feed.post`. */
+  private nsid(suffix: string): string {
+    return `${this.config.lexicon}.${suffix}`;
+  }
+
+  /**
+   * Whether a `getPostThread` node is a readable post. The thread union is namespaced, so the
+   * prefix differs per network and only the fragment after `#` is the same everywhere.
+   */
+  private isThreadViewPost(node: any): boolean {
+    return node?.$type === this.nsid('feed.defs#threadViewPost');
+  }
+
+  /**
+   * This network's `feed.getPostThread`. `agent.getPostThread` only ever asks Bluesky's, so
+   * every thread read goes through here and the NSID is built once (D-23).
+   */
+  private getPostThread(params: { uri: string; depth: number; parentHeight: number }): Promise<any> {
+    return this.agent.api.xrpc.call(this.nsid('feed.getPostThread'), params);
+  }
+
+  /**
+   * Teach the agent this network's lexicon, once, before anything that needs it. The SDK
+   * refuses an NSID it does not know before the request leaves the page, and it only ships
+   * Bluesky's (D-23).
+   */
+  private async ensureLexicon(): Promise<void> {
+    if (this.lexiconRegistered) {
+      return;
+    }
+
+    await registerLexicon(this.agent, this.config.lexicon, this.config.service);
+    this.lexiconRegistered = true;
   }
 
   /**
@@ -127,6 +188,8 @@ export class BlueskyClient {
     this.authenticated = false;
     this.tokenExpiresAt = null;
 
+    console.log(`Signing in as ${this.config.handle} at ${this.config.service}`);
+
     await this.agent.login({
       identifier: this.config.handle,
       password: this.config.appPassword,
@@ -159,6 +222,8 @@ export class BlueskyClient {
    * Should be called before any API operation.
    */
   async ensureAuth(): Promise<void> {
+    await this.ensureLexicon();
+
     if (!this.authenticated || this.isTokenExpired()) {
       console.log('Re-authenticating due to expired or missing token');
       await this.authenticate();
@@ -173,7 +238,7 @@ export class BlueskyClient {
     try {
       const postResponse = await this.agent.api.com.atproto.repo.getRecord({
         repo: postUri.split('/')[2], // Extract repo from URI (e.g., did:plc:...)
-        collection: 'app.bsky.feed.post',
+        collection: this.nsid('feed.post'),
         rkey: postUri.split('/')[4], // Extract record key from URI
       });
       postCid = postResponse.data.cid || '';
@@ -190,12 +255,12 @@ export class BlueskyClient {
       createdAt: new Date().toISOString(),
     };
 
-    console.log('Liking post on Bluesky:', JSON.stringify(likeData, null, 2));
+    console.log(`Liking post as ${this.config.handle}:`, JSON.stringify(likeData, null, 2));
 
     // Use the AT Protocol createRecord method directly
     const response = await this.agent.api.com.atproto.repo.createRecord({
       repo: this.config.handle,
-      collection: 'app.bsky.feed.like',
+      collection: this.nsid('feed.like'),
       record: likeData,
     });
 
@@ -211,19 +276,27 @@ export class BlueskyClient {
     await this.ensureAuth();
 
     const postData = {
+      $type: this.nsid('feed.post'),
       text: post.text,
       reply: post.replyTo,
+      createdAt: new Date().toISOString(),
     };
 
-    console.log('Posting to Bluesky:', JSON.stringify(postData, null, 2));
+    console.log(`Posting as ${this.config.handle}:`, JSON.stringify(postData, null, 2));
 
-    const response = await this.agent.post(postData);
+    // `agent.post` writes an `app.bsky.feed.post` and nothing else, so the record is written
+    // directly and the collection comes from this network's lexicon
+    const response = await this.agent.api.com.atproto.repo.createRecord({
+      repo: this.config.handle,
+      collection: this.nsid('feed.post'),
+      record: postData,
+    });
 
-    console.log('Post response:', { uri: response.uri, cid: response.cid });
+    console.log('Post response:', { uri: response.data.uri, cid: response.data.cid });
 
     return {
-      uri: response.uri,
-      cid: response.cid,
+      uri: response.data.uri,
+      cid: response.data.cid,
     };
   }
 
@@ -236,19 +309,20 @@ export class BlueskyClient {
 
     let response;
     try {
-      response = await this.agent.api.app.bsky.notification.listNotifications({
-        limit,
-      });
+      response = await this.agent.api.xrpc.call(
+        this.nsid('notification.listNotifications'),
+        { limit }
+      );
     } catch (error) {
       if (error instanceof XRPCError) {
-        console.error('Bluesky notifications request failed', {
+        console.error(`Notifications request failed for ${this.config.handle}`, {
           status: error?.status,
           code: error?.error,
           message: error?.message,
           headers: error?.headers,
         });
       } else {
-        console.error('Unexpected Bluesky notifications error', error);
+        console.error(`Unexpected notifications error for ${this.config.handle}`, error);
       }
       throw error;
     }
@@ -256,11 +330,7 @@ export class BlueskyClient {
     // Filter for notifications that have associated posts (mentions, replies, quotes, likes, reposts)
     let notifications = response.data.notifications;
 
-    console.log('Notifications:', notifications.length);
-
-    if (false) {
-      notifications = notifications.filter((notif: any) => notif.record?.text);
-    }
+    console.log(`Notifications for ${this.config.handle}:`, notifications.length);
 
     // Filter for unread only if requested
     if (unreadOnly) {
@@ -292,11 +362,22 @@ export class BlueskyClient {
   async markNotificationsAsSeen(): Promise<void> {
     await this.ensureAuth();
 
-    await this.agent.updateSeenNotifications();
+    await this.agent.api.xrpc.call(
+      this.nsid('notification.updateSeen'),
+      {},
+      { seenAt: new Date().toISOString() },
+      { encoding: 'application/json' }
+    );
   }
 
   isConfigured(): boolean {
-    return !!this.config.handle && !!this.config.appPassword;
+    return !!this.config.handle && !!this.config.appPassword && !!this.config.service
+      && !!this.config.appview && !!this.config.lexicon;
+  }
+
+  /** The PDS this client signs in to and posts through. */
+  serviceUrl(): string {
+    return this.config.service;
   }
 
   isAuthenticated(): boolean {
@@ -330,8 +411,8 @@ export class BlueskyClient {
   async getSinglePost(uri: string): Promise<any> {
     await this.ensureAuth();
     
-    return await this.agent.getPostThread({ 
-      uri, 
+    return await this.getPostThread({
+      uri,
       depth: 1,  // Only get direct replies, not nested ones
       parentHeight: 0  // Don't fetch parent posts
     });
@@ -348,7 +429,7 @@ export class BlueskyClient {
       // This fetches just the post and its direct replies, not the full conversation
       const response = await this.getSinglePost(message.uri);
       
-      if (!response.data.thread || (response.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
+      if (!response.data.thread || !this.isThreadViewPost(response.data.thread)) {
         return false;
       }
       
@@ -401,7 +482,7 @@ export class BlueskyClient {
    * For quote posts, the quoted content is treated as history/context, not as the main content.
    */
   private extractPostData(node: any): BlueskyHistoryEntry | null {
-    if (!node || node.$type !== 'app.bsky.feed.defs#threadViewPost') {
+    if (!node || !this.isThreadViewPost(node)) {
       return null;
     }
     
@@ -468,7 +549,7 @@ export class BlueskyClient {
       console.log('Getting quoted history for notification:', notification);
 
       // First, get the quote post to find the quoted post's URI
-      const quotePostResponse = await this.agent.getPostThread({ 
+      const quotePostResponse = await this.getPostThread({ 
         uri: notification.uri,
         depth: 0,  // Only get the post itself, not its replies
         parentHeight: 0  // Don't fetch parent posts
@@ -476,7 +557,7 @@ export class BlueskyClient {
       
       console.log('Quote post response:', quotePostResponse);
 
-      if (!quotePostResponse.data.thread || (quotePostResponse.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
+      if (!quotePostResponse.data.thread || !this.isThreadViewPost(quotePostResponse.data.thread)) {
         return fallback;
       }
       
@@ -492,7 +573,7 @@ export class BlueskyClient {
       const quotedPostUri = quotePost.embed.record.uri;
       
       // Now fetch the actual quoted post
-      const quotedPostResponse = await this.agent.getPostThread({ 
+      const quotedPostResponse = await this.getPostThread({ 
         uri: quotedPostUri,
         depth: 0,  // Only get the post itself, not its replies
         parentHeight: 0  // Don't fetch parent posts
@@ -500,7 +581,7 @@ export class BlueskyClient {
       
       console.log('Quoted post response:', quotedPostResponse);
       
-      if (!quotedPostResponse.data.thread || (quotedPostResponse.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
+      if (!quotedPostResponse.data.thread || !this.isThreadViewPost(quotedPostResponse.data.thread)) {
         return fallback;
       }
       
@@ -544,13 +625,13 @@ export class BlueskyClient {
     const history = [];    
 
     try {
-      const currentPostResponse = await this.agent.getPostThread({ 
+      const currentPostResponse = await this.getPostThread({ 
         uri: message.uri,
         depth: 0,  // Only get the post itself, not its replies
         parentHeight: 0  // Don't fetch parent posts
       });
       
-      if (!currentPostResponse.data.thread || (currentPostResponse.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
+      if (!currentPostResponse.data.thread || !this.isThreadViewPost(currentPostResponse.data.thread)) {
         return basicFallback;
       }
       
@@ -567,13 +648,13 @@ export class BlueskyClient {
         
         try {
           // Fetch the quoted post
-          const quotedPostResponse = await this.agent.getPostThread({ 
+          const quotedPostResponse = await this.getPostThread({ 
             uri: quotedPostUri,
             depth: 0,  // Only get the post itself, not its replies
             parentHeight: 0  // Don't fetch parent posts
           });
           
-          if (quotedPostResponse.data.thread && (quotedPostResponse.data.thread as any).$type === 'app.bsky.feed.defs#threadViewPost') {
+          if (quotedPostResponse.data.thread && this.isThreadViewPost(quotedPostResponse.data.thread)) {
             const quotedPostData = this.extractPostData(quotedPostResponse.data.thread);
             if (quotedPostData) {
               // Add quoted post to history
@@ -643,13 +724,13 @@ export class BlueskyClient {
     }
 
     try {
-      const response = await this.agent.getPostThread({ 
+      const response = await this.getPostThread({ 
         uri: message.replyInfo.parent.uri,
         depth: 0,  // We only need the post itself, not its replies
         parentHeight: maxDepth  // Fetch up to maxDepth parent posts
       });
       
-      if (!response.data.thread || (response.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
+      if (!response.data.thread || !this.isThreadViewPost(response.data.thread)) {
         return basicFallback;
       }
       
@@ -659,13 +740,13 @@ export class BlueskyClient {
       // Add the current message at the end (newest)
       // We need to fetch the full post data to get alt texts
       try {
-        const currentPostResponse = await this.agent.getPostThread({ 
+        const currentPostResponse = await this.getPostThread({ 
           uri: message.uri,
           depth: 0,  // Only get the post itself, not its replies
           parentHeight: 0  // Don't fetch parent posts
         });
         
-        if (!currentPostResponse.data.thread || (currentPostResponse.data.thread as any).$type !== 'app.bsky.feed.defs#threadViewPost') {
+        if (!currentPostResponse.data.thread || !this.isThreadViewPost(currentPostResponse.data.thread)) {
           thread.push(basicFallback[0]);
           return thread;
         }

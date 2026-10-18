@@ -42,6 +42,16 @@ typecheck:
 # Everything green before a commit
 check: typecheck test
 
+# Live read-only check that every account in config.json can be reached (no posts, no likes).
+# Compiles to .smoke/ first: tsx needs esbuild's native binary, which a node_modules/
+# installed from the other platform does not have (see the note at the top).
+cc-smoke:
+    @rm -rf .smoke
+    npx tsc scripts/smoke-accounts.ts --outDir .smoke --rootDir . --module esnext \
+        --moduleResolution bundler --target ES2022 --lib ES2022,DOM --strict \
+        --esModuleInterop --skipLibCheck --allowSyntheticDefaultImports --resolveJsonModule
+    node .smoke/scripts/smoke-accounts.js
+
 # Install dependencies — on the platform you run from (see the note at the top)
 install:
     npm install

@@ -3,20 +3,21 @@ import * as Orchestrator from './drakidion/orchestrator.js';
 import type { OrchestratorState } from './drakidion/drakidion-types.js';
 import { createOpenRouterClient } from './hooks/llm/index.js';
 import type { LLMClient } from './hooks/llm/llm-client.js';
-import { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
+import { createAccounts } from './bluesky-accounts.js';
+import type { BlueskyAccount } from './bluesky-accounts.js';
 
 declare const $: any;
 
 // Shared state
 let orchestratorState: OrchestratorState;
 let llmClient: LLMClient | undefined;
-let blueskyClient: BlueskyClient | undefined;
+let blueskyAccounts: BlueskyAccount[] = [];
 let stopOrchestrator: (() => void) | undefined;
 
 // State getters
 export const getOrchestratorState = () => orchestratorState;
 export const getLLMClient = () => llmClient;
-export const getBlueskyClient = () => blueskyClient;
+export const getBlueskyAccounts = () => blueskyAccounts;
 export const getStopOrchestrator = () => stopOrchestrator;
 
 // State setters
@@ -26,8 +27,8 @@ export const setOrchestratorState = (state: OrchestratorState) => {
 export const setLLMClient = (client: LLMClient | undefined) => {
   llmClient = client;
 };
-export const setBlueskyClient = (client: BlueskyClient | undefined) => {
-  blueskyClient = client;
+export const setBlueskyAccounts = (accounts: BlueskyAccount[]) => {
+  blueskyAccounts = accounts;
 };
 
 // Add a message to the chat
@@ -82,15 +83,8 @@ export const initializeOrchestrator = (config: any) => {
   // Create new orchestrator state
   orchestratorState = Orchestrator.createOrchestrator();
 
-  // Initialize Bluesky client if configured
-  const blueskyHandle = config.bluesky?.handle;
-  const blueskyPassword = config.bluesky?.password;
-  if (blueskyHandle && blueskyPassword) {
-    blueskyClient = new BlueskyClient({
-      handle: blueskyHandle,
-      appPassword: blueskyPassword,
-    });
-  }
+  // Sign in to every account config.json configures; they all feed the one queue (D-22)
+  blueskyAccounts = createAccounts(config);
 
   // Start the orchestrator loop
   const result = Orchestrator.startLoop(orchestratorState, (updatedState) => {
@@ -107,6 +101,13 @@ export const initializeOrchestrator = (config: any) => {
     addMessage('🔮 Oblique initialized. Type a message to receive an oblique response.', 'system');
   }
   
+  if (blueskyAccounts.length === 0) {
+    addMessage('⚠️ No Bluesky account configured. Set a handle, password and service in config.json and reload.', 'system');
+  } else {
+    const handles = blueskyAccounts.map(account => `@${account.handle}`).join(', ');
+    addMessage(`🦋 Polling as ${handles}`, 'system');
+  }
+
   addMessage('▶️ Orchestrator loop started', 'system');
   updateStatus();
 };

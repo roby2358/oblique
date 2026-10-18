@@ -423,6 +423,20 @@ footer {
   cursor: pointer;
 }
 
+.bluesky-account {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  margin: 1.5rem 0 0.5rem;
+  padding-bottom: 0.375rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.bluesky-account:first-child {
+  margin-top: 0;
+}
+
 .bluesky-posts {
   display: flex;
   flex-direction: column;

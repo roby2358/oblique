@@ -1,11 +1,13 @@
 // Bluesky Panel - UI functions for handling Bluesky interactions
 import type { DrakidionTask } from './drakidion/drakidion-types.js';
-import { getBlueskyClient, getLLMClient, getOrchestratorState, setOrchestratorState, updateStatus } from './panels.js';
+import { getBlueskyAccounts, getLLMClient, getOrchestratorState, setOrchestratorState, updateStatus } from './panels.js';
 import { createReplyTask } from './oblique-task-factory.js';
 import * as Orchestrator from './drakidion/orchestrator.js';
 import type { BlueskyMessage } from './types/index.js';
 import { isRepliableNotification, shouldRespondToNotification } from './bluesky-polling.js';
 import type { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
+import type { BlueskyAccount } from './bluesky-accounts.js';
+import type { LLMClient } from './hooks/llm/llm-client.js';
 
 declare const $: any;
 
@@ -112,12 +114,113 @@ export const fetchPostData = async (blueskyClient: BlueskyClient, notif: Bluesky
   }
 };
 
+/**
+ * One account's pass: what it saw, the tasks that earned, and the reason it failed if it did.
+ * Nothing is queued here — the caller threads the orchestrator state — so a network that is
+ * down costs that account alone and the others' replies still land (R-39).
+ */
+export interface AccountCheck {
+  account: BlueskyAccount;
+  notifications: BlueskyMessage[];
+  tasks: DrakidionTask[];
+  error: string | null;
+}
+
+/**
+ * The tasks one account's notifications earn, in order. Every restraint rule is asked with
+ * that account's own handle, because each network knows Oblique by a different name (D-22).
+ */
+const notificationTasks = async (
+  account: BlueskyAccount,
+  notifications: BlueskyMessage[],
+  llmClient: LLMClient,
+  onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void
+): Promise<DrakidionTask[]> => {
+  const tasks: DrakidionTask[] = [];
+
+  for (const notif of notifications) {
+    // Ask before fetching: a like, repost or follow notification's uri is that record,
+    // not a post, and getPostThread answers 400 for it (R-8).
+    if (!isRepliableNotification(notif)) {
+      console.log(`Skipping @${notif.author}: a ${notif.reason} names no post to answer`);
+      continue;
+    }
+
+    const postData = await fetchPostData(account.client, notif);
+
+    if (!shouldRespondToNotification(notif, postData, account.handle)) {
+      continue;
+    }
+
+    tasks.push(createReplyTask(notif, llmClient, account.client, onWaitingTaskComplete));
+  }
+
+  return tasks;
+};
+
+export const checkAccount = async (
+  account: BlueskyAccount,
+  llmClient: LLMClient,
+  onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void,
+  markAsSeen: boolean
+): Promise<AccountCheck> => {
+  try {
+    await account.client.ensureAuth();
+
+    // NOTIFICATION_BATCH. The window is all there is: there is no cursor and nothing is
+    // remembered, so anything that falls past it is never asked for again (D-11).
+    const notifications = await account.client.getNotifications(50, true);
+
+    if (notifications.length === 0) {
+      return { account, notifications, tasks: [], error: null };
+    }
+
+    // Once for the whole batch, before the loop, so a mid-loop failure cannot make the same
+    // batch be reprocessed forever
+    if (markAsSeen) {
+      await account.client.markNotificationsAsSeen();
+    }
+
+    const tasks = await notificationTasks(account, notifications, llmClient, onWaitingTaskComplete);
+
+    return { account, notifications, tasks, error: null };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'Unknown error';
+    console.warn(`Checking @${account.handle} failed: ${reason}`);
+    return { account, notifications: [], tasks: [], error: reason };
+  }
+};
+
+const renderAccountCheck = (check: AccountCheck): string => {
+  const header = `<h4 class="bluesky-account">@${escapeHtml(check.account.handle)}</h4>`;
+
+  if (check.error) {
+    return `${header}<p class="error">Error: ${escapeHtml(check.error)}</p>`;
+  }
+
+  if (check.notifications.length === 0) {
+    return `${header}<p>No new notifications.</p>`;
+  }
+
+  const tasksCreated = check.tasks.length;
+  const filteredCount = check.notifications.length - tasksCreated;
+
+  let successMessage = `✓ Created ${tasksCreated} task${tasksCreated === 1 ? '' : 's'} to reply to notification${tasksCreated === 1 ? '' : 's'}`;
+  if (filteredCount > 0) {
+    successMessage += ` (${filteredCount} notification${filteredCount === 1 ? '' : 's'} filtered out)`;
+  }
+
+  const postsHtml = check.notifications.map(renderNotificationAsHtml).join('');
+
+  return `${header}${postsHtml}<p class="success">${successMessage}</p>`;
+};
+
 export const checkNotifications = async () => {
-  const blueskyClient = getBlueskyClient();
+  const accounts = getBlueskyAccounts();
   const llmClient = getLLMClient();
   let orchestratorState = getOrchestratorState();
-  
-  if (!blueskyClient) {
+
+  if (accounts.length === 0) {
     $('#bluesky-posts').html('<p class="error">Bluesky not configured. Please add credentials to config.json</p>');
     return;
   }
@@ -130,78 +233,25 @@ export const checkNotifications = async () => {
   disableCheckButton();
   $('#bluesky-posts').html('<p>Loading notifications...</p>');
 
-  try {
-    // Authenticate if not already
-    await blueskyClient.ensureAuth();
+  const onWaitingTaskComplete = createOnWaitingTaskComplete(orchestratorState, setOrchestratorState, updateStatus);
+  const markAsSeen = $('#mark-as-seen').prop('checked');
 
-    // Get unread notifications only (unreadOnly = true by default)
-    const notifications = await blueskyClient.getNotifications(3, true);
-    
-    // Guard condition: exit early if no notifications
-    if (notifications.length === 0) {
-      $('#bluesky-posts').html('<p>No new notifications.</p>');
-      enableCheckButton();
-      return;
-    }
-
-    // Display notifications
-    const postsHtml = notifications.map(renderNotificationAsHtml).join('');
-    $('#bluesky-posts').html(postsHtml);
-
-    // Filter notifications based on response rules and create tasks
-    let tasksCreated = 0;
-    const onWaitingTaskComplete = createOnWaitingTaskComplete(orchestratorState, setOrchestratorState, updateStatus);
-    const markAsSeen = $('#mark-as-seen').prop('checked');
-
-    // Mark notifications as seen if requested (do this once for all notifications)
-    if (markAsSeen && notifications.length > 0) {
-      await blueskyClient.markNotificationsAsSeen();
-    }
-
-    // Iterate through each notification and check if we should respond
-    for (const notif of notifications) {
-      // Ask before fetching: a like, repost or follow notification's uri is that record,
-      // not a post, and getPostThread answers 400 for it (R-8).
-      if (!isRepliableNotification(notif)) {
-        console.log(`Skipping @${notif.author}: a ${notif.reason} names no post to answer`);
-        continue;
-      }
-
-      const postData = await fetchPostData(blueskyClient, notif);
-      
-      if (!shouldRespondToNotification(notif, postData)) {
-        continue;
-      }
-      
-      // Create and add task
-      const task = createReplyTask(
-        notif,
-        llmClient,
-        blueskyClient,
-        onWaitingTaskComplete
-      );
-      
-      orchestratorState = Orchestrator.addTask(orchestratorState, task);
-      tasksCreated++;
-    }
-
-    // Update the global state
-    setOrchestratorState(orchestratorState);
-    updateStatus();
-
-    // Show success message
-    const totalNotifications = notifications.length;
-    const filteredCount = totalNotifications - tasksCreated;
-    
-    let successMessage = `✓ Created ${tasksCreated} task${tasksCreated === 1 ? '' : 's'} to reply to notification${tasksCreated === 1 ? '' : 's'}`;
-    if (filteredCount > 0) {
-      successMessage += ` (${filteredCount} notification${filteredCount === 1 ? '' : 's'} filtered out)`;
-    }
-    $('#bluesky-posts').append(`<p class="success">${successMessage}</p>`);
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    $('#bluesky-posts').html(`<p class="error">Error: ${errorMsg}</p>`);
+  // One account at a time, all of them into the one queue (D-22)
+  const checks: AccountCheck[] = [];
+  for (const account of accounts) {
+    checks.push(await checkAccount(account, llmClient, onWaitingTaskComplete, markAsSeen));
   }
+
+  for (const check of checks) {
+    for (const task of check.tasks) {
+      orchestratorState = Orchestrator.addTask(orchestratorState, task);
+    }
+  }
+
+  setOrchestratorState(orchestratorState);
+  updateStatus();
+
+  $('#bluesky-posts').html(checks.map(renderAccountCheck).join(''));
 
   enableCheckButton();
 };
@@ -212,7 +262,7 @@ const getPollIntervalSeconds = (): number => {
   const value = parseInt(input.val() as string, 10);
   // Validate and return default if invalid
   if (isNaN(value) || value < 10 || value > 3600) {
-    return 60; // Default to 60 seconds
+    return 120; // POLL_DEFAULT_S
   }
   return value;
 };

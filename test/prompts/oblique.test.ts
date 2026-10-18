@@ -41,7 +41,7 @@ describe('Oblique Prompts', () => {
     it('should describe the oblique nature', () => {
       expect(systemPrompt).toContain('reveals deeper truths');
       expect(systemPrompt).toContain('rumination and reflection');
-      expect(systemPrompt).toContain('brief (1-2 sentences)');
+      expect(systemPrompt).toContain('brief (1-3 sentences)');
     });
   });
 

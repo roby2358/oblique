@@ -10,6 +10,9 @@ export default {
       'ts-jest',
       {
         useESM: true,
+        // The project's rootDir is ./src, so shared fixtures under test/helpers would be
+        // rejected as outside it. Tests compile from the repo root instead.
+        tsconfig: { rootDir: '.' },
       },
     ],
   },

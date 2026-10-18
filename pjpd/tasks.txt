@@ -1,3 +1,47 @@
+Priority:   85
+Status: ToDo
+ID: tokenttl-qt74
+Created: 2026-10-18T08:06:32Z
+Updated: 2026-10-18T08:06:32Z
+
+The token-expiry fallback guesses 12x too long, and there is no recovery when the guess is wrong. For a bot meant to run unattended this is the most likely way it dies silently.
+
+TOKEN_DEFAULT_TTL is 86400000 ms (1 day). A real AT Protocol access token from createSession lives about two hours — our own logs show it: "Token expiration set to: 09:27" written at 07:27. Four paths reach the fallback in extractTokenExpiration: no session, no accessJwt on the session, an accessJwt that does not split into three parts, and a JWT whose exp claim is missing or unparseable. Down any of them the client believes the token is good for a day, isTokenExpired() stays false for 23h55m, and ensureAuth never re-authenticates.
+
+Nothing recovers from that. ensureAuth only refreshes pre-emptively against its own stored estimate, and no call site treats a 401 as a reason to re-authenticate — getNotifications catches XRPCError purely to log and rethrow. So once the estimate is wrong the client 401s on every call until the page is reloaded, with no error visible unless someone is watching the console. Another delve.town agent (Wayfarer) reports exactly this symptom from the same cause class: "My watcher silently died every two hours for a day and a half."
+
+Today the JWT parse succeeds, so the fallback is dormant. It is a landmine, not a live bug, but the direction of the guess is wrong: a fallback should fail SHORT, assuming the token expires sooner than it might and paying one cheap extra login, never longer.
+
+Two fixes, both worth doing:
+1. Make TOKEN_DEFAULT_TTL shorter than any real token — a few minutes, or zero to force re-auth on the next call. Reverses the direction of the failure: a bad guess then costs extra logins instead of total silence. One constant, and the ONTOLOGY numbers table entry.
+2. Treat a 401 as a reason to re-authenticate once and retry. This is the real fix, covering clock skew, server-side revocation and a shortened TTL as well as a bad parse. Decide where it belongs: wrapping ensureAuth would not help, since the failure surfaces at the call, so it wants to be at the XRPC boundary or in a retry helper the methods share.
+
+Also worth a check while in here: nothing logs an authentication failure anywhere a human would see it. For unattended running, a dead client should say so in the UI, not only in the console.
+----
+Priority:   70
+Status: ToDo
+ID: nullreply-4hpg
+Created: 2026-10-18T07:57:43Z
+Updated: 2026-10-18T07:57:43Z
+
+Let the model decline to reply, as a deliberate outcome rather than a failure.
+
+Every restraint rule today is mechanical and runs BEFORE the LLM: the notification gate (repliable reason, ignore list, quote without the handle, unreadable post, post already answered) and the thread gate (empty, bot attenuation, thread too long). Once those pass and generation starts, a post always follows. Nothing can look at what was actually said and conclude that silence is the better answer — and that is exactly the judgement delve.town etiquette asks for: a thank-you can end an exchange, and a mention does not need an acknowledgment by default. Under the current Rule 3 a direct mention is answered unconditionally, so someone thanking Oblique gets answered, which is how an agent-to-agent loop starts.
+
+Needed: a way for the model to say "nothing to add", handled as a SUCCEEDED chain that posts nothing, not as a dead task. There is already a guard in the post step refusing an empty reply, but it records a dead snapshot carrying an Error, which is indistinguishable from a real failure in the observer panel and wrong for a choice that was correct.
+
+Pieces:
+- A sentinel the model emits in the # Response section, chosen so it cannot collide with a real reply and cannot be produced by truncation.
+- Prompt guidance on when to use it, in the system prompt where the output format already lives, so it is in the cached prefix.
+- A terminal task state that reads as "chose not to reply", with the reason on the work lines so a chain is still followable by taskId (G-3).
+- Decide whether a declined notification is marked seen. If it is not, it will be reconsidered next pass and re-declined, costing a generation each time.
+
+Watch out: the length-retry step falls back to the whole raw LLM output when the # Response header is missing, so a malformed generation currently posts the first 300 characters of the model's thinking. A sentinel detected by parsing that same section inherits that weakness; detection should be robust to a missing or malformed header rather than assuming one.
+
+This is also the seam the planned Jev executive-function layer plugs into: the decision becomes a typed judgment over the notification, the thread and the draft, instead of a sentinel parsed out of prose. Design the boundary as "something decides whether to publish", with the model-emitted sentinel as the first implementation, so swapping in Jev does not mean restructuring the chain.
+
+Serves G-2 (never spam), which already outranks G-1 (reply obliquely).
+----
 Priority:   65
 Status: ToDo
 ID: obstaskio-tn5t
@@ -38,6 +82,26 @@ A task killed by a thrown error never gets a doneAt timestamp, breaking a stated
 ----
 Priority:   60
 Status: ToDo
+ID: postgap-4ayq
+Created: 2026-10-18T07:51:10Z
+Updated: 2026-10-18T08:23:02Z
+
+There is no minimum gap between publications and nothing bounds how many replies one poll pass can produce. This is a missing bound, not an observed harm — see the measurement below before acting on it.
+
+Measured from Oblique's own delve.town author feed on 2026-10-18: consecutive publication gaps of 19s, 4s and 1s. Checked properly, every one of those replies went to a DIFFERENT parent post by a DIFFERENT author — no post was answered twice. That is concurrency, not duplication: several conversations running at once, each answered once and promptly. The restraint rules were working throughout; 14 reply notifications arrived in the same period and most were declined by the already-has-replies rule.
+
+So the real concern is narrower than it first looked. Each reply is individually warranted; what is unbounded is how many can land in the same few seconds, which is visible in a shared town feed even when every single one is appropriate. Severity scales with burst size: two replies a second apart is unremarkable, fourteen would be a wall. Raising NOTIFICATION_BATCH from 3 to 50 raised the ceiling on that burst, and POLL_DEFAULT_S does not bound it — the interval governs how often Oblique LOOKS, not how much it SAYS when it does.
+
+Delve.town's guidelines say to avoid flooding without defining it numerically. Fieldnote keeps a five-minute minimum between publications counting posts and replies together, but explicitly calls that its operator's rule rather than a town quota, so it is a reference point and not a standard to meet.
+
+If implemented: a minimum interval between publications, enforced where the post is written so no new path bypasses it, timestamp in module memory. A pass inside the gap should skip rather than queue, so work is not banked and released as a burst. Decide what happens to a skipped notification — dropped, or reconsidered next pass, which interacts with how "new" is determined.
+
+Worth weighing against the cost: a gap delays legitimate replies to people who are waiting, and the restraint rules already prevent the repetitive case. This may be better as a cap on replies per pass than as a time gap.
+
+Serves G-2 (never spam).
+----
+Priority:   60
+Status: ToDo
 ID: waitleak-duk4
 Created: 2026-10-17T01:00:59Z
 Updated: 2026-10-17T18:30:20Z
@@ -51,6 +115,22 @@ Created: 2026-10-17T01:01:29Z
 Updated: 2026-10-17T18:30:20Z
 
 The console debug helper `window.oblique.getState()` throws in the browser. src/index.ts:51 calls `require('./panels.js')` inside a module that Vite bundles as an ES module, where `require` is not defined — so the helper fails with a ReferenceError every time. The two siblings on the same object, processNext() and processAll(), correctly use `await import(...)`. Fix: make getState async and use a dynamic import like the others, or hoist the panels import to the top of the file since it is already imported there for other reasons.
+----
+Priority:   55
+Status: ToDo
+ID: notifwindow-7jva
+Created: 2026-10-18T07:45:27Z
+Updated: 2026-10-18T07:51:00Z
+
+The poller reads a fixed window of the most recent notifications (NOTIFICATION_BATCH, now 50) with no cursor and no memory between passes, so anything falling past the window is never requested again. Widening 3 to 50 moved that cliff but did not remove it: 51 notifications inside one poll interval still loses the oldest, and a long interval (the input allows 3600s) narrows the window in practice.
+
+It then filters on isRead, which is shared state — delve.town's web app calls updateSeen when a person opens the notifications tab. The operating assumption is now that the human does NOT use the account's notifications tab, so only Oblique calls updateSeen and the flag is trustworthy. That assumption is doing real work and is worth stating: if it stops holding, the poller silently sees nothing. Observed live before the assumption was adopted: all 12 delve.town notifications read, including an unanswered mention.
+
+Setting unreadOnly=false is NOT an escape. The restraint gate's Rule 3 answers a direct mention unconditionally, ignoring existing replies, so every mention in the window would be re-answered on every poll. The same loop happens if the "Mark as seen" checkbox is unticked, since nothing then clears the unread flag — that checkbox is load-bearing for unattended running and nothing enforces it.
+
+Proposed fix, small: hold the newest notification indexedAt from the previous pass in module-level memory, seeded to the current time at startup, and consider only notifications newer than it. Ignores isRead entirely, needs one value rather than a set, removes the window cliff as a side effect, makes the checkbox no longer load-bearing, and the startup seed means a page reload cannot cause a re-answer. Other delve.town agents instead keep a set of roughly the last 1000 uri+reason pairs; larger, same effect.
+
+Neither shape is persistence in the sense the no-persistence decision rules out, since both die with the page, but both give the poller memory it lacks, so record the decision rather than assume it.
 ----
 Priority:   50
 Status: ToDo
@@ -96,6 +176,26 @@ Created: 2026-10-17T01:01:17Z
 Updated: 2026-10-17T18:30:22Z
 
 Most of the tunable numbers are bare literals at their use site, so tuning means hunting for them and the documented table can drift from the code without anything noticing. Only MAX_BLUESKY_REPLY_CHARS, TOKEN_REFRESH_BUFFER_MS and SAFE_BASE32_ALPHABET are named today. The unnamed ones include: the thread length cap 60 and the bot window 8 / limit 4 in bluesky-polling.ts; thread depth 25 in bluesky-client.ts getHistory; notification batch 3 and poll interval 60/10/3600 in bluesky-panel.ts; LLM attempts 5, temperature 0.8, max tokens 8000 and the 300 retry gate in oblique-task-factory.ts; the OpenRouter fallbacks 0.7 and 500; the one-day token default TTL; task id length 24. Fix: extract each to a named export near the code that owns it, refer to it by name in tests, and keep the table in the ontology quoting names rather than values.
+----
+Priority:   45
+Status: ToDo
+ID: modlabels-599j
+Created: 2026-10-18T08:08:49Z
+Updated: 2026-10-18T08:08:49Z
+
+Moderation labels are discarded before any decision sees them.
+
+extractPostData keeps author, text and altTexts from a thread node and drops everything else, including the labels array that every post view carries. So a label never reaches the notification gate, the thread gate or the prompt. Oblique reads labelled content, feeds it to the model as context, and publishes a reply that may echo it, without ever knowing a label was there.
+
+Delvetown's llms.txt asks for the opposite: "Honor moderation labels, including an author's !no-unauthenticated preference, when presenting content to logged-out readers; an API response alone is not permission to republish it." A reply quoting or paraphrasing a labelled post is a form of republishing it to an audience the label may not have intended. The town also runs a labeler — settings.json gives moderationDid as did:plc:7voo3hmmzshypkn34iam3mg5 — which nothing here consults.
+
+Scope to decide:
+- Which labels should stop a reply outright, which should be passed to the model as context, and which are irrelevant to a bot that reads authenticated.
+- Whether labels on the notification's own post differ in weight from labels on ancestors in the thread history. An ancestor's label matters because its text ends up in the prompt.
+- Whether to consult the town's labeler at all, or to rely only on the labels already attached to post views.
+- Bluesky carries the same field, so whatever is decided applies to both networks; this is not delve.town-specific.
+
+Lower priority than the running-unattended tickets because nothing is known to have gone wrong, but it is a standing gap between what the town asks of agents and what this one can currently do.
 ----
 Priority:   40
 Status: ToDo

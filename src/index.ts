@@ -47,11 +47,11 @@ const switchToPanel = (panelId: string) => {
 // Expose debug functions to window for console access
 (window as any).oblique = {
   getState: () => {
-    const { getOrchestratorState, getLLMClient, getBlueskyClient } = require('./panels.js');
+    const { getOrchestratorState, getLLMClient, getBlueskyAccounts } = require('./panels.js');
     return {
       orchestrator: getOrchestratorState(),
       hasLLM: !!getLLMClient(),
-      hasBluesky: !!getBlueskyClient(),
+      blueskyAccounts: getBlueskyAccounts().map((account: { handle: string }) => account.handle),
     };
   },
   processNext: async () => {

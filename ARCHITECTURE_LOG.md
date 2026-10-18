@@ -149,15 +149,40 @@ settled), **History** (dated entries, newest first).
   creative temperature. The fallbacks exist for a future call site that has not been written.
 - **Evidence:** none.
 
-### D-11 Poll a small batch frequently — *Decided*
+### D-11 Poll a wide window frequently — *Decided*
 
-- **Alternatives:** a large batch polled rarely; a firehose subscription; webhooks.
-- **Why:** `NOTIFICATION_BATCH` of 3 at `POLL_DEFAULT_S` of 60 keeps each pass short enough
-  that a failure costs one minute, and keeps the per-pass API cost bounded — each notification
-  costs a `getSinglePost` before the gate even runs. The page has no server, so a subscription
-  or a webhook is not available. The interval is clamped to `POLL_MIN_S`…`POLL_MAX_S` because
-  the input is a text field a human types into.
-- **Evidence:** none.
+- **Alternatives:** a narrow batch, which is what this was; a firehose subscription; webhooks;
+  paging the cursor until a notification already handled is reached.
+- **Why:** `NOTIFICATION_BATCH` is a **window**, not a page. There is no cursor and nothing is
+  remembered between passes, so a notification that falls past the window is never requested
+  again — it can only sink further. The window must therefore outrun both the burst a
+  `POLL_DEFAULT_S` interval can accumulate and the reasons Rule 0 refuses, because a like or a
+  follow still occupies a slot on its way to being discarded. At 50 that takes 51
+  notifications inside one interval; the delve.town account has had 7 in its life and the
+  Bluesky one carried 25 unread.
+
+  `POLL_DEFAULT_S` is 120. One loop visits every account in turn, so the interval is the rate
+  for all of them together. Two minutes is slower than a bot needs to feel responsive and is
+  chosen for the community it posts into rather than for the machine: delve.town's guidelines
+  ask agents not to flood, and another agent there checks at five. The interval is not a rate
+  limit, though — it bounds how often Oblique *looks*, not how much it says when it does
+  (`postgap-4ayq`).
+
+  A wide window is nearly free here, and was not always: the original 3 was chosen when every
+  notification cost a `getSinglePost` before the gate ran. `isRepliableNotification` now
+  answers offline and first, so likes, reposts and follows cost one line of the list response
+  and no fetch at all. Only a mention, reply or quote costs a thread read, and the restraint
+  rule that refuses a post which already has replies means re-seeing one is a fetch and a
+  skip, never a second reply.
+
+  The page has no server, so a subscription or a webhook is not available. Paging the cursor
+  would remove the cliff rather than move it, but it needs memory of what has been handled,
+  which D-14 does not allow — tracked as `notifwindow-7jva`. The interval is clamped to
+  `POLL_MIN_S`…`POLL_MAX_S` because the input is a text field a human types into; a long
+  interval narrows the window in practice, since more can arrive between passes.
+- **Evidence:** `just cc-smoke` — a batch of 3 on delve.town returned three follows and hid
+  the one mention, which sat at position 6. The interval itself is unmeasured; it is a
+  courtesy, not a finding.
 
 ### D-12 Refresh the token early, on a buffer — *Decided*
 
@@ -307,6 +332,75 @@ settled), **History** (dated entries, newest first).
 - **Evidence:** `npm test` — R-37 asserts that the format appears only in the system prompt
   and that the restatement is last.
 
+### D-22 Every configured account is polled into the one task queue — *Decided*
+
+- **Alternatives:** one account at a time, selected by a `"account": "delvetown"` key in
+  config, so the page runs as one bot per deployment; a queue per account, so each network
+  drains independently; a single client whose `service` is swapped between passes.
+- **Why:** Oblique is the same bot wherever it answers, and a reply is a reply — there is
+  nothing about a delve.town notification that makes its task a different kind of thing, so a
+  second queue would duplicate the orchestrator to no end and break G-5's single sequence.
+  The queue was already account-agnostic: `createReplyTask` has always taken the client as a
+  parameter and carried it through to `post()`, so the task that answers a notification
+  already holds the only thing that knows which network it came from. What was missing was
+  upstream of it. `BlueskyClient` hardcoded `https://bsky.social`, which only ever worked
+  because every account so far was hosted there; ATProto authenticates at the PDS that holds
+  the repository, so `service` had to become config (R-38). And the restraint gate read
+  `config.bluesky.handle` for its quote test, which is the one place the bot has to know its
+  own name — so the handle is now passed in, from the account whose notification it is.
+  The set of accounts is `ACCOUNT_SECTIONS` in one module: adding a third network is an entry
+  there and a section in `config.json`, and no conditional anywhere asks which network it is
+  on. Swapping one client's `service` between passes was rejected for the same reason the
+  selector key was: both make "which network" a mode, and a mode gets tested for.
+  Serves G-1 and G-4.
+- **Evidence:** `npm test` — R-38 asserts the accounts built from a file, R-39 that one
+  account's failure is returned rather than thrown. That both networks actually answer is
+  unverified: nothing here drives a real login.
+
+### D-23 A network is its PDS, its AppView and its lexicon, and all three are configured — *Decided*
+
+- **Alternatives:** treat delve.town as a Bluesky PDS on another hostname (what was assumed
+  at the start, and wrong); hardcode the `atproto-proxy` header to Bluesky's AppView so the
+  delve.town account posts `app.bsky.*` records from a delve.town-hosted repository; derive
+  the `town.delve.*` lexicon by rewriting the `app.bsky.*` prefix of the schemas the SDK
+  already bundles; vendor delve.town's schema JSON into the repository; skip the SDK's typed
+  client for town calls and use a bare `fetch` with the two headers.
+- **Why:** delve.town is not a PDS with a different hostname. It is a separate application
+  network: its own AppView at `did:web:api.delve.town`, and its own lexicon, a fork of
+  `app.bsky.*` published under `town.delve.*` as 169 `com.atproto.lexicon.schema` records.
+  The two share only a DID. `app.bsky.*` methods answer 501 at its AppView and `town.delve.*`
+  answer 501 at Bluesky's, so which network an account answers on is not a hostname but a
+  vocabulary — hence `lexicon` beside `service` and `appview`.
+
+  Pointing the delve.town account at Bluesky's AppView was rejected because it would make the
+  account invisible in the town it lives in, where its notifications already are. Deriving the
+  lexicon from the bundled schemas was measured and rejected: `@atproto/api` is pinned at
+  0.12.29 and its `app.bsky` predates the fork, so every derived document differed from the
+  published one. Vendoring was rejected as 169 files to keep in step with a network that is
+  still moving. The bare `fetch` would be fewer lines, but it would lose response validation
+  and leave two ways of calling the same API in one client.
+
+  The authority is deliberately *not* configured. An NSID's segments are the publishing
+  domain reversed, so `town.delve` is published by `delve.town` and the whole chain —
+  handle, DID, PDS, schemas — follows from the prefix. A further network is one entry in
+  `ACCOUNT_SECTIONS` and one config section with three endpoints, and no DID anyone has to
+  look up by hand.
+
+  The `atproto-proxy` header is the protocol's own mechanism and is now always set, including
+  for Bluesky. The reference PDS forwards `app.bsky.*` to Bluesky's AppView with no header,
+  which is the only reason Oblique ever worked without one; Bluesky has said it may withdraw
+  that, and no other PDS owes it. Serves G-1 and G-4.
+- **Evidence:** `just cc-smoke` — both accounts authenticate, list notifications and read a
+  thread, `app.bsky.feed.defs#threadViewPost` for Bluesky and
+  `town.delve.feed.defs#threadViewPost` for delve.town. `npm test` — R-40 covers the
+  resolution chain against a mocked `fetch`.
+
+  The write path was settled by a real reply on 2026-10-18, since no test can reach it:
+  `at://did:plc:awexm7dwvvcnyddghn2n2mar/town.delve.feed.post/3my55acnbtp2s`, a
+  `town.delve.feed.post` of 256 characters carrying `reply.root` and `reply.parent` across two
+  repositories, with the parent liked in the same second. The whole chain ran unattended —
+  notification, thread history, generation, length check, like, reply, confirmation.
+
 ### Deliberately left out
 
 - **Multi-turn memory of its own.** Context is re-read from the Bluesky thread on every pass.
@@ -392,7 +486,7 @@ it. Either answer should be recorded as a decision; the current state is neither
 
 ### Q-7 Numbers are literals, not named constants — *tracked as `namenums-vnzy`*
 
-`ONTOLOGY.md` names 23 tunables; only four exist as named constants in the code. The rest are
+`ONTOLOGY.md` names 22 tunables; only five exist as named constants in the code. The rest are
 literals at their use site, so tuning means finding them. **Recommendation:** extract them to
 one module per area and have the ontology's table quote the names. Until then the table and
 the code can drift silently.
@@ -423,6 +517,80 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-18 — Oblique answers on delve.town, which turned out to be its own network
+Begun as "point the client at another PDS" and finished somewhere else. `oblique.delve.town`
+is hosted at `https://pds.delve.town`, so `service` became config — but signing in only got
+as far as `app.bsky.notification.listNotifications` answering **501 MethodNotImplemented**.
+
+Two causes, one behind the other. First, reads are addressed to an AppView with an
+`atproto-proxy` header, which the client is supposed to set; the reference PDS forwards
+`app.bsky.*` to Bluesky's AppView without one, and that convenience is the only reason
+Oblique had never needed it. Second, and larger: delve.town's AppView does not implement
+`app.bsky.*` at all. It is a separate application network with its own lexicon,
+`town.delve.*`, a fork of Bluesky's published as 169 `com.atproto.lexicon.schema` records
+under `delve.town`. The account was already a resident of it — a profile, an avatar, six
+followers and an unanswered mention — while its Bluesky-side profile read zero of everything.
+
+So an account now carries `appview` and `lexicon` beside `service` (D-23). `BlueskyClient`
+builds every method and record type from the lexicon, and `src/hooks/bluesky/lexicon.ts`
+resolves and registers a lexicon the SDK does not ship: `@atproto/api` refuses an unknown
+NSID before the request leaves the page. The authority is derived from the NSID rather than
+configured. `agent.post`, `agent.getPostThread` and `agent.updateSeenNotifications` are
+hard-wired to `app.bsky.*` and were replaced with `api.xrpc.call`; the seven thread reads
+collapsed into one private `getPostThread`. `postUnreadableReason` now matches the fragment
+of a thread `$type` rather than the whole NSID, since each network namespaces its own copy.
+
+`NOTIFICATION_BATCH` went from 3 to 50 and `POLL_DEFAULT_S` from 60 to 120 (D-11). The delve.town mention went unanswered not
+because the write path failed but because five follows sat above it and the window was three
+deep — and the window is all there is, since nothing is cursored or remembered. The same
+hazard was always present on Bluesky, where likes were 12 of that account's last 25. The
+original 3 dated from when every notification cost a thread fetch before the gate ran; Rule 0
+now refuses the cheap ones offline, so width costs almost nothing.
+
+Oblique's first reply in the town landed the same day, unattended, at 256 characters. That
+was the only way to establish the write path: `agent.post` writes an `app.bsky.feed.post` and
+nothing else, so it was replaced with a direct `com.atproto.repo.createRecord` into the
+account's own collection, and delve.town *stores* a wrongly-namespaced post while never
+showing it — the failure would have been silent. R-41 is new and pins the collection, the
+`$type`, the repo and the confirmed uri and cid, none of which had any test before, through
+`post` or through `agent.post`.
+
+`scripts/smoke-accounts.ts` and `just cc-smoke` are new: a live, read-only check that every
+configured account can authenticate, list notifications and read a thread. The unit suite
+mocks all of that and cannot answer it, and this change was too easy to get subtly wrong
+without it. It compiles to `.smoke/` first because `tsx` needs an esbuild binary this
+`node_modules` does not have. R-40 is new, R-8 gains the namespaced `$type` cases and R-38 the
+proxy header, and the partial coverage of R-38, R-40 and R-41 records what only the smoke
+check can establish.
+
+### 2026-10-18 — One page polls several accounts into one task queue
+`BlueskyClient` built its agent with `service: 'https://bsky.social'`, a literal that had
+never been wrong because every account so far was hosted there. `oblique.delve.town` is not:
+its DID document names `https://pds.delve.town`, and ATProto authenticates at the PDS that
+holds the repository, so a credential is only ever checked against that PDS's own record of
+the account. `service` is now a `BlueskyConfig` field and a config value, and `isConfigured`
+counts it (R-38).
+
+The single `blueskyClient` becomes a list of accounts. `src/bluesky-accounts.ts` is the new
+home of `ACCOUNT_SECTIONS` — the config sections that name an account — and of
+`normalizeHandle`, which moved out of `bluesky-polling.ts` because a handle is an account's
+property. `createAccounts` passes over a blank section and names the missing fields of a half
+filled in one. `panels.ts` holds the list; `getBlueskyClient` becomes `getBlueskyAccounts`,
+and `window.oblique.getState` reports the handles rather than a boolean.
+
+`checkNotifications` now visits every account in turn and adds all their tasks to the one
+queue (D-22). The per-account pass is `checkAccount`, which queues nothing itself and returns
+what it earned, so a network that is down costs that account alone and is reported in its own
+section of the panel (R-39). `shouldRespondToNotification` gains a `selfHandle` parameter and
+no longer reads `config.bluesky.handle`: each network knows Oblique by a different name, and
+the quote test has to be made against the right one.
+
+ONTOLOGY gains the BlueskyAccount entity, renumbering Dead vocabulary to 1.11; the Config
+table gains the three fields per section; the restraint rule, the auth rule and the poller
+rule are rewritten. R-8 and R-21 are extended, R-38 and R-39 are new, and the partial
+coverage of all four is recorded — in particular that no test drives a real login, so "both
+networks answer" is a claim this change does not make.
 
 ### 2026-10-17 — Only notifications that name a post are fetched
 Every unread notification was passed to `getSinglePost`, whose `getPostThread` call needs a

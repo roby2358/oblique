@@ -22,13 +22,10 @@ describe('Bluesky Polling Module', () => {
     getConfigMock = jest.fn(() => ({
       ignoreList: [],
       botList: [],
-      bluesky: {
-        handle: 'oblique.yuwakisa.com',
-      },
     }));
 
     await jest.unstable_mockModule('../src/panels.js', () => ({
-      getBlueskyClient: jest.fn(),
+      getBlueskyAccounts: jest.fn(() => []),
       getLLMClient: jest.fn(),
       getOrchestratorState: jest.fn(),
       setOrchestratorState: jest.fn(),
@@ -49,6 +46,10 @@ describe('Bluesky Polling Module', () => {
       createProcessNotificationTask: jest.fn(),
     }));
   });
+
+  // The handle of the account a notification arrived on. Each network knows Oblique by a
+  // different name, so the gate is told which one rather than reading a single config value.
+  const SELF_HANDLE = 'oblique.yuwakisa.com';
 
   const baseNotification: BlueskyMessage = {
     uri: 'at://example.app/bsky.app/post/1',
@@ -114,6 +115,29 @@ describe('Bluesky Polling Module', () => {
       expect(postUnreadableReason(threadOf('app.bsky.feed.defs#somethingNew')))
         .toBe('the thread came back as app.bsky.feed.defs#somethingNew');
     });
+
+    // D-23: each network namespaces its own copy of the thread union, so only the fragment
+    // after the # is common to all of them
+    it('reads the same four cases on a network with its own lexicon', async () => {
+      const { postUnreadableReason } = await import('../src/bluesky-polling.js');
+
+      expect(postUnreadableReason(threadOf('town.delve.feed.defs#threadViewPost'))).toBeNull();
+      expect(postUnreadableReason(threadOf('town.delve.feed.defs#notFoundPost')))
+        .toBe('the post is gone');
+      expect(postUnreadableReason(threadOf('town.delve.feed.defs#blockedPost')))
+        .toBe('the post is blocked, by us or by its author');
+      expect(postUnreadableReason(threadOf('town.delve.feed.defs#somethingNew')))
+        .toBe('the thread came back as town.delve.feed.defs#somethingNew');
+    });
+
+    it('treats a thread with no usable $type as unreadable', async () => {
+      const { postUnreadableReason, threadKind } = await import('../src/bluesky-polling.js');
+
+      expect(threadKind({ $type: 'town.delve.feed.defs' })).toBe('');
+      expect(threadKind({})).toBe('');
+      expect(postUnreadableReason(threadOf('no-fragment-here')))
+        .toBe('the thread came back as no-fragment-here');
+    });
   });
 
   describe('shouldRespondToNotification', () => {
@@ -125,20 +149,19 @@ describe('Bluesky Polling Module', () => {
         reason: 'like',
       };
 
-      expect(shouldRespondToNotification(like, createPostData(false))).toBe(false);
-      expect(shouldRespondToNotification(like, undefined)).toBe(false);
+      expect(shouldRespondToNotification(like, createPostData(false), SELF_HANDLE)).toBe(false);
+      expect(shouldRespondToNotification(like, undefined, SELF_HANDLE)).toBe(false);
     });
 
     it('skips authors in the ignore list', async () => {
       getConfigMock.mockReturnValue({
         ignoreList: ['user.test'],
         botList: [],
-        bluesky: { handle: 'oblique.yuwakisa.com' },
       });
 
       const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
       const postData = createPostData(false);
-      const result = shouldRespondToNotification(baseNotification, postData);
+      const result = shouldRespondToNotification(baseNotification, postData, SELF_HANDLE);
       const configResult = getConfigMock.mock.results.at(-1)?.value as any;
 
       expect(getConfigMock).toHaveBeenCalled();
@@ -156,7 +179,7 @@ describe('Bluesky Polling Module', () => {
         text: 'Random quote text',
       };
 
-      const result = shouldRespondToNotification(notification, postData);
+      const result = shouldRespondToNotification(notification, postData, SELF_HANDLE);
 
       expect(result).toBe(false);
       expect(getConfigMock).toHaveBeenCalled();
@@ -170,7 +193,7 @@ describe('Bluesky Polling Module', () => {
         reason: 'mention',
       };
 
-      const result = shouldRespondToNotification(notification, postData);
+      const result = shouldRespondToNotification(notification, postData, SELF_HANDLE);
 
       expect(result).toBe(true);
     });
@@ -179,7 +202,7 @@ describe('Bluesky Polling Module', () => {
       const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
       const postData = createPostData(true); // Has replies
 
-      const result = shouldRespondToNotification(baseNotification, postData);
+      const result = shouldRespondToNotification(baseNotification, postData, SELF_HANDLE);
 
       expect(result).toBe(false);
     });
@@ -188,7 +211,7 @@ describe('Bluesky Polling Module', () => {
       const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
       const postData = createPostData(false); // No replies
 
-      const result = shouldRespondToNotification(baseNotification, postData);
+      const result = shouldRespondToNotification(baseNotification, postData, SELF_HANDLE);
 
       expect(result).toBe(true);
     });
@@ -197,7 +220,7 @@ describe('Bluesky Polling Module', () => {
       const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
       const postData = { data: null }; // Invalid structure
 
-      const result = shouldRespondToNotification(baseNotification, postData);
+      const result = shouldRespondToNotification(baseNotification, postData, SELF_HANDLE);
 
       expect(result).toBe(false); // Should skip response when data is invalid
     });

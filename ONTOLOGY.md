@@ -143,12 +143,46 @@ G-4.
 | `openrouter.models` | `string[]` | OpenRouter slugs, `MODEL_ROTATION_SIZE` of them in the template. Empty or absent is an error, not a default. |
 | `openrouter.rotate` | `boolean` | False, the shipped default, always uses the first entry. True walks the list one entry per UTC day. |
 | `openrouter.baseUrl` | `string` | OpenRouter chat-completions endpoint. |
-| `bluesky.handle` | `string` | The bot's own handle. |
-| `bluesky.password` | `string` | App password. |
-| `ignoreList` | `string[]` | Handles never replied to. |
-| `botList` | `string[]` | Handles treated as bots for attenuation (see the thread-restraint rule). |
+| `bluesky.handle` | `string` | The bot's own handle on Bluesky's own network. |
+| `bluesky.password` | `string` | Account password, or an app password issued by the PDS named beside it. |
+| `bluesky.service` | `string` | `https://bsky.social`. |
+| `bluesky.appview` | `string` | `did:web:api.bsky.app#bsky_appview`. |
+| `bluesky.lexicon` | `string` | `app.bsky`. |
+| `delvetown.handle` | `string` | The bot's own handle on delve.town. |
+| `delvetown.password` | `string` | Account password, or an app password issued by the PDS named beside it. |
+| `delvetown.service` | `string` | `https://pds.delve.town`. |
+| `delvetown.appview` | `string` | `did:web:api.delve.town#bsky_appview`. |
+| `delvetown.lexicon` | `string` | `town.delve`. |
+| `ignoreList` | `string[]` | Handles never replied to. Applies to every account. |
+| `botList` | `string[]` | Handles treated as bots for attenuation (see the thread-restraint rule). Applies to every account. |
 
-### 1.10 Dead vocabulary
+`bluesky` and `delvetown` are **account sections**, and the set of them is the one list
+`ACCOUNT_SECTIONS` in `src/bluesky-accounts.ts`. A third network is an entry there plus a
+section here, and nothing else: no other code asks which network it is on (D-22). A section
+left blank is not an account and is passed over; a section half filled in is a typo and is
+named in the console instead.
+
+### 1.10 BlueskyAccount
+
+One network Oblique answers on. *Serves:* G-1, G-4.
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | `string` | The config section it came from, which is how a half filled in section is named when it is refused. No other application code reads it: the panel and the log identify an account by its handle. |
+| `handle` | `string` | The bot's own handle there, without a leading `@`. The restraint rules are asked with this, because each network knows Oblique by a different name. |
+| `client` | `BlueskyClient` | Signed in at that section's `service`, reading through its `appview` and speaking its `lexicon`. Every task the account's notifications create carries this client through to the reply, so a reply always goes back to the network it came from. |
+
+A network is three things, and they are independent: **where the repository lives**
+(`service`), **who answers reads about it** (`appview`), and **what the records are called**
+(`lexicon`). Bluesky and delve.town differ in all three. delve.town is not a Bluesky PDS with
+another hostname — it is a separate application network whose lexicon is a fork of
+`app.bsky.*` under `town.delve.*`, sharing only the DID (D-23).
+
+Accounts are built once at startup and never change. There is no "current" account: the
+poller visits all of them and they all feed the one task queue, so the orchestrator never
+learns that there is more than one network.
+
+### 1.11 Dead vocabulary
 
 `src/types/index.ts` also declares `Task`, `PendingTask`, `Conversation`, `StorageData`,
 `TaskId`, `UserId` and `ConversationId`. **Nothing imports them.** They are the vocabulary of
@@ -352,10 +386,10 @@ REPLIABLE_REASONS = { mention, reply, quote }
 
 isRepliableNotification(notif) -> notif.reason in REPLIABLE_REASONS
 
-shouldRespondToNotification(notif, postData):
+shouldRespondToNotification(notif, postData, selfHandle):
   if not isRepliableNotification(notif)                               -> false  # names no post
   if config.ignoreList includes notif.author                          -> false
-  if notif.reason == 'quote' and handle not in notif.text             -> false
+  if notif.reason == 'quote' and selfHandle not in notif.text         -> false
   if notif.reason == 'mention'                                        -> TRUE   # always
   if postUnreadableReason(postData) is not null                       -> false  # say which
   if postData.data.thread.replies is non-empty                        -> false  # beaten to it
@@ -364,9 +398,10 @@ shouldRespondToNotification(notif, postData):
 postUnreadableReason(postData):
   thread = postData?.data?.thread
   if thread missing                     -> 'the post could not be fetched'
-  if $type == '…#threadViewPost'        -> null                       # readable
-  if $type == '…#notFoundPost'          -> 'the post is gone'
-  if $type == '…#blockedPost'           -> 'the post is blocked, by us or by its author'
+  kind = fragment of thread.$type after '#', or '' when there is none
+  if kind == 'threadViewPost'           -> null                       # readable
+  if kind == 'notFoundPost'             -> 'the post is gone'
+  if kind == 'blockedPost'              -> 'the post is blocked, by us or by its author'
   -> 'the thread came back as <$type>'
 ```
 
@@ -375,9 +410,19 @@ notification's `uri` is that like, repost or follow record, so there is nothing 
 `getPostThread` refuses it with a 400. `isRepliableNotification` is split out and offline so
 the poller can ask before it fetches.
 
+`selfHandle` is the handle of the account the notification arrived on, passed in rather than
+read from config: Oblique answers on several networks and each knows it by a different name,
+so the quote test has to be made against the right one (D-22). `ignoreList` is global, and
+deliberately so — an account not worth answering on one network is not worth answering on
+another.
+
 A direct mention is answered unconditionally — it was addressed to the bot, so someone else
 having replied is irrelevant. Everything else defers: a post that cannot be read is left
 alone, and an existing reply means the conversation no longer needs the bot.
+
+The kinds are matched on the fragment of the `$type` rather than the whole of it, because
+each network namespaces its own copy of the union: `app.bsky.feed.defs#blockedPost` and
+`town.delve.feed.defs#blockedPost` are the same case (D-23).
 
 A post that cannot be read is not the same as a deleted one, and the four reasons are named
 rather than guessed at: `#notFoundPost` is gone, `#blockedPost` is a perfectly good post
@@ -641,7 +686,8 @@ it, so what the page runs on is exactly what the file says — the cost of hunti
 sources to answer "what model is it using" was judged higher than the convenience of partial
 files. A field left out is absent at runtime, not defaulted: `openrouter.models` missing makes
 the daily model throw, and `ignoreList` missing makes the restraint gate throw. Copy
-`config-example.json`, which carries every field.
+`config-example.json`, which carries every field. The one place a missing field is tolerated
+is an account section, where blank means "not this network" rather than a mistake.
 
 A missing or malformed file is a warning, not a failure — `loadConfig` yields `{}` and the
 page loads unconfigured and says so, rather than failing to start.
@@ -681,10 +727,11 @@ all the way to a blank post.
 
 ### 4.21 Authentication refresh — `ensureAuth` **[D]**
 
-*Serves:* G-4. Called before every Bluesky operation.
+*Serves:* G-4. Called before every Bluesky operation, on each account's own client.
 
 ```
 ensureAuth():
+  await ensureLexicon()                           # once per client, before the login
   if not authenticated or isTokenExpired() -> authenticate()
 
 isTokenExpired(now):
@@ -702,7 +749,61 @@ Refreshing early, rather than on a 401, avoids losing a reply to a token that ex
 State is cleared before the attempt so a failed login cannot leave the client believing it is
 authenticated.
 
-### 4.22 Not yet built **[D, unbuilt]**
+The lexicon is registered before the login rather than before the first read, because the
+SDK refuses an unknown NSID before any request is made — including the ones that follow a
+successful login.
+
+The login goes to the account's own `service`, never to a central entryway: ATProto
+authenticates at the PDS that holds the repository, so the credential is checked against
+that PDS's own record of the account and nowhere else (R-38). An account password is whatever
+was set there, and two accounts may share one; an app password is a record its issuing PDS
+created, so it is good at that PDS alone. `bsky.social` is `https://bsky.social`'s entryway and knows
+only the accounts it hosts; `oblique.delve.town` lives on `https://pds.delve.town` and is
+reached there. Each account keeps its own session and its own expiry.
+
+### 4.22 Speaking a network's lexicon **[D]**
+
+*Serves:* G-1, G-4. Runs once per account, before its first call.
+
+```
+nsid(suffix)          -> '<account.lexicon>.<suffix>'      # every method and record type
+
+registerLexicon(agent, prefix, resolverService):
+  if prefix is bundled with the SDK -> 0                   # app.bsky; nothing to fetch
+  authority = segments of prefix, reversed   # 'town.delve' -> 'delve.town'
+  did       = resolveHandle(authority) at resolverService
+  pds       = '#atproto_pds' endpoint of that did's document
+  documents = every com.atproto.lexicon.schema record in pds/did, following the cursor
+  for each: strip the record's own $type, then baseClient.addLexicon(what is left)
+  -> count
+
+ensureLexicon(): register once, then remember; ensureAuth calls it before anything else
+```
+
+`@atproto/api` validates every call against a registry of lexicons it ships with and refuses
+an NSID it has never heard of **before the request leaves the page**, so a network with its
+own lexicon has to be taught first. The authority is not configured: the NSID *is* the
+authority's domain reversed, so `town.delve` is published by `delve.town`, and a further
+network is one prefix and nothing else (R-40).
+
+A record's `$type` is `com.atproto.lexicon.schema` — the kind of record it is, not the kind
+of thing the lexicon describes — so it is dropped before registering and the registry is
+handed the document itself.
+
+Reads are addressed with the `atproto-proxy` header, set on the agent from the account's
+`appview`. This is the protocol's own mechanism: the PDS resolves the named DID, mints a
+service-auth token and forwards. The reference PDS also forwards `app.bsky.*` to Bluesky's
+AppView with no header at all, which is why Bluesky worked before any of this existed — but
+that is a convenience Bluesky has said it may withdraw, and no other PDS owes it. Naming the
+AppView is the correct behaviour in both cases.
+
+`agent.post`, `agent.getPostThread` and `agent.updateSeenNotifications` are hard-wired to
+`app.bsky.*`, so each goes through `api.xrpc.call` with a built NSID instead. A post is
+written as a plain `com.atproto.repo.createRecord` into the account's own `feed.post`
+collection. Every thread read goes through one private `getPostThread`, so the NSID is built
+in one place rather than at seven call sites.
+
+### 4.23 Not yet built **[D, unbuilt]**
 
 Designed, deliberately deferred, each with a `not yet covered` row in `CRITERIA.md` so the
 gap stays visible:
@@ -746,19 +847,43 @@ startPolling():
       if still polling: await checkNotifications(); schedule()
 
 checkNotifications():
-  if no blueskyClient or no llmClient -> show the reason, stop
-  await blueskyClient.ensureAuth()
-  notifs = await getNotifications(NOTIFICATION_BATCH, unreadOnly = true)
-  if none -> stop
-  render notifs
-  if #mark-as-seen -> await markNotificationsAsSeen()      # once, for the whole batch
+  if no account or no llmClient -> show the reason, stop
+  for each account:                                     # in ACCOUNT_SECTIONS order
+    checks += await checkAccount(account, llmClient, onWaitingTaskComplete, #mark-as-seen)
+  for each check, for each task in check.tasks:
+    state = addTask(state, task)                        # the one queue, whatever account
+  render one section per check: its handle, its notifications, its counts or its error
+
+checkAccount(account, llmClient, onWaitingTaskComplete, markAsSeen) -> AccountCheck:
+  try:
+    await account.client.ensureAuth()
+    notifs = await account.client.getNotifications(NOTIFICATION_BATCH, unreadOnly = true)
+    if none -> { notifs, tasks: [], error: null }
+    if markAsSeen -> await account.client.markNotificationsAsSeen()   # once, for the batch
+    -> { notifs, tasks: notificationTasks(account, notifs, …), error: null }
+  catch e:
+    -> { notifs: [], tasks: [], error: reason(e) }      # this account only
+
+notificationTasks(account, notifs, llmClient, onWaitingTaskComplete):
   for each notif:
     if not isRepliableNotification(notif): continue   # before any fetch: its uri is no post
-    postData = await fetchPostData(notif)             # null on any failure, never a throw
-    if not shouldRespondToNotification(notif, postData): continue
-    addTask(state, createReplyTask(notif, llmClient, blueskyClient, onWaitingTaskComplete))
-  report created and filtered counts
+    postData = await fetchPostData(account.client, notif)  # null on failure, never a throw
+    if not shouldRespondToNotification(notif, postData, account.handle): continue
+    emit createReplyTask(notif, llmClient, account.client, onWaitingTaskComplete)
 ```
+
+Every account is visited on every pass, in turn, and they all feed the one queue — a reply to
+delve.town and a reply to Bluesky are the same kind of task and wait in the same line (D-22).
+`checkAccount` queues nothing itself; it answers with the tasks it earned and the caller
+threads the orchestrator state, so a network that is down, or an app password the wrong PDS
+refuses, is reported in that account's own section of the panel and costs that account alone
+(R-39).
+
+`NOTIFICATION_BATCH` is a window on the most recent notifications, not a page of a queue:
+there is no cursor and nothing is remembered, so a notification that falls past the window is
+never asked for again. It can only sink further, never rise. The window must therefore be
+wider than any burst the poll interval can accumulate, and wide enough that the reasons
+Rule 0 refuses — likes, reposts, follows — cannot crowd out a mention beneath them (D-11).
 
 The poller's information is exactly what the Bluesky API returns for unread notifications —
 it has no memory of what it saw last pass. Marking as seen happens before the per-notification
@@ -793,19 +918,20 @@ tests. The code is the single source; the value here is a copy.
 | `BOT_WINDOW` | 8 | posts | `skipForBotAttenuation` | D-7 |
 | `BOT_ATTENUATION_LIMIT` | 4 | posts | `skipForBotAttenuation` | D-7 |
 | `THREAD_MAX_DEPTH` | 25 | ancestors | `getHistory` | D-8 |
-| `NOTIFICATION_BATCH` | 3 | notifications | `checkNotifications` | D-11 |
-| `POLL_DEFAULT_S` | 60 | seconds | `getPollIntervalSeconds` | D-11 |
+| `NOTIFICATION_BATCH` | 50 | notifications | `checkAccount` | D-11 |
+| `POLL_DEFAULT_S` | 120 | seconds | `getPollIntervalSeconds`, and again as the `#poll-interval` value in `index.html` | D-11 |
 | `POLL_MIN_S` | 10 | seconds | `getPollIntervalSeconds` | D-11 |
 | `POLL_MAX_S` | 3600 | seconds | `getPollIntervalSeconds` | D-11 |
 | `TASK_ID_LENGTH` | 24 | characters | `generateTaskId` | D-3 |
 | `SAFE_BASE32_ALPHABET` | `abcdefghijkmnpqrstuvwxyz23456789` | — | `safebase32.ts` | D-3 |
 | `TOKEN_REFRESH_BUFFER_MS` | 300000 | ms (5 min) | `BlueskyClient` | D-12 |
 | `TOKEN_DEFAULT_TTL` | 86400000 | ms (1 day) | `getDefaultTokenExpiration` | D-12 |
+| `RECORD_PAGE` | 100 | records per request | `fetchSchemas` | D-23 |
 | `MODEL_ROTATION_SIZE` | 23 | models | `config.json` → `openrouter.models` | D-5 |
 | `GENDER_ROTATION_SIZE` | 25 | entries | `prompts/oblique.ts` | D-5 |
 
-Only `MAX_BLUESKY_REPLY_CHARS`, `ADVERTISED_REPLY_CHARS`, `TOKEN_REFRESH_BUFFER_MS` and
-`SAFE_BASE32_ALPHABET` are named constants in the code today; the rest are literals at their use site, except
+Only `MAX_BLUESKY_REPLY_CHARS`, `ADVERTISED_REPLY_CHARS`, `TOKEN_REFRESH_BUFFER_MS`,
+`RECORD_PAGE` and `SAFE_BASE32_ALPHABET` are named constants in the code today; the rest are literals at their use site, except
 `MODEL_ROTATION_SIZE`, which is the length of a list in `config.json`. Naming them is Q-7 in
 `ARCHITECTURE_LOG.md`.
 
@@ -846,7 +972,7 @@ Illegal input never throws: a missing task, a wrong status or an empty queue pro
 | `TaskMapOps.getTasksByStatus(map, status)` | latest snapshots with that status |
 | `TaskQueueOps.getAllTaskIds(queue)` | queued ids, FIFO order (a copy) |
 | `WaitingSetOps.getAllWaitingTaskIds(set)` | waiting ids |
-| `window.oblique.getState()` | `{ orchestrator, hasLLM, hasBluesky }` — console debugging. Throws today: it calls `require` in an ES module (`getstate-viig`). |
+| `window.oblique.getState()` | `{ orchestrator, hasLLM, blueskyAccounts }` — the configured handles, for console debugging. Throws today: it calls `require` in an ES module (`getstate-viig`). |
 
 ### 7.3 Events
 

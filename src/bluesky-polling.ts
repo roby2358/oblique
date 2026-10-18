@@ -2,15 +2,7 @@
 import type { BlueskyMessage } from './types/index.js';
 import type { BlueskyHistoryEntry } from './hooks/bluesky/bluesky-client.js';
 import { getConfig } from './config.js';
-
-/**
- * Normalize a Bluesky handle by removing any leading @ symbol
- * @param handle - The handle to normalize (may be undefined, null, or empty)
- * @returns The normalized handle without leading @
- */
-const normalizeHandle = (handle: string | undefined | null): string => {
-  return (handle || '').replace(/^@/, '');
-};
+import { normalizeHandle } from './bluesky-accounts.js';
 
 /**
  * The notification reasons that name a post. A like, repost or follow notification's `uri` is
@@ -35,10 +27,28 @@ export const isRepliableNotification = (notification: BlueskyMessage): boolean =
  * situations arrive in the same shape: the post is gone, the post is there but behind a block,
  * the fetch never returned, or the thread is a kind nothing here handles. Only the first is a
  * deleted post, so each is named rather than guessed at.
+ *
+ * Keyed by the fragment of the `$type` rather than the whole of it. Each network namespaces
+ * its own copy of the union — `app.bsky.feed.defs#blockedPost`, `town.delve.feed.defs#blockedPost`
+ * — and only the part after the `#` is common to all of them (D-23).
  */
 const UNREADABLE_THREAD_TYPES: { [key: string]: string } = {
-  'app.bsky.feed.defs#notFoundPost': 'the post is gone',
-  'app.bsky.feed.defs#blockedPost': 'the post is blocked, by us or by its author',
+  notFoundPost: 'the post is gone',
+  blockedPost: 'the post is blocked, by us or by its author',
+};
+
+export const threadKind = (thread: any): string => {
+  if (typeof thread?.$type !== 'string') {
+    return '';
+  }
+
+  const [, fragment] = thread.$type.split('#');
+
+  if (!fragment) {
+    return '';
+  }
+
+  return fragment;
 };
 
 export const postUnreadableReason = (postData: any): string | null => {
@@ -48,11 +58,13 @@ export const postUnreadableReason = (postData: any): string | null => {
     return 'the post could not be fetched';
   }
 
-  if (thread.$type === 'app.bsky.feed.defs#threadViewPost') {
+  const kind = threadKind(thread);
+
+  if (kind === 'threadViewPost') {
     return null;
   }
 
-  return UNREADABLE_THREAD_TYPES[thread.$type] ?? `the thread came back as ${thread.$type}`;
+  return UNREADABLE_THREAD_TYPES[kind] ?? `the thread came back as ${thread.$type}`;
 };
 
 /** Check if a single notification should be responded to based on response rules
@@ -60,11 +72,13 @@ export const postUnreadableReason = (postData: any): string | null => {
  * This is the first, quick check to see if the notification should be responded to.
  * @param notification - The notification to check
  * @param postData - The post thread data from getSinglePost
+ * @param selfHandle - The handle of the account the notification arrived on
  * @returns Whether the notification should be responded to
  */
 export const shouldRespondToNotification = (
   notification: BlueskyMessage,
-  postData: any
+  postData: any,
+  selfHandle: string
 ): boolean => {
   // Rule 0: Only reasons that name a post can be answered
   if (!isRepliableNotification(notification)) {
@@ -74,7 +88,9 @@ export const shouldRespondToNotification = (
 
   // Rule 1: Check if author is in ignore list
   const config = getConfig();
-  const configuredHandle: string = normalizeHandle(config.bluesky.handle);
+  // The handle of the account this notification arrived on, not a single configured one:
+  // Oblique answers on several networks and each knows itself by a different name (D-22).
+  const configuredHandle: string = normalizeHandle(selfHandle);
 
   if (config.ignoreList.includes(notification.author)) {
     console.log(`Skipping @${notification.author}: Author is in ignore list`);

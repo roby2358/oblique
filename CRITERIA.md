@@ -25,7 +25,7 @@ IDs are never renumbered. Rules are cited by ID, never by section number.
 | R-5 | A queue of several tasks, each returning a terminal successor; then a queue whose head refuses | Drains to empty in FIFO order. A refusal breaks the loop rather than spinning on the same head. | automated |
 | R-6 | `startLoop` on a fresh state; `startLoop` again while running; `stop()` then a further frame | At most one task per animation frame; the second call warns and returns a no-op `stop`; after `stop()`, `isRunning` is false and no further task is processed. | not yet covered |
 | R-7 | `resumeWaitingTask` / `errorWaitingTask` for a waiting chain; for a `taskId` absent from TaskMap; the same callback twice; a late failure for a chain that already succeeded; a stale callback for a chain that has resumed into `ready` work | Waiting: the chain leaves the WaitingSet and the successor is routed by status. Absent: warns, clears any WaitingSet entry, leaves state otherwise unchanged. Every callback for a chain that is not waiting warns and changes nothing — the terminal snapshot keeps its version, status and `work` lines, and queued work stays queued. | automated |
-| R-8 | Notifications: each of `mention`, `reply`, `quote` and each of `like`, `repost`, `follow`, `starterpack-joined` through `isRepliableNotification`; a `like` through `shouldRespondToNotification` with post data and with none; author in `ignoreList`; `quote` whose text omits the handle; `mention` on a post that already has replies; post data missing or of the wrong `$type`; a post with replies; a post with none. Separately `postUnreadableReason` for a thread view post, a `#notFoundPost`, a `#blockedPost`, a missing thread and an unhandled `$type` | The first three reasons are repliable and the rest are not; a `like` is refused whatever the post data says, because its `uri` names no post. Then `false`, `false`, **`true`** (a mention is always answered), `false`, `false`, `true`. `postUnreadableReason` returns `null` for a readable post and otherwise names which of the four it was, rather than reporting every one of them as deleted. | automated |
+| R-8 | Notifications: each of `mention`, `reply`, `quote` and each of `like`, `repost`, `follow`, `starterpack-joined` through `isRepliableNotification`; a `like` through `shouldRespondToNotification` with post data and with none; author in `ignoreList`; `quote` whose text omits the handle it is told; `mention` on a post that already has replies; post data missing or of the wrong `$type`; a post with replies; a post with none. Separately `postUnreadableReason` for a thread view post, a `#notFoundPost`, a `#blockedPost`, a missing thread and an unhandled `$type` | The first three reasons are repliable and the rest are not; a `like` is refused whatever the post data says, because its `uri` names no post. Then `false`, `false` (the quote test is made against the handle passed in, not a configured one), **`true`** (a mention is always answered), `false`, `false`, `true`. `postUnreadableReason` returns `null` for a readable post and otherwise names which of the four it was, rather than reporting every one of them as deleted. The same four answers come back for `town.delve.feed.defs#…` as for `app.bsky.feed.defs#…`, and a `$type` with no fragment is unreadable rather than a crash. | automated |
 | R-9 | Threads: empty; last author is a bot appearing 4 of the last 8; the same bot appearing 3 of 8; last author human appearing 6 of 8; length `THREAD_MAX_POSTS + 1`; a normal thread | `null`, `null`, the thread, the thread (humans are never attenuated), `null`, the thread. | automated |
 | R-10 | `getHistory` for a `quote` notification; a notification with no `replyInfo.parent.uri`; a reply; each of those with the upstream fetch failing | Quote → `[quoted post, the quote]`; standalone → `[quoted?, the post]`; reply → ancestors oldest-first with the notification last, at most `THREAD_MAX_DEPTH` deep. Every failure degrades to `[{ author, text }]` and never throws. Alt texts are carried on every path. | automated |
 | R-11 | `createObliqueConversation(thread)` for a multi-post thread, a single post, a post with alt texts, and `null` | Two messages (`system`, `user`); the last post becomes the reply target and the rest the history; each alt text appears as its own `  image:` line; `null` in yields `null` out. | automated |
@@ -38,13 +38,17 @@ IDs are never renumbered. Rules are cited by ID, never by section number.
 | R-18 | `createObliqueMessageTask` with a client that resolves, and one that rejects | Returns a `waiting` snapshot immediately. On resolve, `onComplete` receives a `succeeded` successor whose `work` gains the extracted response as its last line and whose `conversation` gains the assistant turn. On reject, a `dead` successor whose appended `work` line starts `Error:`. | automated |
 | R-19 | `/config.json` complete; partial; absent; returning a non-OK status; containing malformed JSON. Separately, `initializeConfig` then `getConfig` | A complete file is returned exactly as written, with nothing added. A partial file stays partial — no field is filled in. The last three warn and yield `{}` rather than throwing, so the page still loads. `getConfig` returns what was loaded. | automated |
 | R-20 | `ensureAuth` with no prior session; with a token expiring beyond `TOKEN_REFRESH_BUFFER_MS`; with one expiring inside it; a login that rejects; a session JWT with no `exp`, with a malformed payload, and with fewer than three segments | Logs in in cases 1 and 3, skips in case 2. A rejected login leaves `authenticated` false and `tokenExpiresAt` null. Each malformed-JWT case falls back to `TOKEN_DEFAULT_TTL` rather than throwing. | not yet covered |
-| R-21 | `checkNotifications` with no Bluesky client; with no LLM client; with an empty batch; with a batch where some notifications pass R-8 and some do not; with `#mark-as-seen` checked. Separately `fetchPostData` with a client that resolves and one that rejects | Each missing client reports its own reason and creates nothing. An empty batch creates nothing. Otherwise exactly one task per passing notification, with the created and filtered counts reported. `markNotificationsAsSeen` is called once for the batch, before the per-notification loop, and only when checked. `fetchPostData` returns what Bluesky gives it, and `null` rather than throwing when the fetch fails, so one notification's failure cannot abort the batch. | not yet covered |
+| R-21 | `checkNotifications` with no account configured; with no LLM client; with an empty batch; with a batch where some notifications pass R-8 and some do not; with `#mark-as-seen` checked. Separately `fetchPostData` with a client that resolves and one that rejects | Each missing dependency reports its own reason and creates nothing. Every configured account is visited and its tasks all land in the one queue. An empty batch creates nothing. Otherwise exactly one task per passing notification, with the created and filtered counts reported. `markNotificationsAsSeen` is called once for the batch, before the per-notification loop, and only when checked. `fetchPostData` returns what Bluesky gives it, and `null` rather than throwing when the fetch fails, so one notification's failure cannot abort the batch. | not yet covered |
 | R-22 | `generateSafeBase32(n)`, `generateTaskId()`, `generateCorrelationId()` over many calls | Length `n` / `TASK_ID_LENGTH` / `TASK_ID_LENGTH`; every character is in `SAFE_BASE32_ALPHABET`; `l`, `1`, `o` and `0` never appear; a correlation id always begins `x`; collisions do not occur across a large sample. | automated |
 | R-23 | TaskMap, TaskQueue and WaitingSet exercised through their `*Ops` modules | TaskMap keeps one snapshot per `taskId` and replaces on re-set; `getTasksByStatus` filters correctly; removing a missing key is a no-op. TaskQueue is FIFO, `peek` does not consume, `remove` is by value, `getAllTaskIds` returns a copy. WaitingSet rejects duplicates and tolerates removing an absent id. | automated |
 | R-24 | `createTaskFromFunction(d, fn)` where `fn` returns a partial, returns `{}`, returns a custom status, throws an `Error`, and throws a non-`Error` | Returns a `ready` task. On success the partial is merged over a succeeded successor, but `taskId`, `version` and `doneAt` are never overridden and the status defaults to `succeeded`. On a throw the result is a `dead` successor with the message appended to `work` as a further line; a non-`Error` throw yields `Unknown error`. | automated |
 | R-35 | `generateResponse` with a normal payload, checking the request body names the model, carries `reasoning: { enabled: false }` and that nothing logged contains the API key; with `choices: []`; with `content: null` and `finish_reason: length`; with whitespace-only content; with a non-OK status | The normal payload yields the content, model and usage, and the console sees the request body without the headers. Each of the next three throws `OpenRouter returned no content for model <model> (finish_reason: <reason>)` rather than returning `''`. A non-OK status throws `OpenRouter API error: <status> <body>`. | automated |
 | R-36 | A chain's `work` after each step; `latestWork` for a work product with lines and for one with none | Every step appends exactly one line and leaves the earlier lines untouched, so the latest snapshot carries the whole trace. `latestWork` returns the last line, and `''` when there are none, so a caller's own fallback text applies. | automated |
 | R-37 | `obliquePrompt` called twice with different messages and histories; `systemPrompt` | The sections appear in volatility order: the fixed mission text, the daily voice, the lens, the thread history, the message being answered, the closing restatement. Everything above the voice is byte-identical between the two calls. The output format is stated in `systemPrompt` and nowhere else, and the restatement is the last thing in the user message. | automated |
+| R-38 | `createAccounts` on a file with both sections filled in; one with a leading `@` on the handle; one whose second section is blank; one whose second section has only a handle; an empty file | One account per filled-in section, in `ACCOUNT_SECTIONS` order, each client carrying the `service`, `appview` and `lexicon` from its own section and each handle stripped of a leading `@`. The `atproto-proxy` header on each client's agent is the one its section names. A blank section yields no account and no warning; a half filled in one yields no account and a warning naming every missing field. An empty file yields no account at all. | automated |
+| R-39 | `checkAccount` for an account whose `ensureAuth` rejects; for one whose batch is empty, with `#mark-as-seen` on | The rejection is returned as that account's `error` with no task and no throw, so the accounts after it are still checked. The empty batch returns no task, no error, and leaves `markNotificationsAsSeen` uncalled. | automated |
+| R-40 | `lexiconAuthority` and `isBundledLexicon` for `app.bsky` and `town.delve`; `registerLexicon` for a bundled prefix, for an unbundled one whose authority resolves to a `did:plc` and whose schemas span two pages, for one resolving to a `did:web`, for a failing request, and for a DID document naming no PDS | The authority is the NSID's segments reversed, and only `app.bsky` is bundled. A bundled prefix fetches nothing and registers nothing. An unbundled one resolves the handle at the account's own PDS, reads the authority's DID document, follows the cursor to the end and registers every document with the record's own `$type` stripped. A `did:web` authority is read from its `.well-known/did.json`. A failing request and a PDS-less document both throw, naming which, rather than registering half a lexicon. | automated |
+| R-41 | `post` on a client whose lexicon is `app.bsky` and on one whose lexicon is `town.delve`; with and without `replyTo`; with a `createRecord` that confirms a different uri and cid | The record is written into that account's own `feed.post` collection with a matching `$type`, into its own repo, carrying the text and a parseable `createdAt`, and the reply refs when replying. The uri and cid returned are the ones `createRecord` confirmed, read from `data`. | automated |
 
 ### Unbuilt rules
 
@@ -78,6 +82,7 @@ the gap is visible, not so it looks covered.
 | U-7 | The poll interval input clamps to `POLL_MIN_S`…`POLL_MAX_S` on change and on blur. | automated |
 | U-8 | *Saving configuration from the Configure panel updates the running orchestrator without a reload.* | retired — the panel has no fields; `config.json` is the only source |
 | U-9 | The Configure panel says where `config.json` lives and that it is gitignored, and offers nothing to type into. | manual — open the Configure panel |
+| U-10 | The Bluesky panel shows one section per configured account, headed by that account's handle, and an account that failed to check shows its reason there rather than hiding the others. | manual — check with two accounts configured and one password wrong |
 
 ---
 
@@ -101,7 +106,7 @@ anything until one exists.
 
 ## Status
 
-**As of 2026-10-17.** `npm test` passes and `npx tsc --noEmit` reports no errors. There is no
+**As of 2026-10-18.** `npm test` passes and `npx tsc --noEmit` reports no errors. There is no
 build step to check. Counts come from the test command and are not copied here.
 
 ### Not yet covered
@@ -135,10 +140,36 @@ close. R-21 needs the poller's dependencies injected rather than imported.
   the output format and the position of the restatement are all asserted. That the ordering
   actually earns a cache hit is a property of the provider, not of this code, and nothing here
   measures it.
-- **R-21** — the polling *toggle* handler, the interval clamp (U-7) and `fetchPostData` are
-  covered; `checkNotifications` itself is not, so that one notification's `null` post data
-  leaves the rest of the batch to be considered is asserted only at the helper, not through
-  the loop.
+- **R-21** — the polling *toggle* handler, the interval clamp (U-7), `fetchPostData` and
+  `checkAccount` are covered; `checkNotifications` itself is not, so that one notification's
+  `null` post data leaves the rest of the batch to be considered, and that every account's
+  tasks reach the one queue, are asserted only at the helpers, not through the loop.
+- **R-38** — the sections that become accounts, their order, the handle normalization, the
+  `atproto-proxy` header and both the blank and the half filled in section are all asserted.
+  The `service` is checked through `BlueskyClient.serviceUrl()`, which echoes the config the
+  client was handed; that the agent then signs in *there* is a property of `@atproto/api`,
+  and no unit test drives a real login. `just cc-smoke` does, against the live accounts, and
+  is the only thing that can answer "do both networks actually answer".
+- **R-41** — the collection, the `$type`, the repo, the text, the `createdAt`, the reply refs
+  and the confirmed uri and cid are all asserted, against a mocked `createRecord`. No test
+  writes a post to a real server, and `just cc-smoke` is read-only by design, so neither can
+  answer whether a server accepts the record. That was settled by hand instead: see the
+  2026-10-18 history entry for the reply that landed. Re-check it by hand after any change
+  to how the record is written, because delve.town stores a wrongly-namespaced post and never
+  shows it — a wrong collection fails silently, not loudly. The three sibling calls build
+  their NSID the same way and no test pins any of them: the thread suites route
+  `api.xrpc.call` to a spy that discards the NSID, and nothing exercises
+  `notification.listNotifications` or `notification.updateSeen` at all. A wrong prefix there
+  is a 501 rather than a silent loss, and `just cc-smoke` is what catches it.
+- **R-40** — the resolution chain, the paging, the `$type` strip and both failure paths are
+  asserted against a mocked `fetch`. That the 169 documents delve.town publishes are
+  *accepted* by the SDK's registry is not asserted here; `just cc-smoke` registers them for
+  real and fails if any is rejected.
+- **R-39** — the rejecting account and the empty batch are covered directly. That a later
+  account is still checked after an earlier one fails follows from `checkAccount` returning
+  rather than throwing, but the loop in `checkNotifications` that relies on it is not driven
+  (the same gap as R-21), and the task-creating path through `notificationTasks` is covered
+  only through its parts.
 
 ### Manual only
 

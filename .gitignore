@@ -4,6 +4,7 @@ config.json
 node_modules/
 dist/
 dist-cli/
+.smoke/
 *.log
 .DS_Store
 *.swp

@@ -17,7 +17,7 @@ describe('Bluesky Polling Module', () => {
     
     // Mock the panels module
     jest.doMock('../src/panels.js', () => ({
-      getBlueskyClient: jest.fn(),
+      getBlueskyAccounts: jest.fn(() => []),
       getLLMClient: jest.fn(),
       getOrchestratorState: jest.fn(),
       setOrchestratorState: jest.fn(),
@@ -69,6 +69,44 @@ describe('Bluesky Polling Module', () => {
       } as any;
 
       await expect(fetchPostData(client, notif)).resolves.toBeNull();
+    });
+  });
+
+  // R-39: one account's failure is reported against that account, never thrown at the batch
+  describe('checkAccount', () => {
+    const accountWith = (client: any) => ({
+      name: 'delvetown',
+      handle: 'oblique.delve.town',
+      client,
+    });
+
+    it('reports the reason an account could not be checked, rather than throwing', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const { checkAccount } = await import('../src/bluesky-panel.js');
+      const client = {
+        ensureAuth: jest.fn<any>().mockRejectedValue(new Error('Invalid identifier or password')),
+      };
+
+      const check = await checkAccount(accountWith(client) as any, {} as any, jest.fn(), false);
+
+      expect(check.error).toBe('Invalid identifier or password');
+      expect(check.tasks).toEqual([]);
+      warn.mockRestore();
+    });
+
+    it('creates no task and marks nothing seen when an account has no notifications', async () => {
+      const { checkAccount } = await import('../src/bluesky-panel.js');
+      const client = {
+        ensureAuth: jest.fn<any>().mockResolvedValue(undefined),
+        getNotifications: jest.fn<any>().mockResolvedValue([]),
+        markNotificationsAsSeen: jest.fn<any>().mockResolvedValue(undefined),
+      };
+
+      const check = await checkAccount(accountWith(client) as any, {} as any, jest.fn(), true);
+
+      expect(check.error).toBeNull();
+      expect(check.tasks).toEqual([]);
+      expect(client.markNotificationsAsSeen).not.toHaveBeenCalled();
     });
   });
 

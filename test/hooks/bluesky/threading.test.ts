@@ -1,13 +1,19 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { BlueskyClient } from '../../../src/hooks/bluesky/bluesky-client.js';
 import type { BlueskyMessage } from '../../../src/types/index.js';
+import { threadAgent } from '../../helpers/thread-agent.js';
+
+
 
 describe('BlueskyClient Threading', () => {
   let client: BlueskyClient;
   let authenticateSpy: jest.SpiedFunction<BlueskyClient['authenticate']>;
   const mockConfig = {
     handle: 'test.bsky.social',
-    appPassword: 'test-password'
+    appPassword: 'test-password',
+    service: 'https://bsky.social',
+    appview: 'did:web:api.bsky.app#bsky_appview',
+    lexicon: 'app.bsky'
   };
 
   beforeEach(() => {
@@ -35,9 +41,7 @@ describe('BlueskyClient Threading', () => {
       };
 
       // Mock the agent with a chain of posts
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
 
       // Mock responses for the thread traversal
       (mockAgent.getPostThread as any)
@@ -145,9 +149,7 @@ describe('BlueskyClient Threading', () => {
         // No replyInfo
       };
 
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
 
       (mockAgent.getPostThread as any).mockResolvedValue({
         data: {
@@ -194,9 +196,7 @@ describe('BlueskyClient Threading', () => {
         }
       };
 
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
 
       // Mock a long chain of posts
       (mockAgent.getPostThread as any).mockImplementation(({ uri }: { uri: string }) => {
@@ -267,9 +267,7 @@ describe('BlueskyClient Threading', () => {
         }
       };
 
-      const mockAgent = {
-        getPostThread: jest.fn()
-      };
+      const mockAgent = threadAgent(jest.fn());
 
       // Mock first call success, second call error
       (mockAgent.getPostThread as any)
@@ -322,9 +320,7 @@ describe('BlueskyClient Threading', () => {
       const mockGetPostThread: any = jest.fn();
       mockGetPostThread.mockRejectedValue(new Error('API Error') as any);
 
-      const mockAgent = {
-        getPostThread: mockGetPostThread,
-      };
+      const mockAgent = threadAgent(mockGetPostThread);
 
       (client as any).agent = mockAgent;
 

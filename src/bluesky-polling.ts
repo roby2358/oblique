@@ -67,70 +67,72 @@ export const postUnreadableReason = (postData: any): string | null => {
   return UNREADABLE_THREAD_TYPES[kind] ?? `the thread came back as ${thread.$type}`;
 };
 
-/** Check if a single notification should be responded to based on response rules
- * 
- * This is the first, quick check to see if the notification should be responded to.
- * @param notification - The notification to check
- * @param postData - The post thread data from getSinglePost
- * @param selfHandle - The handle of the account the notification arrived on
- * @returns Whether the notification should be responded to
+/**
+ * Whether the gate needs the post a notification names.
+ *
+ * A reason that names no post has nothing to fetch, and a direct mention is answered without
+ * consulting the post at all, so the thread read is skipped in both cases. Asked before
+ * fetching, so a like costs one line of the notification list and no request (R-8).
  */
-export const shouldRespondToNotification = (
+export const needsPostData = (notification: BlueskyMessage): boolean => {
+  return isRepliableNotification(notification) && notification.reason !== 'mention';
+};
+
+/**
+ * Why a notification should be left alone, or `null` when it should be answered. The first
+ * gate, against the one notification and the post it names.
+ *
+ * The reason carries no author, so the caller can tally the reasons across a pass and print
+ * a short table of them; the author belongs in the line the caller logs (D-25).
+ *
+ * @param notification - The notification to judge
+ * @param postData - The post thread data from getSinglePost, or `null` if it could not be read
+ * @param selfHandle - The handle of the account the notification arrived on
+ * @returns The reason to decline, or `null` to answer
+ */
+export const notificationRestraintReason = (
   notification: BlueskyMessage,
   postData: any,
   selfHandle: string
-): boolean => {
-  // Rule 0: Only reasons that name a post can be answered
+): string | null => {
+  // Rule 0: only reasons that name a post can be answered
   if (!isRepliableNotification(notification)) {
-    console.log(`Skipping @${notification.author}: a ${notification.reason} names no post to answer`);
-    return false;
+    return `a ${notification.reason} names no post to answer`;
   }
 
-  // Rule 1: Check if author is in ignore list
-  const config = getConfig();
-  // The handle of the account this notification arrived on, not a single configured one:
-  // Oblique answers on several networks and each knows itself by a different name (D-22).
-  const configuredHandle: string = normalizeHandle(selfHandle);
-
-  if (config.ignoreList.includes(notification.author)) {
-    console.log(`Skipping @${notification.author}: Author is in ignore list`);
-    return false;
+  // Rule 1: the ignore list is global — an author not worth answering on one network is not
+  // worth answering on another
+  if (getConfig().ignoreList.includes(notification.author)) {
+    return 'the author is in the ignore list';
   }
 
-  // Rule 2: Don't reply to quote posts unless the handle is in the text
-  if (
-    notification.reason === 'quote' &&
-    configuredHandle &&
-    !notification.text.includes(configuredHandle)
-  ) {
-    console.log(`Skipping @${notification.author}: This is a quote post`);
-    return false;
+  // Rule 2: a quote is only ours to answer if it names us. The handle is the account the
+  // notification arrived on, not a single configured one: each network knows Oblique by a
+  // different name (D-22).
+  const handle = normalizeHandle(selfHandle);
+
+  if (notification.reason === 'quote' && handle && !notification.text.includes(handle)) {
+    return 'a quote that does not name us';
   }
 
-  // Rule 3: If it's a direct mention, we MUST reply regardless of existing replies
+  // Rule 3: a direct mention was addressed to the bot, so someone else having replied is
+  // irrelevant and nothing below applies
   if (notification.reason === 'mention') {
-    console.log(`  ✓ Direct mention detected - will respond to @${notification.author}`);
-    return true;
+    return null;
   }
 
-  // If we can't read the post, skip response — and say which of the four reasons it was
   const unreadable = postUnreadableReason(postData);
+
   if (unreadable) {
-    console.log(`Skipping @${notification.author}: ${unreadable}`);
-    return false;
+    return unreadable;
   }
 
-  const thread = postData.data.thread as any;
-  
-  // Rule 4: If it's not a direct mention, check if anyone has already replied
-  const hasReplies = !!(thread.replies && thread.replies.length > 0);
-  
-  if (hasReplies) {
-    console.log(`Skipping @${notification.author}: Someone already replied to this post`);
-    return false;
+  // Rule 4: an existing reply means the conversation no longer needs the bot
+  if (postData.data.thread.replies && postData.data.thread.replies.length > 0) {
+    return 'someone already replied to this post';
   }
 
-  return true;
+  return null;
 };
 
 /**

@@ -4,7 +4,7 @@ import { getBlueskyAccounts, getLLMClient, getOrchestratorState, setOrchestrator
 import { createReplyTask } from './oblique-task-factory.js';
 import * as Orchestrator from './drakidion/orchestrator.js';
 import type { BlueskyMessage } from './types/index.js';
-import { isRepliableNotification, shouldRespondToNotification } from './bluesky-polling.js';
+import { needsPostData, notificationRestraintReason } from './bluesky-polling.js';
 import type { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
 import type { BlueskyAccount } from './bluesky-accounts.js';
 import type { LLMClient } from './hooks/llm/llm-client.js';
@@ -115,47 +115,58 @@ export const fetchPostData = async (blueskyClient: BlueskyClient, notif: Bluesky
 };
 
 /**
- * One account's pass: what it saw, the tasks that earned, and the reason it failed if it did.
- * Nothing is queued here — the caller threads the orchestrator state — so a network that is
- * down costs that account alone and the others' replies still land (R-39).
+ * One account's pass: the notifications it chose to answer, the reasons it declined the rest,
+ * the tasks that earned, and the reason it failed if it did. Nothing is queued here — the
+ * caller threads the orchestrator state — so a network that is down costs that account alone
+ * and the others' replies still land (R-39).
+ *
+ * `declined` holds one reason per notification passed over, author-free so they can be
+ * tallied; the console carries the author and the disposition one by one (D-25).
  */
 export interface AccountCheck {
   account: BlueskyAccount;
-  notifications: BlueskyMessage[];
+  answered: BlueskyMessage[];
+  declined: string[];
   tasks: DrakidionTask[];
   error: string | null;
 }
 
 /**
- * The tasks one account's notifications earn, in order. Every restraint rule is asked with
- * that account's own handle, because each network knows Oblique by a different name (D-22).
+ * What one account's notifications earned: a task each for the ones to answer, a reason each
+ * for the rest. Every restraint rule is asked with that account's own handle, because each
+ * network knows Oblique by a different name (D-22).
+ *
+ * The post is fetched only once the cheap rules have passed: a like, repost or follow
+ * notification's uri is that record and `getPostThread` answers 400 for it (R-8).
  */
-const notificationTasks = async (
+const judgeNotifications = async (
   account: BlueskyAccount,
   notifications: BlueskyMessage[],
   llmClient: LLMClient,
   onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void
-): Promise<DrakidionTask[]> => {
+): Promise<{ answered: BlueskyMessage[]; declined: string[]; tasks: DrakidionTask[] }> => {
+  const answered: BlueskyMessage[] = [];
+  const declined: string[] = [];
   const tasks: DrakidionTask[] = [];
 
   for (const notif of notifications) {
-    // Ask before fetching: a like, repost or follow notification's uri is that record,
-    // not a post, and getPostThread answers 400 for it (R-8).
-    if (!isRepliableNotification(notif)) {
-      console.log(`Skipping @${notif.author}: a ${notif.reason} names no post to answer`);
+    const postData = needsPostData(notif)
+      ? await fetchPostData(account.client, notif)
+      : null;
+    const reason = notificationRestraintReason(notif, postData, account.handle);
+
+    if (reason) {
+      console.log(`Skipping @${notif.author}: ${reason}`);
+      declined.push(reason);
       continue;
     }
 
-    const postData = await fetchPostData(account.client, notif);
-
-    if (!shouldRespondToNotification(notif, postData, account.handle)) {
-      continue;
-    }
-
+    console.log(`\u2713 Answering @${notif.author}`);
+    answered.push(notif);
     tasks.push(createReplyTask(notif, llmClient, account.client, onWaitingTaskComplete));
   }
 
-  return tasks;
+  return { answered, declined, tasks };
 };
 
 export const checkAccount = async (
@@ -172,7 +183,7 @@ export const checkAccount = async (
     const notifications = await account.client.getNotifications(50, true);
 
     if (notifications.length === 0) {
-      return { account, notifications, tasks: [], error: null };
+      return { account, answered: [], declined: [], tasks: [], error: null };
     }
 
     // Once for the whole batch, before the loop, so a mid-loop failure cannot make the same
@@ -181,16 +192,54 @@ export const checkAccount = async (
       await account.client.markNotificationsAsSeen();
     }
 
-    const tasks = await notificationTasks(account, notifications, llmClient, onWaitingTaskComplete);
+    const judged = await judgeNotifications(account, notifications, llmClient, onWaitingTaskComplete);
 
-    return { account, notifications, tasks, error: null };
+    return { account, ...judged, error: null };
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'Unknown error';
     console.warn(`Checking @${account.handle} failed: ${reason}`);
-    return { account, notifications: [], tasks: [], error: reason };
+    return { account, answered: [], declined: [], tasks: [], error: reason };
   }
 };
 
+const plural = (count: number, noun: string): string => {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+};
+
+/**
+ * The reasons for passing a notification over, each with how many times it applied, most
+ * frequent first. The reasons carry no author, so the same rule declining five notifications
+ * is one row of five rather than five rows (D-25).
+ */
+export const tallyReasons = (declined: string[]): { reason: string; count: number }[] => {
+  const counts = new Map<string, number>();
+
+  for (const reason of declined) {
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((left, right) => right.count - left.count);
+};
+
+const renderDeclined = (declined: string[]): string => {
+  if (declined.length === 0) {
+    return '';
+  }
+
+  const rows = tallyReasons(declined)
+    .map(({ reason, count }) => `<li><span class="declined-count">${count}</span>${escapeHtml(reason)}</li>`)
+    .join('');
+
+  return `<p class="declined-head">Passed over ${plural(declined.length, 'notification')}:</p><ul class="declined-list">${rows}</ul>`;
+};
+
+/**
+ * One account's section of the panel: a box for each notification it is answering, then the
+ * reasons it passed the rest over. Only the answered ones get a box — the declined ones are
+ * a count against a reason here and a line each in the console (D-25).
+ */
 const renderAccountCheck = (check: AccountCheck): string => {
   const header = `<h4 class="bluesky-account">@${escapeHtml(check.account.handle)}</h4>`;
 
@@ -198,21 +247,16 @@ const renderAccountCheck = (check: AccountCheck): string => {
     return `${header}<p class="error">Error: ${escapeHtml(check.error)}</p>`;
   }
 
-  if (check.notifications.length === 0) {
+  if (check.answered.length === 0 && check.declined.length === 0) {
     return `${header}<p>No new notifications.</p>`;
   }
 
-  const tasksCreated = check.tasks.length;
-  const filteredCount = check.notifications.length - tasksCreated;
+  const answeredHtml = check.answered.map(renderNotificationAsHtml).join('');
+  const summary = check.answered.length === 0
+    ? 'Nothing to answer this pass'
+    : `✓ Replying to ${plural(check.answered.length, 'notification')}`;
 
-  let successMessage = `✓ Created ${tasksCreated} task${tasksCreated === 1 ? '' : 's'} to reply to notification${tasksCreated === 1 ? '' : 's'}`;
-  if (filteredCount > 0) {
-    successMessage += ` (${filteredCount} notification${filteredCount === 1 ? '' : 's'} filtered out)`;
-  }
-
-  const postsHtml = check.notifications.map(renderNotificationAsHtml).join('');
-
-  return `${header}${postsHtml}<p class="success">${successMessage}</p>`;
+  return `${header}${answeredHtml}<p class="success">${summary}</p>${renderDeclined(check.declined)}`;
 };
 
 export const checkNotifications = async () => {

@@ -478,6 +478,33 @@ footer {
   color: var(--text-secondary);
 }
 
+.declined-head {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin: 0.75rem 0 0.25rem;
+}
+
+.declined-list {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.declined-list li {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.125rem 0;
+}
+
+.declined-count {
+  min-width: 1.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
 .error {
   color: var(--error-color);
   padding: 1rem;

@@ -140,17 +140,19 @@ describe('Bluesky Polling Module', () => {
     });
   });
 
-  describe('shouldRespondToNotification', () => {
+  describe('notificationRestraintReason', () => {
     it('refuses a like without consulting the post data', async () => {
-      const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
+      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
       const like: BlueskyMessage = {
         ...baseNotification,
         uri: 'at://did:plc:test/app.bsky.feed.like/3my3tjzprdr24',
         reason: 'like',
       };
 
-      expect(shouldRespondToNotification(like, createPostData(false), SELF_HANDLE)).toBe(false);
-      expect(shouldRespondToNotification(like, undefined, SELF_HANDLE)).toBe(false);
+      expect(notificationRestraintReason(like, createPostData(false), SELF_HANDLE))
+        .toBe('a like names no post to answer');
+      expect(notificationRestraintReason(like, undefined, SELF_HANDLE))
+        .toBe('a like names no post to answer');
     });
 
     it('skips authors in the ignore list', async () => {
@@ -159,70 +161,81 @@ describe('Bluesky Polling Module', () => {
         botList: [],
       });
 
-      const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
-      const postData = createPostData(false);
-      const result = shouldRespondToNotification(baseNotification, postData, SELF_HANDLE);
-      const configResult = getConfigMock.mock.results.at(-1)?.value as any;
+      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
 
+      expect(notificationRestraintReason(baseNotification, createPostData(false), SELF_HANDLE))
+        .toBe('the author is in the ignore list');
       expect(getConfigMock).toHaveBeenCalled();
-      expect(configResult).toBeDefined();
-      expect(result).toBe(false);
-      expect(configResult.ignoreList).toContain('user.test');
     });
 
-    it('skips quote notifications that do not include the configured handle', async () => {
-      const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
-      const postData = createPostData(false);
+    it('skips quote notifications that do not name the account', async () => {
+      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
       const notification: BlueskyMessage = {
         ...baseNotification,
         reason: 'quote',
         text: 'Random quote text',
       };
 
-      const result = shouldRespondToNotification(notification, postData, SELF_HANDLE);
-
-      expect(result).toBe(false);
-      expect(getConfigMock).toHaveBeenCalled();
+      expect(notificationRestraintReason(notification, createPostData(false), SELF_HANDLE))
+        .toBe('a quote that does not name us');
     });
 
     it('responds to direct mentions without checking for replies', async () => {
-      const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
-      const postData = createPostData(true); // Has replies, but should still respond to mentions
+      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
+      const postData = createPostData(true); // Has replies, but a mention is always answered
       const notification: BlueskyMessage = {
         ...baseNotification,
         reason: 'mention',
       };
 
-      const result = shouldRespondToNotification(notification, postData, SELF_HANDLE);
-
-      expect(result).toBe(true);
+      expect(notificationRestraintReason(notification, postData, SELF_HANDLE)).toBeNull();
     });
 
     it('skips notifications when an existing reply is detected', async () => {
-      const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
-      const postData = createPostData(true); // Has replies
+      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
 
-      const result = shouldRespondToNotification(baseNotification, postData, SELF_HANDLE);
-
-      expect(result).toBe(false);
+      expect(notificationRestraintReason(baseNotification, createPostData(true), SELF_HANDLE))
+        .toBe('someone already replied to this post');
     });
 
     it('responds when no replies exist', async () => {
-      const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
-      const postData = createPostData(false); // No replies
+      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
 
-      const result = shouldRespondToNotification(baseNotification, postData, SELF_HANDLE);
-
-      expect(result).toBe(true);
+      expect(notificationRestraintReason(baseNotification, createPostData(false), SELF_HANDLE))
+        .toBeNull();
     });
 
-    it('skips when post data structure is invalid', async () => {
-      const { shouldRespondToNotification } = await import('../src/bluesky-polling.js');
-      const postData = { data: null }; // Invalid structure
+    it('passes the unreadable reason through when the post cannot be read', async () => {
+      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
 
-      const result = shouldRespondToNotification(baseNotification, postData, SELF_HANDLE);
+      // the reason the first gate gives is the one the tally counts, so it is the specific
+      // one rather than a generic refusal
+      expect(notificationRestraintReason(baseNotification, { data: null }, SELF_HANDLE))
+        .toBe('the post could not be fetched');
+      expect(notificationRestraintReason(baseNotification, null, SELF_HANDLE))
+        .toBe('the post could not be fetched');
+    });
 
-      expect(result).toBe(false); // Should skip response when data is invalid
+    it('carries no author, so the same reason tallies across notifications', async () => {
+      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
+      const other: BlueskyMessage = { ...baseNotification, author: 'someone.else' };
+
+      expect(notificationRestraintReason(other, createPostData(true), SELF_HANDLE))
+        .toBe(notificationRestraintReason(baseNotification, createPostData(true), SELF_HANDLE));
+    });
+  });
+
+  describe('needsPostData', () => {
+    it('asks for the post only when the gate will consult it', async () => {
+      const { needsPostData } = await import('../src/bluesky-polling.js');
+      const as = (reason: string) => ({ ...baseNotification, reason }) as BlueskyMessage;
+
+      expect(needsPostData(as('reply'))).toBe(true);
+      expect(needsPostData(as('quote'))).toBe(true);
+      // a mention is answered whatever the post says, and a like names no post at all
+      expect(needsPostData(as('mention'))).toBe(false);
+      expect(needsPostData(as('like'))).toBe(false);
+      expect(needsPostData(as('follow'))).toBe(false);
     });
   });
 

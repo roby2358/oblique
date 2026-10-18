@@ -432,6 +432,30 @@ settled), **History** (dated entries, newest first).
   the work product, and that neither the LLM nor the post is reached; R-9 asserts the reasons
   themselves.
 
+### D-25 The panel shows what was answered, and tallies why the rest were not — *Decided*
+
+- **Alternatives:** a box per notification with its disposition underneath, which is what it
+  did; a count alone, "1 notification filtered out", with no reasons; a line per declined
+  notification naming the author and the reason; a collapsible list of the declined ones.
+- **Why:** a pass that answers one notification out of fifty is the normal case — likes,
+  reposts and follows arrive constantly and Rule 0 declines all of them. Rendering a box for
+  each buried the one reply that matters under a wall of posts nothing was done about, and the
+  bare count said nothing about *why*. The reasons are the useful part and they repeat, so
+  they are tallied: one line per distinct reason with a count, commonest first.
+
+  That requires every reason to be author-free, which is why `shouldRespondToNotification`
+  became `notificationRestraintReason` — the same move `threadRestraintReason` made at the
+  second gate (D-24), and for the same reason: a rule that only answers yes or no cannot say
+  what it decided. The author is not lost; it goes in the console line the poller writes as
+  it judges each notification, which is where one notification's fate is looked up.
+
+  `needsPostData` fell out of it. A mention is answered whatever the post says, so fetching
+  its thread was always waste; now only a `reply` or a `quote` costs a read at this gate.
+  Serves G-2 and G-5.
+- **Evidence:** `npm test` — R-43 asserts the split, the tally and that neither a mention nor
+  a like is fetched for; R-8 asserts each reason, and that two authors declined by one rule
+  produce the same string. The rendering is U-11 and manual.
+
 ### Deliberately left out
 
 - **Multi-turn memory of its own.** Context is re-read from the Bluesky thread on every pass.
@@ -540,6 +564,28 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-18 — The Bluesky panel reports replies, and tallies the reasons for the rest
+"Created 0 tasks to reply to notifications (1 notification filtered out)" was the whole
+report, under a box for every notification including the ones nothing was done about. Both
+halves were backwards: the boxes showed the notifications that did not matter, and the
+summary withheld the only interesting thing, which is why.
+
+A pass now shows a box per notification it is answering and, beneath them, one line per
+reason the rest were passed over with a count against each. `AccountCheck` carries `answered`
+and `declined` in place of `notifications`, and `tallyReasons` groups the reasons commonest
+first (D-25).
+
+So `shouldRespondToNotification` is replaced by `notificationRestraintReason`, author-free so
+that one rule declining five notifications is one row of five. This is the same change
+`threadRestraintReason` made at the second gate a commit earlier. `needsPostData` came out of
+writing it down: a mention is answered whatever the post says, so its thread read was always
+waste, and only a `reply` or a `quote` costs a fetch at this gate now.
+
+R-43 and U-11 are new and R-8 is restated. `test/blueskyPanel.test.ts` was mocking with
+`jest.doMock`, which does not intercept an ES module — the suite had been running against the
+real `config.js` all along and passed only because no test reached a line that read
+`ignoreList`. It uses `unstable_mockModule` now, like the suite beside it.
 
 ### 2026-10-18 — A declined reply ends its chain instead of waiting forever
 `shouldRespondToThread` returning `null` meant `sendReply` logged "Task creation aborted due

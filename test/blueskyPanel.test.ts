@@ -11,12 +11,15 @@ describe('Bluesky Polling Module', () => {
     val: jest.fn().mockReturnValue('60'), // Mock val() method for input elements
   }));
 
-  beforeEach(() => {
+  // ESM: the modules under test import these statically, so they are replaced with
+  // unstable_mockModule before the dynamic import, not with doMock (which never intercepts
+  // an ES module and leaves the real config in place, where ignoreList is undefined)
+  beforeEach(async () => {
+    jest.resetModules();
     jest.clearAllMocks();
     (global as any).$ = mockJQuery;
-    
-    // Mock the panels module
-    jest.doMock('../src/panels.js', () => ({
+
+    await jest.unstable_mockModule('../src/panels.js', () => ({
       getBlueskyAccounts: jest.fn(() => []),
       getLLMClient: jest.fn(),
       getOrchestratorState: jest.fn(),
@@ -24,22 +27,25 @@ describe('Bluesky Polling Module', () => {
       updateStatus: jest.fn(),
     }));
 
-    // Mock the config module for getConfig
-    jest.doMock('../src/config.js', () => ({
+    await jest.unstable_mockModule('../src/config.js', () => ({
       getConfig: jest.fn(() => ({
-        ignoreList: []
+        ignoreList: [],
+        botList: [],
       })),
     }));
 
-    // Mock the orchestrator module
-    jest.doMock('../src/drakidion/orchestrator.js', () => ({
+    await jest.unstable_mockModule('../src/drakidion/orchestrator.js', () => ({
       resumeWaitingTask: jest.fn(),
       addTask: jest.fn(),
     }));
 
-    // Mock the task factory
-    jest.doMock('../src/oblique-task-factory.js', () => ({
-      createProcessNotificationTask: jest.fn(),
+    // checkAccount creates one reply task per notification it answers, so the factory has
+    // to answer with something task-shaped
+    await jest.unstable_mockModule('../src/oblique-task-factory.js', () => ({
+      createReplyTask: jest.fn((notification: any) => ({
+        taskId: `task-${notification.author}`,
+        status: 'ready',
+      })),
     }));
   });
 
@@ -94,6 +100,44 @@ describe('Bluesky Polling Module', () => {
       warn.mockRestore();
     });
 
+    it('splits the notifications it answers from the reasons it passed over', async () => {
+      const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+      const { checkAccount } = await import('../src/bluesky-panel.js');
+
+      const notif = (reason: string, author: string) => ({
+        uri: `at://did:plc:test/app.bsky.feed.post/${author}`,
+        cid: `cid-${author}`,
+        author,
+        text: 'hello',
+        createdAt: new Date(),
+        reason,
+      });
+
+      const client = {
+        ensureAuth: jest.fn<any>().mockResolvedValue(undefined),
+        getNotifications: jest.fn<any>().mockResolvedValue([
+          notif('mention', 'answered.one'),
+          notif('follow', 'follower.one'),
+          notif('like', 'liker.one'),
+        ]),
+        markNotificationsAsSeen: jest.fn<any>().mockResolvedValue(undefined),
+        // a mention is answered without the post, so nothing here should be asked for it
+        getSinglePost: jest.fn<any>(),
+      };
+
+      const check = await checkAccount(accountWith(client) as any, {} as any, jest.fn(), false);
+
+      expect(check.error).toBeNull();
+      expect(check.answered.map(notification => notification.author)).toEqual(['answered.one']);
+      expect(check.declined).toEqual([
+        'a follow names no post to answer',
+        'a like names no post to answer',
+      ]);
+      expect(check.tasks).toHaveLength(1);
+      expect(client.getSinglePost).not.toHaveBeenCalled();
+      log.mockRestore();
+    });
+
     it('creates no task and marks nothing seen when an account has no notifications', async () => {
       const { checkAccount } = await import('../src/bluesky-panel.js');
       const client = {
@@ -106,7 +150,36 @@ describe('Bluesky Polling Module', () => {
 
       expect(check.error).toBeNull();
       expect(check.tasks).toEqual([]);
+      expect(check.answered).toEqual([]);
+      expect(check.declined).toEqual([]);
       expect(client.markNotificationsAsSeen).not.toHaveBeenCalled();
+    });
+  });
+
+  // D-25: the panel reports the reasons as a tally, not one line per notification
+  describe('tallyReasons', () => {
+    it('counts each reason once and puts the commonest first', async () => {
+      const { tallyReasons } = await import('../src/bluesky-panel.js');
+
+      const tally = tallyReasons([
+        'someone already replied to this post',
+        'a follow names no post to answer',
+        'someone already replied to this post',
+        'the post is gone',
+        'someone already replied to this post',
+      ]);
+
+      expect(tally).toEqual([
+        { reason: 'someone already replied to this post', count: 3 },
+        { reason: 'a follow names no post to answer', count: 1 },
+        { reason: 'the post is gone', count: 1 },
+      ]);
+    });
+
+    it('answers nothing for a pass that declined nothing', async () => {
+      const { tallyReasons } = await import('../src/bluesky-panel.js');
+
+      expect(tallyReasons([])).toEqual([]);
     });
   });
 

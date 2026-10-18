@@ -387,14 +387,20 @@ REPLIABLE_REASONS = { mention, reply, quote }
 
 isRepliableNotification(notif) -> notif.reason in REPLIABLE_REASONS
 
-shouldRespondToNotification(notif, postData, selfHandle):
-  if not isRepliableNotification(notif)                               -> false  # names no post
-  if config.ignoreList includes notif.author                          -> false
-  if notif.reason == 'quote' and selfHandle not in notif.text         -> false
-  if notif.reason == 'mention'                                        -> TRUE   # always
-  if postUnreadableReason(postData) is not null                       -> false  # say which
-  if postData.data.thread.replies is non-empty                        -> false  # beaten to it
-  -> true
+needsPostData(notif) -> isRepliableNotification(notif) and notif.reason != 'mention'
+
+notificationRestraintReason(notif, postData, selfHandle):
+  if not isRepliableNotification(notif) -> 'a <reason> names no post to answer'
+  if config.ignoreList includes notif.author
+                                        -> 'the author is in the ignore list'
+  if notif.reason == 'quote' and selfHandle not in notif.text
+                                        -> 'a quote that does not name us'
+  if notif.reason == 'mention'          -> null            # always answered
+  reason = postUnreadableReason(postData)
+  if reason                             -> reason          # say which
+  if postData.data.thread.replies is non-empty
+                                        -> 'someone already replied to this post'
+  -> null                                                  # answer it
 
 postUnreadableReason(postData):
   thread = postData?.data?.thread
@@ -409,7 +415,8 @@ postUnreadableReason(postData):
 Only a `mention`, `reply` or `quote` names a post. A `like`, `repost` or `follow`
 notification's `uri` is that like, repost or follow record, so there is nothing to answer and
 `getPostThread` refuses it with a 400. `isRepliableNotification` is split out and offline so
-the poller can ask before it fetches.
+the poller can ask before it fetches, and `needsPostData` is what the poller actually asks:
+a mention is answered whatever the post says, so its thread read is skipped too.
 
 `selfHandle` is the handle of the account the notification arrived on, passed in rather than
 read from config: Oblique answers on several networks and each knows it by a different name,
@@ -429,7 +436,11 @@ A post that cannot be read is not the same as a deleted one, and the four reason
 rather than guessed at: `#notFoundPost` is gone, `#blockedPost` is a perfectly good post
 behind a block in one direction or the other, a missing thread means the fetch itself failed
 (`fetchPostData` logged why), and any other `$type` is reported as itself. All four refuse,
-but the console says which.
+but the reason says which.
+
+Every reason is author-free, so the panel can count how many notifications each one declined
+and print the tally instead of a line per notification; the author belongs to the console
+line the poller writes beside it (D-25).
 
 ### 4.9 Thread restraint **[D]**
 
@@ -868,24 +879,31 @@ checkNotifications():
     checks += await checkAccount(account, llmClient, onWaitingTaskComplete, #mark-as-seen)
   for each check, for each task in check.tasks:
     state = addTask(state, task)                        # the one queue, whatever account
-  render one section per check: its handle, its notifications, its counts or its error
+  render one section per check: its handle, a box per answered notification,
+    the tally of the reasons it declined, or its error
 
 checkAccount(account, llmClient, onWaitingTaskComplete, markAsSeen) -> AccountCheck:
   try:
     await account.client.ensureAuth()
     notifs = await account.client.getNotifications(NOTIFICATION_BATCH, unreadOnly = true)
-    if none -> { notifs, tasks: [], error: null }
+    if none -> { answered: [], declined: [], tasks: [], error: null }
     if markAsSeen -> await account.client.markNotificationsAsSeen()   # once, for the batch
-    -> { notifs, tasks: notificationTasks(account, notifs, …), error: null }
+    -> { …judgeNotifications(account, notifs, …), error: null }
   catch e:
-    -> { notifs: [], tasks: [], error: reason(e) }      # this account only
+    -> { answered: [], declined: [], tasks: [], error: reason(e) }    # this account only
 
-notificationTasks(account, notifs, llmClient, onWaitingTaskComplete):
+judgeNotifications(account, notifs, llmClient, onWaitingTaskComplete):
   for each notif:
-    if not isRepliableNotification(notif): continue   # before any fetch: its uri is no post
-    postData = await fetchPostData(account.client, notif)  # null on failure, never a throw
-    if not shouldRespondToNotification(notif, postData, account.handle): continue
-    emit createReplyTask(notif, llmClient, account.client, onWaitingTaskComplete)
+    postData = needsPostData(notif)                       # no fetch for a like or a mention
+      ? await fetchPostData(account.client, notif)        # null on failure, never a throw
+      : null
+    reason = notificationRestraintReason(notif, postData, account.handle)
+    if reason: log '@<author>: <reason>'; declined += reason; continue
+    answered += notif
+    tasks    += createReplyTask(notif, llmClient, account.client, onWaitingTaskComplete)
+  -> { answered, declined, tasks }
+
+tallyReasons(declined) -> one { reason, count } per distinct reason, commonest first
 ```
 
 Every account is visited on every pass, in turn, and they all feed the one queue — a reply to
@@ -900,6 +918,11 @@ there is no cursor and nothing is remembered, so a notification that falls past 
 never asked for again. It can only sink further, never rise. The window must therefore be
 wider than any burst the poll interval can accumulate, and wide enough that the reasons
 Rule 0 refuses — likes, reposts, follows — cannot crowd out a mention beneath them (D-11).
+
+The panel shows a box for each notification being answered and, beneath them, the reasons the
+rest were passed over with a count against each. A declined notification gets no box: the
+tally says how many and why, and the console carries the author and the disposition one at a
+time, which is where a single notification's fate is looked up (D-25).
 
 The poller's information is exactly what the Bluesky API returns for unread notifications —
 it has no memory of what it saw last pass. Marking as seen happens before the per-notification

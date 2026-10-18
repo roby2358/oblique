@@ -131,8 +131,10 @@ The page has five panels:
 
 - **Chat** — type a message and get an oblique reply. No restraint rules apply; this is the
   manual test path.
-- **Bluesky** — check notifications once, or start polling on an interval. Each notification
-  that passes the restraint rules becomes a task.
+- **Bluesky** — check notifications once, or start polling on an interval, across every
+  configured account. Each notification that passes the restraint rules becomes a task and is
+  shown; the rest are summed up by reason underneath, and the console carries the author and
+  the disposition of each one.
 - **Observer**, **Queue**, **Waiting** — the live task state. Every task shows its `taskId`,
   version, status and description; a chain can be followed end to end by its `taskId`.
 - **Configure** — where `config.json` lives and what it holds. Read-only.

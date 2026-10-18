@@ -752,11 +752,19 @@ spent its budget before emitting any — is a failure, not an empty reply. Throw
 chain in `dead` with the model and the `finish_reason` named, where returning `''` would travel
 all the way to a blank post.
 
-### 4.21 Authentication refresh — `ensureAuth` **[D]**
+### 4.21 Authentication refresh — `request` and `ensureAuth` **[D]**
 
-*Serves:* G-4. Called before every Bluesky operation, on each account's own client.
+*Serves:* G-4. Runs on both sides of every request, on each account's own client.
 
 ```
+request(method, call):                            # every request this client makes
+  await ensureAuth()                              # before: the token should outlive the call
+  try -> await call()
+  catch error:
+    if not isUnauthorizedError(error) -> throw    # not about the token; the caller's problem
+    await authenticate()                          # after: the PDS says otherwise anyway
+    -> await call()                               # once only
+
 ensureAuth():
   await ensureLexicon()                           # once per client, before the login
   if not authenticated or isTokenExpired() -> authenticate()
@@ -772,7 +780,21 @@ authenticate():
   tokenExpiresAt = exp claim of the session JWT, else now + TOKEN_DEFAULT_TTL
 ```
 
-Refreshing early, rather than on a 401, avoids losing a reply to a token that expired mid-call.
+Both directions, because neither covers what the other does. Refreshing early keeps a reply
+from being lost to a token that expires mid-call. Retrying a refused call covers everything the
+estimate cannot know: clock skew, a session revoked at the PDS, a token issued for less time
+than it claimed, and — the case that matters most — an expiry that could not be read at all.
+The retry is once. A second refusal is the PDS's answer rather than a stale token, so it
+travels to the caller, where the panel prints it against the account (U-10).
+`isUnauthorizedError` reads the status off the error instead of testing its class, because a
+duplicated copy of the SDK's error class would make the retry quietly stop happening — which
+is the kind of failure it exists to end.
+
+`TOKEN_DEFAULT_TTL` is the expiry assumed when the JWT yields none, and it is deliberately
+shorter than any real access token. A guess that overshoots leaves the client certain of a
+token the PDS has already forgotten, and that is silence until someone reloads the page; a
+guess that undershoots costs one login (D-26).
+
 State is cleared before the attempt so a failed login cannot leave the client believing it is
 authenticated.
 
@@ -964,13 +986,13 @@ tests. The code is the single source; the value here is a copy.
 | `TASK_ID_LENGTH` | 24 | characters | `generateTaskId` | D-3 |
 | `SAFE_BASE32_ALPHABET` | `abcdefghijkmnpqrstuvwxyz23456789` | — | `safebase32.ts` | D-3 |
 | `TOKEN_REFRESH_BUFFER_MS` | 300000 | ms (5 min) | `BlueskyClient` | D-12 |
-| `TOKEN_DEFAULT_TTL` | 86400000 | ms (1 day) | `getDefaultTokenExpiration` | D-12 |
+| `TOKEN_DEFAULT_TTL` | 600000 | ms (10 min) | `BlueskyClient` | D-26 |
 | `RECORD_PAGE` | 100 | records per request | `fetchSchemas` | D-23 |
 | `MODEL_ROTATION_SIZE` | 23 | models | `config.json` → `openrouter.models` | D-5 |
 | `GENDER_ROTATION_SIZE` | 25 | entries | `prompts/oblique.ts` | D-5 |
 
 Only `MAX_BLUESKY_REPLY_CHARS`, `ADVERTISED_REPLY_CHARS`, `TOKEN_REFRESH_BUFFER_MS`,
-`RECORD_PAGE` and `SAFE_BASE32_ALPHABET` are named constants in the code today; the rest are literals at their use site, except
+`TOKEN_DEFAULT_TTL`, `RECORD_PAGE` and `SAFE_BASE32_ALPHABET` are named constants in the code today; the rest are literals at their use site, except
 `MODEL_ROTATION_SIZE`, which is the length of a list in `config.json`. Naming them is Q-7 in
 `ARCHITECTURE_LOG.md`.
 

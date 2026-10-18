@@ -37,7 +37,8 @@ IDs are never renumbered. Rules are cited by ID, never by section number.
 | R-17 | The full reply chain v1 → v5 driven through the orchestrator; separately `createReplyTask` alone, for a notification with text and one without | Every snapshot shares one `taskId`, with versions 1 … 5; sorting a chain's snapshots by version reproduces the execution trace, which `work` carries too — one appended line per step, none of them overwritten; v2 and v4 are `waiting`, v1 and v3 are `ready`, v5 is terminal. v1 states its own fields over the factory base: `work` is `['<thinking>']` and `conversation` is the notification text as a single `user` message, or the fallback text when the notification has none. | automated |
 | R-18 | `createObliqueMessageTask` with a client that resolves, and one that rejects | Returns a `waiting` snapshot immediately. On resolve, `onComplete` receives a `succeeded` successor whose `work` gains the extracted response as its last line and whose `conversation` gains the assistant turn. On reject, a `dead` successor whose appended `work` line starts `Error:`. | automated |
 | R-19 | `/config.json` complete; partial; absent; returning a non-OK status; containing malformed JSON. Separately, `initializeConfig` then `getConfig` | A complete file is returned exactly as written, with nothing added. A partial file stays partial — no field is filled in. The last three warn and yield `{}` rather than throwing, so the page still loads. `getConfig` returns what was loaded. | automated |
-| R-20 | `ensureAuth` with no prior session; with a token expiring beyond `TOKEN_REFRESH_BUFFER_MS`; with one expiring inside it; a login that rejects; a session JWT with no `exp`, with a malformed payload, and with fewer than three segments | Logs in in cases 1 and 3, skips in case 2. A rejected login leaves `authenticated` false and `tokenExpiresAt` null. Each malformed-JWT case falls back to `TOKEN_DEFAULT_TTL` rather than throwing. | not yet covered |
+| R-20 | `ensureAuth` with no prior session; with a token expiring beyond `TOKEN_REFRESH_BUFFER_MS`; with one expiring inside it; a login that rejects. Separately `authenticate` for a session JWT with a valid `exp`, with no `exp`, with a payload that is not JSON, with fewer than three segments, with no `accessJwt` at all and with no session at all; and `TOKEN_DEFAULT_TTL` against a real token's life | Logs in in cases 1 and 3, with that account's own handle and password, and skips in case 2. A rejected login reaches the caller and leaves `authenticated` false and `tokenExpiresAt` null. A valid `exp` is used as given; every other reading falls back to `TOKEN_DEFAULT_TTL` from now rather than throwing. The fallback is shorter than a real two-hour token, so a wrong guess costs a login rather than silence, and longer than `TOKEN_REFRESH_BUFFER_MS`, so it does not cost a login per call. | automated |
+| R-44 | `isUnauthorizedError` for a 401, a 400 carrying `ExpiredToken`, a 400 `InvalidRequest`, a 501, a plain `Error`, `null`, and a bare `{ status: 401 }`. Separately a read (`getNotifications`) and a write (`post`) refused once with a 401; a read refused twice; a read refused with a 501 | Only the 401 and the `ExpiredToken` are unauthorized, the bare object among them, because the status is read rather than the error class tested. A first refusal signs in again and repeats the call unchanged, and the caller gets the answer it would have had — the retried write carries the same record. A second refusal reaches the caller, with no second login. A 501 reaches the caller with no login at all. | automated |
 | R-43 | `checkAccount` on a batch holding one `mention`, one `follow` and one `like`; `tallyReasons` on a list repeating one reason three times among others, and on an empty list | The mention alone is `answered` and earns the one task; the other two become `declined` reasons in batch order, and the post is never fetched for any of them. `tallyReasons` returns one row per distinct reason with its count, commonest first, and nothing at all for a pass that declined nothing. | automated |
 | R-21 | `checkNotifications` with no account configured; with no LLM client; with an empty batch; with a batch where some notifications pass R-8 and some do not; with `#mark-as-seen` checked. Separately `fetchPostData` with a client that resolves and one that rejects | Each missing dependency reports its own reason and creates nothing. Every configured account is visited and its tasks all land in the one queue. An empty batch creates nothing. Otherwise exactly one task per passing notification, with the created and filtered counts reported. `markNotificationsAsSeen` is called once for the batch, before the per-notification loop, and only when checked. `fetchPostData` returns what Bluesky gives it, and `null` rather than throwing when the fetch fails, so one notification's failure cannot abort the batch. | not yet covered |
 | R-22 | `generateSafeBase32(n)`, `generateTaskId()`, `generateCorrelationId()` over many calls | Length `n` / `TASK_ID_LENGTH` / `TASK_ID_LENGTH`; every character is in `SAFE_BASE32_ALPHABET`; `l`, `1`, `o` and `0` never appear; a correlation id always begins `x`; collisions do not occur across a large sample. | automated |
@@ -114,11 +115,11 @@ build step to check. Counts come from the test command and are not copied here.
 
 ### Not yet covered
 
-R-6, R-13, R-15, R-20, R-21, and every unbuilt row R-25 … R-33.
+R-6, R-13, R-15, R-21, and every unbuilt row R-25 … R-33.
 
-R-15 and R-20 are the ones that matter most: reply threading and token refresh are the two
-remaining places where a defect reaches Bluesky rather than the console. R-13 is cheap to
-close. R-21 needs the poller's dependencies injected rather than imported.
+R-15 is the one that matters most: reply threading is the remaining place where a defect
+reaches Bluesky rather than the console. R-13 is cheap to close. R-21 needs the poller's
+dependencies injected rather than imported.
 
 ### Partial coverage
 
@@ -172,6 +173,13 @@ close. R-21 needs the poller's dependencies injected rather than imported.
   `api.xrpc.call` to a spy that discards the NSID, and nothing exercises
   `notification.listNotifications` or `notification.updateSeen` at all. A wrong prefix there
   is a 501 rather than a silent loss, and `just cc-smoke` is what catches it.
+- **R-20**, **R-44** — the decisions are covered: when to sign in, what expiry to believe, and
+  what a refused call does next, all against a mocked `agent.login` and a mocked request. What
+  no unit test can answer is whether a login at either PDS succeeds, or what status a real PDS
+  answers with for a token it has forgotten — the retry is written for a 401 and for a 400
+  carrying `ExpiredToken`, and a PDS answering anything else would fall through to the caller.
+  `just cc-smoke` signs in to both networks for real and is what catches the first; the second
+  has not been observed, because the JWT has always parsed and the fallback has never run.
 - **R-40** — the resolution chain, the paging, the `$type` strip and both failure paths are
   asserted against a mocked `fetch`. That the 169 documents delve.town publishes are
   *accepted* by the SDK's registry is not asserted here; `just cc-smoke` registers them for

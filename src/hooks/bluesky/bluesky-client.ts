@@ -4,6 +4,35 @@ import { XRPCError } from '@atproto/xrpc';
 import { registerLexicon } from './lexicon.js';
 import type { BlueskyPost, BlueskyMessage } from '../../types/index.js';
 
+/**
+ * How long before a token's stated expiry to sign in again. Wide enough that no single call
+ * can be cut off by a token that expires between the check and the response.
+ */
+export const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
+
+/**
+ * How long a token is assumed to last when its expiry cannot be read from the session JWT.
+ *
+ * Shorter than any real access token rather than longer, which is the whole point: a guess
+ * that overshoots leaves the client certain of a token the PDS has already forgotten, and
+ * every call after that fails until someone reloads the page. A guess that undershoots costs
+ * one login. With `TOKEN_REFRESH_BUFFER_MS` taken off, this is one login per five minutes of
+ * use, and only down a path where the JWT could not be read at all (D-26).
+ */
+export const TOKEN_DEFAULT_TTL = 10 * 60 * 1000;
+
+/**
+ * Whether the PDS refused a call because the token is no good. Read off the status rather
+ * than tested with `instanceof`, because a duplicated copy of the SDK's error class would
+ * make the retry silently stop happening — the exact kind of failure this check exists to
+ * end. `ExpiredToken` is named as well, since it arrives on a 400 from some paths.
+ */
+export const isUnauthorizedError = (error: unknown): boolean => {
+  const refusal = error as { status?: number; error?: string } | null;
+
+  return refusal?.status === 401 || refusal?.error === 'ExpiredToken';
+};
+
 export interface BlueskyConfig {
   handle: string;
   appPassword: string;
@@ -39,8 +68,6 @@ export class BlueskyClient {
   private agent: BskyAgent;
   private authenticated = false;
   private tokenExpiresAt: Date | null = null;
-  // Re-authenticate 5 minutes before expiration to be safe
-  private readonly TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
   private lexiconRegistered = false;
 
@@ -69,7 +96,9 @@ export class BlueskyClient {
    * every thread read goes through here and the NSID is built once (D-23).
    */
   private getPostThread(params: { uri: string; depth: number; parentHeight: number }): Promise<any> {
-    return this.agent.api.xrpc.call(this.nsid('feed.getPostThread'), params);
+    const method = this.nsid('feed.getPostThread');
+
+    return this.request(method, () => this.agent.api.xrpc.call(method, params));
   }
 
   /**
@@ -117,11 +146,12 @@ export class BlueskyClient {
   }
 
   /**
-   * Returns a default token expiration (1 day from now).
+   * The expiry to assume when the session JWT does not give one: deliberately sooner than a
+   * real token's, so a bad guess costs logins rather than silence (D-26).
    */
   private getDefaultTokenExpiration(reason: string): Date {
-    const expiration = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000);
-    console.log(`${reason}, using 1-day default expiration:`, expiration);
+    const expiration = new Date(Date.now() + TOKEN_DEFAULT_TTL);
+    console.warn(`${reason}, assuming the token expires at:`, expiration);
     return expiration;
   }
 
@@ -156,7 +186,7 @@ export class BlueskyClient {
 
   /**
    * Extracts token expiration from the agent's session JWT.
-   * Returns the expiration date if found, otherwise uses a 1-day default.
+   * Returns the expiration date if found, otherwise `TOKEN_DEFAULT_TTL` from now.
    */
   private extractTokenExpiration(): Date {
     // Guard: no session available
@@ -212,7 +242,7 @@ export class BlueskyClient {
       return true;
     }
     
-    const bufferTime = new Date(now.getTime() + this.TOKEN_REFRESH_BUFFER_MS);
+    const bufferTime = new Date(now.getTime() + TOKEN_REFRESH_BUFFER_MS);
     
     return this.tokenExpiresAt <= bufferTime;
   }
@@ -230,17 +260,45 @@ export class BlueskyClient {
     }
   }
 
-  async like(postUri: string): Promise<{ uri: string; cid: string }> {
+  /**
+   * Make one request, with authentication on both sides of it: the pre-emptive refresh
+   * before, and one re-authenticate-and-retry if the PDS refuses the token anyway (D-26).
+   *
+   * Every request this client makes goes through here, so neither half can be forgotten by
+   * a method added later. The retry is once only: a second refusal is the PDS's answer and
+   * not a stale token, so it belongs where the caller can see it.
+   *
+   * @param method - The NSID or method name, for the log line
+   * @param call - The request to make; called again, unchanged, after a re-authentication
+   */
+  private async request<T>(method: string, call: () => Promise<T>): Promise<T> {
     await this.ensureAuth();
 
+    try {
+      return await call();
+    } catch (error) {
+      if (!isUnauthorizedError(error)) {
+        throw error;
+      }
+
+      console.warn(`${method} was refused as unauthorized; signing in again and retrying once`);
+      await this.authenticate();
+
+      return await call();
+    }
+  }
+
+  async like(postUri: string): Promise<{ uri: string; cid: string }> {
     // First, fetch the post to get its CID
     let postCid = '';
     try {
-      const postResponse = await this.agent.api.com.atproto.repo.getRecord({
-        repo: postUri.split('/')[2], // Extract repo from URI (e.g., did:plc:...)
-        collection: this.nsid('feed.post'),
-        rkey: postUri.split('/')[4], // Extract record key from URI
-      });
+      const postResponse = await this.request('com.atproto.repo.getRecord', () =>
+        this.agent.api.com.atproto.repo.getRecord({
+          repo: postUri.split('/')[2], // Extract repo from URI (e.g., did:plc:...)
+          collection: this.nsid('feed.post'),
+          rkey: postUri.split('/')[4], // Extract record key from URI
+        })
+      );
       postCid = postResponse.data.cid || '';
     } catch (error) {
       console.warn('Could not fetch post CID, proceeding with empty CID:', error);
@@ -258,11 +316,13 @@ export class BlueskyClient {
     console.log(`Liking post as ${this.config.handle}:`, JSON.stringify(likeData, null, 2));
 
     // Use the AT Protocol createRecord method directly
-    const response = await this.agent.api.com.atproto.repo.createRecord({
-      repo: this.config.handle,
-      collection: this.nsid('feed.like'),
-      record: likeData,
-    });
+    const response = await this.request('com.atproto.repo.createRecord', () =>
+      this.agent.api.com.atproto.repo.createRecord({
+        repo: this.config.handle,
+        collection: this.nsid('feed.like'),
+        record: likeData,
+      })
+    );
 
     console.log('Like response:', { uri: response.data.uri, cid: response.data.cid });
 
@@ -273,8 +333,6 @@ export class BlueskyClient {
   }
 
   async post(post: BlueskyPost): Promise<{ uri: string; cid: string }> {
-    await this.ensureAuth();
-
     const postData = {
       $type: this.nsid('feed.post'),
       text: post.text,
@@ -286,11 +344,13 @@ export class BlueskyClient {
 
     // `agent.post` writes an `app.bsky.feed.post` and nothing else, so the record is written
     // directly and the collection comes from this network's lexicon
-    const response = await this.agent.api.com.atproto.repo.createRecord({
-      repo: this.config.handle,
-      collection: this.nsid('feed.post'),
-      record: postData,
-    });
+    const response = await this.request('com.atproto.repo.createRecord', () =>
+      this.agent.api.com.atproto.repo.createRecord({
+        repo: this.config.handle,
+        collection: this.nsid('feed.post'),
+        record: postData,
+      })
+    );
 
     console.log('Post response:', { uri: response.data.uri, cid: response.data.cid });
 
@@ -305,14 +365,11 @@ export class BlueskyClient {
   }
 
   async getNotifications(limit: number, unreadOnly: boolean): Promise<BlueskyMessage[]> {
-    await this.ensureAuth();
+    const method = this.nsid('notification.listNotifications');
 
     let response;
     try {
-      response = await this.agent.api.xrpc.call(
-        this.nsid('notification.listNotifications'),
-        { limit }
-      );
+      response = await this.request(method, () => this.agent.api.xrpc.call(method, { limit }));
     } catch (error) {
       if (error instanceof XRPCError) {
         console.error(`Notifications request failed for ${this.config.handle}`, {
@@ -360,13 +417,15 @@ export class BlueskyClient {
   }
 
   async markNotificationsAsSeen(): Promise<void> {
-    await this.ensureAuth();
+    const method = this.nsid('notification.updateSeen');
 
-    await this.agent.api.xrpc.call(
-      this.nsid('notification.updateSeen'),
-      {},
-      { seenAt: new Date().toISOString() },
-      { encoding: 'application/json' }
+    await this.request(method, () =>
+      this.agent.api.xrpc.call(
+        method,
+        {},
+        { seenAt: new Date().toISOString() },
+        { encoding: 'application/json' }
+      )
     );
   }
 
@@ -409,8 +468,6 @@ export class BlueskyClient {
    * Returns the thread response from the Bluesky API.
    */
   async getSinglePost(uri: string): Promise<any> {
-    await this.ensureAuth();
-    
     return await this.getPostThread({
       uri,
       depth: 1,  // Only get direct replies, not nested ones
@@ -537,8 +594,6 @@ export class BlueskyClient {
    * Falls back to the notification's own content if the quoted post cannot be fetched.
    */
   async getQuotedHistory(notification: BlueskyMessage): Promise<BlueskyHistoryEntry[]> {
-    await this.ensureAuth();
-
     // Fallback to the notification's own content when quote post cannot be fetched
     const fallback = [{
       author: notification.author,
@@ -707,8 +762,6 @@ export class BlueskyClient {
    * Returns an array of messages in chronological order (oldest first).
    */
   async getThreadHistory(message: BlueskyMessage, maxDepth: number): Promise<BlueskyHistoryEntry[]> {
-    await this.ensureAuth();
-    
     // Fallback to basic message without alt texts
     const basicFallback = [{
       author: message.author,

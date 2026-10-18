@@ -186,15 +186,14 @@ settled), **History** (dated entries, newest first).
 
 ### D-12 Refresh the token early, on a buffer — *Decided*
 
-- **Alternatives:** re-authenticate on a 401; re-authenticate before every call;
-  re-authenticate on a fixed schedule.
+- **Alternatives:** re-authenticate before every call; re-authenticate on a fixed schedule;
+  wait for the refusal and only then sign in again, which is D-26 and is now done as well.
 - **Why:** a token that expires mid-call loses the reply, and the reply is the whole point.
   `TOKEN_REFRESH_BUFFER_MS` of 5 minutes is ample for any single AT Protocol call.
-  `TOKEN_DEFAULT_TTL` of 1 day applies when the JWT cannot be parsed — short enough to
-  self-correct, long enough not to hammer the login endpoint. Authentication state is cleared
-  *before* the login attempt so a failure cannot leave the client believing it is
-  authenticated.
-- **Evidence:** none. R-20 is not yet covered.
+  Authentication state is cleared *before* the login attempt so a failure cannot leave the
+  client believing it is authenticated. What the buffer cannot cover is an expiry the client
+  read wrongly or not at all, which is what D-26 is for.
+- **Evidence:** `npm test` — R-20 covers all four `ensureAuth` cases.
 
 ### D-13 Like before replying — *Decided*
 
@@ -456,6 +455,38 @@ settled), **History** (dated entries, newest first).
   a like is fetched for; R-8 asserts each reason, and that two authors declined by one rule
   produce the same string. The rendering is U-11 and manual.
 
+### D-26 A refused call signs in again and retries once, and the expiry guess fails short — *Decided*
+
+- **Alternatives:** leave the pre-emptive refresh as the only mechanism (D-12 alone), which is
+  what it was; retry inside `ensureAuth`, which cannot work because the refusal arrives at the
+  call and not at the check; retry every error rather than an unauthorized one; retry
+  repeatedly with a backoff; keep the 1-day fallback and treat a wrong guess as a reload.
+- **Why:** the estimate can be wrong, and when it is, nothing recovered. `TOKEN_DEFAULT_TTL`
+  was 1 day where a real access token lives about two hours — Oblique's own log shows a token
+  issued at 07:27 expiring at 09:27 — and four paths reach that fallback: no session, no
+  `accessJwt`, a JWT that does not split into three, and an `exp` claim missing or unreadable.
+  Down any of them the client believed the token was good for a day, `isTokenExpired` stayed
+  false for 23h55m, and every call failed in the console while the page looked fine. Another
+  delve.town agent reports the same symptom from the same cause class: a watcher that died
+  every two hours for a day and a half.
+
+  So both halves are reversed. The fallback is now 10 minutes, which is shorter than any real
+  token: a wrong guess costs one login per five minutes of use, where before it cost silence
+  until someone reloaded. And a call refused as unauthorized signs in again and repeats itself
+  once, which covers clock skew, a revoked session and a shortened TTL as well as a bad parse.
+
+  It lives in one private `request` method that every request goes through, with the
+  pre-emptive `ensureAuth` on one side and the retry on the other, so a method added later
+  cannot forget either. That also removed the seven scattered `ensureAuth` calls at the tops
+  of the public methods, and closed the one gap between them: `getHistory` could reach
+  `getOnePostHistory` without one. `isUnauthorizedError` reads the status off the error rather
+  than testing `instanceof XRPCError`, because a bundler that ends up with two copies of the
+  SDK's error class would make the retry silently stop happening, and silent is the whole
+  complaint. Serves G-4.
+- **Evidence:** `npm test` — R-44 covers the retry on a read and on a write, the single retry,
+  and the refusals that are not about the token; R-20 covers the fallback, including that it is
+  shorter than a real token and longer than the buffer.
+
 ### Deliberately left out
 
 - **Multi-turn memory of its own.** Context is re-read from the Bluesky thread on every pass.
@@ -533,7 +564,7 @@ it. Either answer should be recorded as a decision; the current state is neither
 
 ### Q-7 Numbers are literals, not named constants — *tracked as `namenums-vnzy`*
 
-`ONTOLOGY.md` names 22 tunables; only five exist as named constants in the code. The rest are
+`ONTOLOGY.md` names 22 tunables; only six exist as named constants in the code. The rest are
 literals at their use site, so tuning means finding them. **Recommendation:** extract them to
 one module per area and have the ontology's table quote the names. Until then the table and
 the code can drift silently.
@@ -564,6 +595,27 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-18 — The token guess fails short, and a refused call signs in again
+`TOKEN_DEFAULT_TTL` was 1 day where a real access token lives about two hours, and nothing
+recovered when the guess was wrong: `ensureAuth` only ever compared the clock against its own
+estimate, and no call site treated a refusal as a reason to sign in again. Four parse paths
+reach that fallback, and down any of them the bot was dead for 23h55m with nothing visible but
+console errors. The fallback is dormant today because the JWT parses, so this was a landmine
+rather than a live bug — but it is the most likely way an unattended bot dies.
+
+The fallback is 10 minutes now, deliberately shorter than any real token, and every request
+goes through one private `request` method that runs `ensureAuth` before the call and, if the
+PDS refuses the token anyway, signs in again and repeats the call once (D-26). D-12 keeps the
+early refresh; the two cover different failures. The seven `ensureAuth` calls at the tops of
+the public methods are gone with it, along with the one gap between them — `getHistory` could
+reach `getOnePostHistory` without one.
+
+R-20 is covered at last, R-44 is new, and `TOKEN_DEFAULT_TTL` became a named export rather
+than a literal inside `getDefaultTokenExpiration`. Not done, and carved off as
+`authvis-mzdi`: nothing yet distinguishes "signed in" from "dead" in the UI between passes —
+a failed login surfaces as that account's error line in the Bluesky panel report (U-10) and
+nowhere else.
 
 ### 2026-10-18 — The Bluesky panel reports replies, and tallies the reasons for the rest
 "Created 0 tasks to reply to notifications (1 notification filtered out)" was the whole

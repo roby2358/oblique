@@ -1,23 +1,3 @@
-Priority:   85
-Status: ToDo
-ID: tokenttl-qt74
-Created: 2026-10-18T08:06:32Z
-Updated: 2026-10-18T08:06:32Z
-
-The token-expiry fallback guesses 12x too long, and there is no recovery when the guess is wrong. For a bot meant to run unattended this is the most likely way it dies silently.
-
-TOKEN_DEFAULT_TTL is 86400000 ms (1 day). A real AT Protocol access token from createSession lives about two hours — our own logs show it: "Token expiration set to: 09:27" written at 07:27. Four paths reach the fallback in extractTokenExpiration: no session, no accessJwt on the session, an accessJwt that does not split into three parts, and a JWT whose exp claim is missing or unparseable. Down any of them the client believes the token is good for a day, isTokenExpired() stays false for 23h55m, and ensureAuth never re-authenticates.
-
-Nothing recovers from that. ensureAuth only refreshes pre-emptively against its own stored estimate, and no call site treats a 401 as a reason to re-authenticate — getNotifications catches XRPCError purely to log and rethrow. So once the estimate is wrong the client 401s on every call until the page is reloaded, with no error visible unless someone is watching the console. Another delve.town agent (Wayfarer) reports exactly this symptom from the same cause class: "My watcher silently died every two hours for a day and a half."
-
-Today the JWT parse succeeds, so the fallback is dormant. It is a landmine, not a live bug, but the direction of the guess is wrong: a fallback should fail SHORT, assuming the token expires sooner than it might and paying one cheap extra login, never longer.
-
-Two fixes, both worth doing:
-1. Make TOKEN_DEFAULT_TTL shorter than any real token — a few minutes, or zero to force re-auth on the next call. Reverses the direction of the failure: a bad guess then costs extra logins instead of total silence. One constant, and the ONTOLOGY numbers table entry.
-2. Treat a 401 as a reason to re-authenticate once and retry. This is the real fix, covering clock skew, server-side revocation and a shortened TTL as well as a bad parse. Decide where it belongs: wrapping ensureAuth would not help, since the failure surfaces at the call, so it wants to be at the XRPC boundary or in a retry helper the methods share.
-
-Also worth a check while in here: nothing logs an authentication failure anywhere a human would see it. For unattended running, a dead client should say so in the UI, not only in the console.
-----
 Priority:   70
 Status: ToDo
 ID: nullreply-4hpg
@@ -131,6 +111,27 @@ Created: 2025-10-19T19:33:57Z
 Updated: 2026-10-17T18:30:21Z
 
 Refactor createSendToLLMTask to move notification handling logic higher up in the call stack and pass only the final prompt to the function instead of raw notification data
+----
+Priority:   50
+Status: ToDo
+ID: authvis-mzdi
+Created: 2026-10-18T16:13:30Z
+Updated: 2026-10-18T16:13:30Z
+
+Nothing in the page says whether an account is still signed in, so an unattended bot that has gone dead looks idle.
+
+Carved out of tokenttl-qt74, whose first two fixes are done: TOKEN_DEFAULT_TTL now fails short (10 min) and every request signs in again and retries once on a refusal (D-26). What that ticket also asked for and this one keeps: "a dead client should say so in the UI, not only in the console."
+
+Today the only place an authentication failure appears is the per-account error line in the Bluesky panel's report (U-10), written by renderAccountCheck from AccountCheck.error. That is real but thin: it appears only when a pass runs, it is overwritten by the next pass, and a reader has to be looking at that panel at that moment. Between passes the page shows nothing at all about session state — the status line carries queue and waiting counts only, and isAuthenticated() on each client is never read by any renderer.
+
+Worth considering, in rising cost:
+- Read client.isAuthenticated() per account into the Bluesky panel header, so "signed in as @x at <service>" is visible without waiting for a pass.
+- Keep the last error per account, and the time of the last successful pass, so a failure persists on screen instead of being replaced by "No new notifications."
+- Say it loudly when every configured account has failed, which is the actual dead-bot state.
+
+Decide where it belongs: the Bluesky panel owns the accounts and already renders per account, which argues for the header there rather than the global status line. Note also that checkAccount calls ensureAuth before the batch, so a bad password surfaces on the first pass; what is invisible is a session that dies later, between passes, which the D-26 retry now mostly handles.
+
+Serves G-4.
 ----
 Priority:   45
 Status: ToDo

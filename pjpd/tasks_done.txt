@@ -8,6 +8,26 @@ Updated: 2026-10-17T07:32:21Z
 ----
 Priority:   85
 Status: Done
+ID: tokenttl-qt74
+Created: 2026-10-18T08:06:32Z
+Updated: 2026-10-18T16:13:12Z
+
+The token-expiry fallback guesses 12x too long, and there is no recovery when the guess is wrong. For a bot meant to run unattended this is the most likely way it dies silently.
+
+TOKEN_DEFAULT_TTL is 86400000 ms (1 day). A real AT Protocol access token from createSession lives about two hours — our own logs show it: "Token expiration set to: 09:27" written at 07:27. Four paths reach the fallback in extractTokenExpiration: no session, no accessJwt on the session, an accessJwt that does not split into three parts, and a JWT whose exp claim is missing or unparseable. Down any of them the client believes the token is good for a day, isTokenExpired() stays false for 23h55m, and ensureAuth never re-authenticates.
+
+Nothing recovers from that. ensureAuth only refreshes pre-emptively against its own stored estimate, and no call site treats a 401 as a reason to re-authenticate — getNotifications catches XRPCError purely to log and rethrow. So once the estimate is wrong the client 401s on every call until the page is reloaded, with no error visible unless someone is watching the console. Another delve.town agent (Wayfarer) reports exactly this symptom from the same cause class: "My watcher silently died every two hours for a day and a half."
+
+Today the JWT parse succeeds, so the fallback is dormant. It is a landmine, not a live bug, but the direction of the guess is wrong: a fallback should fail SHORT, assuming the token expires sooner than it might and paying one cheap extra login, never longer.
+
+Two fixes, both worth doing:
+1. Make TOKEN_DEFAULT_TTL shorter than any real token — a few minutes, or zero to force re-auth on the next call. Reverses the direction of the failure: a bad guess then costs extra logins instead of total silence. One constant, and the ONTOLOGY numbers table entry.
+2. Treat a 401 as a reason to re-authenticate once and retry. This is the real fix, covering clock skew, server-side revocation and a shortened TTL as well as a bad parse. Decide where it belongs: wrapping ensureAuth would not help, since the failure surfaces at the call, so it wants to be at the XRPC boundary or in a retry helper the methods share.
+
+Also worth a check while in here: nothing logs an authentication failure anywhere a human would see it. For unattended running, a dead client should say so in the UI, not only in the console.
+----
+Priority:   85
+Status: Done
 ID: cfgsave-5vpt
 Created: 2026-10-17T01:00:06Z
 Updated: 2026-10-17T07:38:20Z

@@ -5,7 +5,7 @@ import { updateObserverPanel } from './orchestratorPanel.js';
 import { updateQueuePanel } from './queuePanel.js';
 import { updateWaitingPanel } from './waitingPanel.js';
 import { createHandleSendMessage } from './chatPanel.js';
-import { createHandleCheckBluesky, createHandleTogglePolling, createHandlePollIntervalChange } from './bluesky-panel.js';
+import { createHandleCheckBluesky, createHandleCheckFeed, createHandleTogglePolling, createHandlePollIntervalChange } from './bluesky-panel.js';
 
 // jQuery is loaded via CDN in index.html
 // Note: Run 'npm install' to get jQuery type definitions from @types/jquery
@@ -80,6 +80,7 @@ $(document).ready(() => {
   // Create panel handlers
   const handleSendMessage = createHandleSendMessage();
   const handleCheckBluesky = createHandleCheckBluesky();
+  const handleCheckFeed = createHandleCheckFeed();
   const handleTogglePolling = createHandleTogglePolling();
   const handlePollIntervalChange = createHandlePollIntervalChange();
 
@@ -102,6 +103,8 @@ $(document).ready(() => {
   });
 
   $('#check-bluesky').on('click', handleCheckBluesky);
+
+  $('#check-feed').on('click', handleCheckFeed);
 
   $('#toggle-polling').on('click', handleTogglePolling);
 

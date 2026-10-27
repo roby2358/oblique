@@ -6,8 +6,13 @@ supertext, subtext, architext, psychotext — or a one-stanza poem, or a clean o
 silence, which is a like and nothing else. That choice is put to **Jev**, a System One model
 that answers typed questions with a distribution, and the register is drawn from the
 distribution rather than taken off the top of it, so a reply answers the post in front of it
-without the bot settling into one voice. It runs entirely as a single web page: no server, no
-database, no background process.
+without the bot settling into one voice.
+
+Every twenty to forty minutes it also goes looking. It reads its own timeline, throws out
+everything it should not touch, asks Jev which of what is left would most repay a lateral reply
+— with "none of them" among the options, and usually the right one — and answers that post as
+though it had been a mention. It runs entirely as a single web page: no server, no database, no
+background process.
 
 ## Documentation
 
@@ -89,7 +94,8 @@ an edit. `rotate` false — the shipped default — always uses the first entry,
 model means putting it first. Set it true to walk the list one entry per UTC day, giving the
 bot one character a day and a different one tomorrow.
 
-`jev` is the model that picks the register for each reply. It is reached on the same
+`jev` is the model that picks the register for each reply, and the post to answer when Oblique
+reads its feed. It is reached on the same
 OpenRouter key at a different endpoint, because it speaks a different protocol — state and
 typed questions in, a typed answer and a distribution out, no messages and no completion. It
 is the cheapest call in a reply by an order of magnitude. Leave the block out and every reply
@@ -150,7 +156,10 @@ The page has five panels:
 - **Bluesky** — check notifications once, or start polling on an interval, across every
   configured account. Each notification that passes the restraint rules becomes a task and is
   shown; the rest are summed up by reason underneath, and the console carries the author and
-  the disposition of each one.
+  the disposition of each one. **Check Feed** does the other thing: it reads the timeline and
+  answers at most one post from it. While polling, that happens on its own every twenty to
+  forty minutes per account, after the notifications of that pass — so one switch arms the
+  whole bot, and the button is only there to see a look without waiting for one.
 - **Observer**, **Queue**, **Waiting** — the live task state. Every task shows its `taskId`,
   version, status and description; a chain can be followed end to end by its `taskId`.
 - **Configure** — where `config.json` lives and what it holds. Read-only.
@@ -181,6 +190,9 @@ src/
 │                        # index.ts: the menu Jev chooses from, and the draw
 ├── prompts/oblique.ts   # system prompt, thread formatting, daily model and voice rotation
 ├── register-choice.ts   # the third gate: which register to answer in
+├── feed-choice.ts       # the fourth gate: which post in the feed to answer, or none
+├── feed-schedule.ts     # when a feed look is due; one clock per account, drawn once per look
+├── weighted-draw.ts     # drawing a label from Jev's distribution, shared by both gates
 ├── oblique-task-factory.ts  # the reply chain and the chat chain
 ├── bluesky-accounts.ts  # the config sections that name an account, and the clients built from them
 ├── bluesky-polling.ts   # the two restraint gates

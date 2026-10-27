@@ -64,6 +64,29 @@ export interface BlueskyHistoryEntry {
   altTexts?: string[];
 }
 
+/**
+ * The `reason` a post carries when nothing asked for it: it was in the feed, not in the
+ * notifications. The reply chain treats it exactly like a notification — which is the point of
+ * shaping it as one — and this marks where it came from, for the chain's work and for anyone
+ * reading the observer panel (D-28).
+ */
+export const FEED_REASON = 'feed';
+
+/**
+ * A post from the account's own timeline, with the three facts the feed gate judges it on that
+ * a `BlueskyMessage` has no room for. All three arrive with the post, so qualifying a whole
+ * timeline costs no further requests (D-28).
+ */
+export interface FeedCandidate {
+  message: BlueskyMessage;
+  /** How many replies the post already has, as the AppView counts them. */
+  replyCount: number;
+  /** Whether the post is itself a reply, rather than the top of a thread. */
+  isReply: boolean;
+  /** Whether it is in the timeline because someone reposted it, rather than wrote it. */
+  isRepost: boolean;
+}
+
 export class BlueskyClient {
   private agent: BskyAgent;
   private authenticated = false;
@@ -414,6 +437,52 @@ export class BlueskyClient {
         replyInfo,
       };
     });
+  }
+
+  /**
+   * The account's own timeline: the posts of the accounts it follows.
+   *
+   * This is where the bot's taste is configured, and it is deliberately not configured here —
+   * who the account follows is a knob turned in any client, so widening or narrowing what
+   * Oblique sees needs no edit to this repository (D-28).
+   *
+   * Every item is mapped to the shape a notification arrives in, so the reply chain needs no
+   * case for a post nobody asked it to answer.
+   */
+  async getTimeline(limit: number): Promise<FeedCandidate[]> {
+    const method = this.nsid('feed.getTimeline');
+
+    const response = await this.request(method, () => this.agent.api.xrpc.call(method, { limit }));
+    const feed = response.data.feed || [];
+
+    console.log(`Timeline for ${this.config.handle}:`, feed.length);
+
+    return feed.map((item: any) => this.toFeedCandidate(item));
+  }
+
+  /**
+   * One timeline item as a candidate. `item.reason` is present when the item is in the feed
+   * because someone reposted it; only its presence is read, so the namespaced type each
+   * network gives it never has to be named (D-23).
+   */
+  private toFeedCandidate(item: any): FeedCandidate {
+    const post = item.post;
+    const reply = post.record?.reply;
+
+    return {
+      message: {
+        uri: post.uri,
+        cid: post.cid,
+        author: post.author.handle,
+        text: post.record?.text || '',
+        createdAt: new Date(post.indexedAt),
+        reason: FEED_REASON,
+        replyInfo: reply ? { root: reply.root, parent: reply.parent } : undefined,
+      },
+      replyCount: post.replyCount || 0,
+      isReply: !!reply,
+      isRepost: !!item.reason,
+    };
   }
 
   async markNotificationsAsSeen(): Promise<void> {

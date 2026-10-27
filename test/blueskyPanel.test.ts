@@ -80,6 +80,162 @@ describe('Bluesky Polling Module', () => {
   });
 
   // R-39: one account's failure is reported against that account, never thrown at the batch
+  // R-56: one look at one account's feed. The free rules run over the batch, the paid judgment
+  // over what survived, and the one extra request on the post that was drawn (D-28).
+  describe('checkFeedAccount', () => {
+    const SELF = 'oblique.delve.town';
+
+    const feedItem = (author: string, over: any = {}) => ({
+      message: {
+        uri: `at://did:plc:test/app.bsky.feed.post/${author}`,
+        cid: `cid-${author}`,
+        author,
+        text: `something from ${author}`,
+        createdAt: new Date('2025-01-01T00:00:00Z'),
+        reason: 'feed',
+        ...over.message,
+      },
+      replyCount: 0,
+      isReply: false,
+      isRepost: false,
+      ...over,
+    });
+
+    /** A thread view with the given handles among the replies. */
+    const threadWith = (replyAuthors: string[]) => ({
+      data: {
+        thread: {
+          $type: 'app.bsky.feed.defs#threadViewPost',
+          post: { record: { text: 'something' } },
+          replies: replyAuthors.map(handle => ({ post: { author: { handle } } })),
+        },
+      },
+    });
+
+    const clientWith = (feed: any[], thread: any) => ({
+      ensureAuth: jest.fn<any>().mockResolvedValue(undefined),
+      getTimeline: jest.fn<any>().mockResolvedValue(feed),
+      getSinglePost: jest.fn<any>().mockResolvedValue(thread),
+    });
+
+    const account = (client: any) => ({ name: 'delvetown', handle: SELF, client });
+
+    /** A Jev that puts all its weight on the label given. */
+    const jevChoosing = (label: string) => ({
+      decide: jest.fn<any>().mockResolvedValue({ post: { type: 'choice', choice: label, probabilities: { [label]: 1 } } }),
+      isConfigured: () => true,
+    });
+
+    it('answers the post Jev drew, and makes one task for it', async () => {
+      const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+      const { checkFeedAccount } = await import('../src/bluesky-panel.js');
+      const client = clientWith([feedItem('stranger.test')], threadWith([]));
+
+      const check = await checkFeedAccount(account(client) as any, {} as any, jevChoosing('p1') as any, jest.fn());
+
+      expect(check.picked?.author).toBe('stranger.test');
+      expect(check.task).not.toBeNull();
+      expect(check.error).toBeNull();
+      log.mockRestore();
+    });
+
+    it('qualifies the timeline before asking Jev, and asks only about what survived', async () => {
+      const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+      const debug = jest.spyOn(console, 'debug').mockImplementation(() => {});
+      const { checkFeedAccount } = await import('../src/bluesky-panel.js');
+      const jev = jevChoosing('p1');
+      const client = clientWith([
+        feedItem('ours', { message: { author: SELF } }),
+        feedItem('reposter.test', { isRepost: true }),
+        feedItem('stranger.test'),
+      ], threadWith([]));
+
+      const check = await checkFeedAccount(account(client) as any, {} as any, jev as any, jest.fn());
+
+      expect(check.declined).toEqual(['our own post', 'a repost rather than a post']);
+      expect(Object.keys((jev.decide.mock.calls[0][0] as any).questions.post.criteria))
+        .toEqual(['p1', 'none']);
+      expect(check.picked?.author).toBe('stranger.test');
+      log.mockRestore();
+      debug.mockRestore();
+    });
+
+    // The only duplicate check there is: the timeline says how many replies a post has, never
+    // whose, so a post we answered an hour ago looks untouched until this fetch (D-28)
+    it('declines a post it finds its own reply on, and makes no task', async () => {
+      const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+      const { checkFeedAccount } = await import('../src/bluesky-panel.js');
+      const client = clientWith([feedItem('stranger.test')], threadWith([SELF]));
+
+      const check = await checkFeedAccount(account(client) as any, {} as any, jevChoosing('p1') as any, jest.fn());
+
+      expect(check.picked).toBeNull();
+      expect(check.task).toBeNull();
+      expect(check.note).toContain('we already answered this post');
+      expect(check.declined).toContain('we already answered this post');
+      log.mockRestore();
+    });
+
+    it('verifies only the post it drew, not every candidate', async () => {
+      const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+      const { checkFeedAccount } = await import('../src/bluesky-panel.js');
+      const client = clientWith(
+        [feedItem('one.test'), feedItem('two.test'), feedItem('three.test')],
+        threadWith([])
+      );
+
+      await checkFeedAccount(account(client) as any, {} as any, jevChoosing('p2') as any, jest.fn());
+
+      expect(client.getSinglePost).toHaveBeenCalledTimes(1);
+      expect(client.getSinglePost).toHaveBeenCalledWith('at://did:plc:test/app.bsky.feed.post/two.test');
+      log.mockRestore();
+    });
+
+    it('declines a post that cannot be read any more', async () => {
+      const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+      const { checkFeedAccount } = await import('../src/bluesky-panel.js');
+      const client = clientWith([feedItem('stranger.test')], {
+        data: { thread: { $type: 'app.bsky.feed.defs#notFoundPost' } },
+      });
+
+      const check = await checkFeedAccount(account(client) as any, {} as any, jevChoosing('p1') as any, jest.fn());
+
+      expect(check.picked).toBeNull();
+      expect(check.note).toContain('the post is gone');
+      log.mockRestore();
+    });
+
+    // No judgment, no unsolicited reply (G-2)
+    it('posts nothing when there is no Jev', async () => {
+      const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+      const { checkFeedAccount } = await import('../src/bluesky-panel.js');
+      const client = clientWith([feedItem('stranger.test')], threadWith([]));
+
+      const check = await checkFeedAccount(account(client) as any, {} as any, undefined, jest.fn());
+
+      expect(check.picked).toBeNull();
+      expect(check.task).toBeNull();
+      expect(check.note).toContain('Jev is not configured');
+      expect(client.getSinglePost).not.toHaveBeenCalled();
+      log.mockRestore();
+    });
+
+    it('reports the reason a look failed, rather than throwing', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const { checkFeedAccount } = await import('../src/bluesky-panel.js');
+      const client = {
+        ensureAuth: jest.fn<any>().mockResolvedValue(undefined),
+        getTimeline: jest.fn<any>().mockRejectedValue(new Error('UpstreamFailure')),
+      };
+
+      const check = await checkFeedAccount(account(client) as any, {} as any, jevChoosing('p1') as any, jest.fn());
+
+      expect(check.error).toBe('UpstreamFailure');
+      expect(check.task).toBeNull();
+      warn.mockRestore();
+    });
+  });
+
   describe('checkAccount', () => {
     const accountWith = (client: any) => ({
       name: 'delvetown',

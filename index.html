@@ -74,6 +74,7 @@
           <h3>Bluesky</h3>
           <div class="bluesky-controls">
             <button id="check-bluesky" class="btn-primary">Check</button>
+            <button id="check-feed" class="btn-secondary">Check Feed</button>
             <button id="toggle-polling" class="btn-secondary">Start Polling</button>
             <label class="checkbox-label">
               <input type="checkbox" id="mark-as-seen" checked>
@@ -89,8 +90,10 @@
             <span id="polling-indicator">●</span>
             <span id="polling-text">Polling active</span>
             <span id="next-check">Next check: --:--</span>
+            <span id="next-feed"></span>
           </div>
           <div id="bluesky-posts" class="bluesky-posts"></div>
+          <div id="feed-posts" class="bluesky-posts"></div>
         </div>
       </div>
 

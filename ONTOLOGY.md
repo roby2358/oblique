@@ -19,11 +19,12 @@ and every dated change lives in `ARCHITECTURE_LOG.md`; every check that proves a
 
 ## §0 Purpose **[D]**
 
-Oblique is a browser-resident bot that answers Bluesky mentions obliquely — through
+Oblique is a browser-resident bot that answers Bluesky posts obliquely — through
 supertext, subtext, architext, psychotext, a poem or a single line — and knows when to say
 nothing at all. Which of those a post deserves is itself a judgment, decided per reply before
-anything is written (D-27). It runs entirely as a single web page: no server, no database, no
-background process.
+anything is written (D-27). Most of what it answers is a mention; now and then it goes looking,
+reads the feed and answers one post nobody asked it to (D-28). It runs entirely as a single web
+page: no server, no database, no background process.
 
 ### Qualities
 
@@ -222,6 +223,27 @@ thread and the post being answered, `opening` carries only a subject. A register
 Oblique speaks; the occasion says what it is speaking to.
 
 ---
+
+### 1.13 FeedCandidate **[D]**
+
+*Serves:* G-2. One post from the timeline, as the feed gate judges it.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `message` | `BlueskyMessage` | the post, shaped exactly as a notification, with `reason` = `FEED_REASON` |
+| `replyCount` | number | how many replies it already has, as the AppView counts them |
+| `isReply` | boolean | whether it is itself a reply, rather than the top of a thread |
+| `isRepost` | boolean | whether it is in the timeline because someone reposted it |
+
+The three facts beside the message are the ones the gate judges on and a `BlueskyMessage` has
+no room for. All three arrive with the post, so a whole timeline is qualified without a further
+request (4.26).
+
+`message` is a `BlueskyMessage` and not a type of its own so that the reply chain needs no case
+for a post nobody asked it to answer: a candidate that survives both gates is handed to
+`createReplyTask` exactly as a notification is, and everything downstream of that is unchanged
+(D-28). `FEED_REASON` is the one mark of where it came from, and it names no `REPLIABLE_REASONS`
+member, so a candidate can never be mistaken for an invitation.
 
 ## §2 Invariants
 
@@ -426,9 +448,7 @@ notificationRestraintReason(notif, postData, selfHandle):
   if notif.reason == 'mention'          -> null            # always answered
   reason = postUnreadableReason(postData)
   if reason                             -> reason          # say which
-  if postData.data.thread.replies is non-empty
-                                        -> 'someone already replied to this post'
-  -> null                                                  # answer it
+  -> alreadyAnsweredReason(postData, selfHandle)           # 4.26, or null to answer it
 
 postUnreadableReason(postData):
   thread = postData?.data?.thread
@@ -453,8 +473,9 @@ deliberately so — an account not worth answering on one network is not worth a
 another.
 
 A direct mention is answered unconditionally — it was addressed to the bot, so someone else
-having replied is irrelevant. Everything else defers: a post that cannot be read is left
-alone, and an existing reply means the conversation no longer needs the bot.
+having replied is irrelevant. Everything else defers: a post that cannot be read is left alone,
+and a post that has been answered already is left to 4.26, which both gates ask and which
+distinguishes our own past reply from someone else's (D-28).
 
 The kinds are matched on the fragment of the `$type` rather than the whole of it, because
 each network namespaces its own copy of the union: `app.bsky.feed.defs#blockedPost` and
@@ -566,12 +587,10 @@ call sites, so the format sits in the longest fixed prefix there is.
 registerMenu()                 -> { key -> REGISTERS[key].criterion } for all seven registers
 randomLensRegister(random)     -> uniform pick of { supertext, subtext, architext, psychotext }
 
-sampleRegister(probabilities, random):
-  weights = entries of probabilities that name a register and carry more than 0
-  total   = sum of those weights
-  if total <= 0 -> randomLensRegister(random)
-  draw    = random() * total
-  -> the register whose cumulative band the draw lands in
+sampleRegister(probabilities, random):                     # the walk itself is 4.29
+  label = drawLabel(probabilities, isRegisterKey, random)
+  if label is null -> randomLensRegister(random)           # 4.29 consumed no random
+  -> REGISTERS[label]
 
 chooseRegister(jevClient, threadHistory, userMessage, random):
   if no client, or the client is unconfigured
@@ -608,7 +627,8 @@ posts a bot is sent are personal, so the best-scoring register would be `psychot
 and the bot would settle into one register — the thing the uniform random pick existed to
 prevent. Sampling keeps a reply responsive to the post and still varied across a thread: the
 register Jev gives 0.6 is taken three times in five, not five times in five. Unrecognized
-labels are ignored rather than trusted (D-27).
+labels are ignored rather than trusted (D-27). The band walk is 4.29, shared with the feed
+gate (4.28), which draws the same way for the same reason.
 
 Every way the choice can fail ends in a lens: no `jev` block, an empty key, a dead endpoint, a
 malformed answer, a missing distribution, or a distribution naming nothing the code knows. The
@@ -724,6 +744,10 @@ waiting snapshot.
 ### 4.17 The reply chain **[D]**
 
 *Serves:* G-1, G-3. Five snapshots, one `taskId`.
+
+The same chain whatever started it. A notification that passed 4.8 and a feed post that passed
+4.27 and 4.28 arrive here as the same `BlueskyMessage`, and nothing below this line asks which
+it was (D-28).
 
 ```
 v1  createReplyTask          ready    process() -> v2
@@ -1028,6 +1052,180 @@ with a lens, so a Jev outage costs variety and not replies.
 
 ---
 
+### 4.26 Already answered **[D]**
+
+*Serves:* G-2. Asked by both gates that hold post data, so the two cannot drift apart on what
+counts as answered.
+
+```
+alreadyAnsweredReason(postData, selfHandle):
+  thread  = postData?.data?.thread
+  authors = normalized handles of thread.replies[].post.author.handle, blanks dropped
+  if selfHandle (normalized) in authors   -> 'we already answered this post'
+  if thread.post.record.reply exists and thread.replies is non-empty
+                                          -> 'someone already replied to this post'
+  -> null
+```
+
+Two different situations wear one shape. **Our own handle among the replies** is the only
+duplicate check there is: nothing on this page remembers across a reload, and the network does.
+A post Oblique answered an hour ago is indistinguishable from an untouched one until this is
+asked, because a timeline says how many replies a post has and never whose (D-28).
+
+**Someone else** having answered closes a post only partway down a thread. At the top of one
+there is room for another voice: a reply to a top-level post starts a branch rather than
+interrupting an exchange, so a busy original post stays answerable however many replies it
+carries. This replaced a blanket rule that declined any post with any reply, and it widens what
+both paths will answer, the notification path included (D-28).
+
+The second test counts the replies rather than the handles read out of them: a reply whose
+author cannot be read is still a reply, and still someone who got there first. Handles are
+compared normalized, because each network spells Oblique differently and the replies carry it
+without the `@` (D-22).
+
+### 4.27 Feed restraint **[D]**
+
+*Serves:* G-2. The feed's equivalent of 4.8, and the stricter of the two: a notification is at
+least an invitation, and nothing in the feed is.
+
+```
+feedRestraintReason(candidate, selfHandle):
+  if candidate.isRepost                   -> 'a repost rather than a post'
+  if candidate.message.author == selfHandle (both normalized)
+                                          -> 'our own post'
+  if config.ignoreList includes the author -> 'the author is in the ignore list'
+  if config.botList includes the author    -> 'the author is a bot'
+  if candidate.isReply and candidate.replyCount > 0
+                                          -> 'a reply someone already answered'
+  if candidate.message.text is blank      -> 'the post has no text to answer'
+  -> null
+```
+
+Every rule is answered from the timeline response alone — the author, the record's reply field
+and `replyCount` all arrive with the post — so a whole batch is qualified without a single
+further request and the paid judgment is spent only on what survives. The same discipline as
+4.8, where the post is fetched after the cheap rules have passed (R-8).
+
+The bot list refuses outright here rather than attenuating. D-7 throttles *answering* a bot
+that is already talking to us, which is a conversation someone started; opening one is a
+different act and nobody asked for it.
+
+A post with no text is declined because there is nothing for a lens to work on. The images such
+a post carries are `obl-images-4bpt`, not this.
+
+Reasons are author-free, like 4.8's, so a look can tally them (D-25).
+
+### 4.28 Feed choice **[D]**
+
+*Serves:* G-1, G-2. The fourth gate, and the only one that asks a question about posts nobody
+sent.
+
+```
+FEED_QUESTION = 'post'
+NO_PICK       = 'none'
+
+feedMenu(candidates)   -> { p1: '@<author>: <text>', …, none: <the criterion for answering nothing> }
+feedQuestion(candidates) -> { type: 'choice', instructions: INSTRUCTIONS, criteria: feedMenu(candidates) }
+feedState()            -> [ CONTEXT ]        # the standing context, and nothing per-post
+
+chooseFeedPost(jevClient, candidates, random) -> { candidate, note }:
+  if candidates is empty            -> { null, 'no post: nothing in the feed qualified' }
+  if no jevClient or not configured -> { null, 'no post: Jev is not configured' }
+  offered = first FEED_CANDIDATES of candidates
+  try:
+    answers = await jevClient.decide({ state: feedState(), questions: { post: feedQuestion(offered) } })
+    label   = drawLabel(answers.post?.probabilities, offered's labels + NO_PICK, random)   # 4.29
+    if label is null or NO_PICK     -> { null, 'no post: drawn from Jev of <n> (<weights>)' }
+    -> { the candidate that label names, 'drawn from Jev of <n> (<weights>)' }
+  catch e:
+    -> { null, 'no post: Jev failed (<reason>)' }
+```
+
+The posts are the options rather than the evidence, so they live in the menu and the state is
+only the standing context. `none` is on the menu beside them because a choice question must
+choose something: the option of choosing nothing has to be one of the options, and its criterion
+says outright that it is the right answer more often than not (D-28).
+
+**Every failure ends in no post**, which is the opposite of how 4.12's register gate fails and
+is deliberate. There a reply was already owed and the register was a refinement, so a broken Jev
+falls back to a lens. Here nothing is owed to anyone: a Jev that is absent, unreachable or
+incoherent is not a reason to answer a stranger's post at random, which is the exact failure
+G-2 exists to prevent. No judgment, no unsolicited reply.
+
+Only `probabilities` is read and `choice` is ignored, as at 4.12. A look that comes back without
+a distribution costs that look and nothing else.
+
+Jev is told nothing of Oblique's voice, mission, registers or output format. Which register the
+reply lands in is 4.12's question, asked afterwards about the one post that won this one — so a
+feed reply passes two Jev questions, in two requests, about two different things.
+
+### 4.29 Drawing from a distribution **[D]**
+
+*Serves:* G-1. Shared by 4.12 and 4.28, which both draw rather than take the heaviest.
+
+```
+drawLabel(probabilities, isKnown, random):
+  weights = entries of probabilities where isKnown(label) and weight > 0
+  total   = sum of those weights
+  if total <= 0 -> null                       # random is not consumed
+  drawn = random() * total
+  walk the entries, subtracting; return the label whose band contains `drawn`
+
+describeWeights(probabilities) -> the heaviest NOTED_WEIGHTS as '<label> <weight>', heaviest first
+```
+
+A label `isKnown` rejects is ignored rather than trusted: the gate that asked the question owns
+the menu, and a label it does not recognize is a Jev that answered some other question. The
+weights need not sum to one, so a menu that was partly understood still draws from the part that
+was.
+
+`random` is consumed only when there is something to draw, which is what lets 4.12 fall back to
+its own uniform draw with the number this one did not spend.
+
+`describeWeights` keeps every label as Jev gave it, including ones the menu never offered,
+because a gate reporting an answer it ignored is exactly what someone reading the note needs.
+
+### 4.30 Feed scheduling **[D]**
+
+*Serves:* G-2, G-4. When a look at the feed is due. Not a clock of its own — see 5.2.
+
+```
+nextLookAt(now, random) -> now + (FEED_MIN_MIN + random() * FEED_SPREAD_MIN) minutes
+
+FeedSchedule(random):
+  isDue(handle, now):
+    if handle is unknown -> record nextLookAt(now, random); -> false     # arm, never fire
+    -> now >= the recorded time
+  reset(handle, now)     -> record nextLookAt(now, random)
+  dueFor(handle)         -> the recorded time, or nothing
+```
+
+**The interval is drawn once, at the reset.** Drawing a fresh threshold to compare against on
+every pass instead gives the minimum of many draws rather than one draw: with a two-minute poll
+and a target meant to average thirty minutes, the low draws keep winning — the median comes out
+near sixteen minutes and the upper half of the intended range is never reached at all (D-28).
+
+The poll interval then quantizes it: a due time lands on the next pass after it, so the interval
+is a floor and not a schedule. Invisible at `POLL_DEFAULT_S`; at `POLL_MAX_S` the feed is looked
+at hourly whatever is set here.
+
+An account's **first sight arms its clock rather than firing it**. Otherwise a page load would
+open with an unsolicited post, and so would every reload after it — which is the state a long
+debugging session leaves the page in over and over.
+
+One clock per account, drawn independently. Each network has its own timeline and its own
+audience, so a shared clock would hand the second network half the attention for no reason, and
+independent draws keep the two from falling into step (D-22).
+
+The clock is read again at the reset rather than reusing the `now` the due check used: the
+interval runs from when a look finished, not from when the pass that contained it began.
+
+`reset` is called after **every** look, whatever the look produced. A look that qualified
+nothing, drew `none`, failed its verification or chose silence has still spent the bot's
+attention on the feed. The alternative is a second number saying how soon to retry a quiet
+timeline, carried to save one timeline read and one Jev call — the two cheapest things the page
+does.
+
 ## §5 Automation
 
 ### 5.1 The notification poller **[D]**
@@ -1041,7 +1239,7 @@ startPolling():
              POLL_MIN_S…POLL_MAX_S   # the input itself is clamped on change and blur (U-7)
   schedule():
     setTimeout(interval):
-      if still polling: await checkNotifications(); schedule()
+      if still polling: await checkNotifications(); await checkFeeds(force = false); schedule()
 
 checkNotifications():
   if no account or no llmClient -> show the reason, stop
@@ -1070,7 +1268,7 @@ judgeNotifications(account, notifs, llmClient, onWaitingTaskComplete):
     reason = notificationRestraintReason(notif, postData, account.handle)
     if reason: log '@<author>: <reason>'; declined += reason; continue
     answered += notif
-    tasks    += createReplyTask(notif, llmClient, account.client, onWaitingTaskComplete)
+    tasks    += createReplyTask(notif, llmClient, jevClient, account.client, onWaitingTaskComplete)
   -> { answered, declined, tasks }
 
 tallyReasons(declined) -> one { reason, count } per distinct reason, commonest first
@@ -1109,6 +1307,80 @@ deleted post, and a mention is still answered unconditionally.
 
 ---
 
+### 5.2 The feed look **[D]**
+
+*Serves:* G-1, G-2. The second actor that creates work without a human, and the only one that
+answers someone who did not address Oblique at all.
+
+```
+checkFeeds(force):
+  if no account or no llmClient -> nothing
+  due = accounts where force, or feedSchedule.isDue(handle, now)        # 4.30
+  if none -> nothing
+  for each due account:
+    checks += await checkFeedAccount(account, llmClient, jevClient, onWaitingTaskComplete)
+    feedSchedule.reset(account.handle, Date.now())      # after the look, whatever it produced
+  for each check with a task: state = addTask(state, check.task)        # the one queue
+  render one section per check: its handle, the post it chose, the note, the tally
+
+checkFeedAccount(account, llmClient, jevClient, onWaitingTaskComplete) -> FeedCheck:
+  try:
+    await account.client.ensureAuth()
+    candidates = await account.client.getTimeline(FEED_BATCH)
+    for each candidate:                                                 # free, offline
+      reason = feedRestraintReason(candidate, account.handle)           # 4.27
+      if reason: log it; declined += reason; continue
+      qualified += candidate
+    { candidate, note } = await chooseFeedPost(jevClient, qualified, Math.random)   # 4.28
+    if no candidate -> { picked: null, declined, note, task: null, error: null }
+    refused = await verifyPick(account, candidate)
+    if refused -> { picked: null, declined + refused, note + refused, task: null, error: null }
+    -> { picked: candidate.message, declined, note,
+         task: createReplyTask(candidate.message, llmClient, jevClient, account.client, …),
+         error: null }
+  catch e:
+    -> { picked: null, declined: [], note: 'no post: the look failed', task: null, error: reason(e) }
+
+verifyPick(account, candidate):
+  postData = await fetchPostData(account.client, candidate.message)     # null, never a throw
+  reason   = postUnreadableReason(postData)                             # 4.8
+  if reason -> reason
+  -> alreadyAnsweredReason(postData, account.handle)                    # 4.26
+```
+
+**The order is the whole design.** The free rules run over the whole batch, the one paid judgment
+runs over what survived them, and the one extra request runs on the single post that won. A look
+at a fifty-post timeline costs two requests and one Jev call, whatever it finds (D-28).
+
+`verifyPick` is the only place Oblique can see its own past replies. A timeline says how many
+replies a post has and never whose, so a post answered an hour ago is indistinguishable from an
+untouched one until this fetch comes back. Spent on the drawn post alone, which is what makes it
+affordable; and because the network answers it, it survives the reload that any memory on this
+page would not.
+
+A failed verification **ends the look** rather than drawing again. Drawing again until something
+passes is how a restraint rule turns into a retry loop, and the firehose will have moved on by
+the next look in any case.
+
+At most one post per look, and the number is one rather than tunable because every reply down
+this path is one nobody asked for.
+
+A candidate that survives all of it is handed to `createReplyTask` exactly as a notification is,
+so the whole of 4.17 follows unchanged — the thread read, 4.9's thread restraint, 4.12's register
+gate, and silence among the registers it may draw. Nothing downstream knows the difference
+(D-28).
+
+`checkFeeds` is called from the polling callback and never from the **Check** button: the
+notification button must stay one that cannot post to a stranger. `force` is the separate
+**Check Feed** button, which looks whatever the clocks say and still resets them, so a manual
+look pushes the next automatic one out rather than coming free.
+
+Nothing is remembered between looks. `FEED_BATCH` is a window on the most recent posts, not a
+page of a queue, so a post that falls past it is never considered — the same bargain as
+`NOTIFICATION_BATCH` (D-11).
+
+---
+
 ## §6 Numbers **[T]**
 
 Every one of these is tunable. **Refer to a constant by name everywhere else** — code, docs and
@@ -1138,10 +1410,16 @@ tests. The code is the single source; the value here is a copy.
 | `RECORD_PAGE` | 100 | records per request | `fetchSchemas` | D-23 |
 | `MODEL_ROTATION_SIZE` | 23 | models | `config.json` → `openrouter.models` | D-5 |
 | `GENDER_ROTATION_SIZE` | 25 | entries | `prompts/oblique.ts` | D-5 |
-| `NOTED_WEIGHTS` | 3 | weights | `register-choice.ts` | D-27 |
+| `NOTED_WEIGHTS` | 3 | weights | `weighted-draw.ts` | D-27 |
+| `FEED_BATCH` | 50 | posts | `checkFeeds` | D-28 |
+| `FEED_CANDIDATES` | 15 | posts | `feed-choice.ts` | D-28 |
+| `FEED_MIN_MIN` | 20 | minutes | `feed-schedule.ts` | D-28 |
+| `FEED_SPREAD_MIN` | 20 | minutes | `feed-schedule.ts` | D-28 |
 
 Only `MAX_BLUESKY_REPLY_CHARS`, `ADVERTISED_REPLY_CHARS`, `TOKEN_REFRESH_BUFFER_MS`,
-`TOKEN_DEFAULT_TTL`, `RECORD_PAGE`, `NOTED_WEIGHTS` and `SAFE_BASE32_ALPHABET` are named constants in the code today; the rest are literals at their use site, except
+`TOKEN_DEFAULT_TTL`, `RECORD_PAGE`, `NOTED_WEIGHTS`, `FEED_BATCH`, `FEED_CANDIDATES`,
+`FEED_MIN_MIN`, `FEED_SPREAD_MIN` and `SAFE_BASE32_ALPHABET` are named constants in the code
+today; the rest are literals at their use site, except
 `MODEL_ROTATION_SIZE`, which is the length of a list in `config.json`. Naming them is Q-7 in
 `ARCHITECTURE_LOG.md`.
 

@@ -6,6 +6,7 @@
 // another way to the writer (D-27).
 
 import type { LensKey, Register, RegisterKey } from './register.js';
+import { drawLabel } from '../weighted-draw.js';
 import { SupertextRegister } from './supertext-register.js';
 import { SubtextRegister } from './subtext-register.js';
 import { ArchitextRegister } from './architext-register.js';
@@ -73,24 +74,11 @@ export const sampleRegister = (
   probabilities: { [label: string]: number } | undefined,
   random: () => number
 ): Register => {
-  const weights = Object.entries(probabilities ?? {})
-    .filter(([label, weight]) => isRegisterKey(label) && weight > 0);
-  const total = weights.reduce((sum, [, weight]) => sum + weight, 0);
+  const label = drawLabel(probabilities, isRegisterKey, random);
 
-  if (total <= 0) {
+  if (!label) {
     return randomLensRegister(random);
   }
 
-  let drawn = random() * total;
-
-  for (const [label, weight] of weights) {
-    drawn -= weight;
-
-    if (drawn < 0) {
-      return REGISTERS[label as RegisterKey];
-    }
-  }
-
-  // Only reachable through floating-point drift at the very top of the range
-  return REGISTERS[weights[weights.length - 1][0] as RegisterKey];
+  return REGISTERS[label as RegisterKey];
 };

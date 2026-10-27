@@ -4,8 +4,16 @@ import { getBlueskyAccounts, getJevClient, getLLMClient, getOrchestratorState, s
 import { createReplyTask } from './oblique-task-factory.js';
 import * as Orchestrator from './drakidion/orchestrator.js';
 import type { BlueskyMessage } from './types/index.js';
-import { needsPostData, notificationRestraintReason } from './bluesky-polling.js';
-import type { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
+import {
+  alreadyAnsweredReason,
+  feedRestraintReason,
+  needsPostData,
+  notificationRestraintReason,
+  postUnreadableReason,
+} from './bluesky-polling.js';
+import { chooseFeedPost } from './feed-choice.js';
+import { FeedSchedule } from './feed-schedule.js';
+import type { BlueskyClient, FeedCandidate } from './hooks/bluesky/bluesky-client.js';
 import type { BlueskyAccount } from './bluesky-accounts.js';
 import type { LLMClient } from './hooks/llm/llm-client.js';
 import type { JevClient } from './hooks/jev/jev-client.js';
@@ -15,6 +23,16 @@ declare const $: any;
 // Polling state management
 let pollingInterval: NodeJS.Timeout | null = null;
 let isPolling = false;
+
+/**
+ * How many posts of the timeline a look reads. A window on the most recent posts, not a page
+ * of a queue: there is no cursor and nothing is remembered, so a post that falls past it is
+ * never considered, exactly as with `NOTIFICATION_BATCH` (D-11, D-28).
+ */
+const FEED_BATCH = 50;
+
+/** When each account's feed next falls due. Armed on first sight, never on page load (D-28). */
+const feedSchedule = new FeedSchedule(Math.random);
 
 // Callback functions for task management
 const createOnWaitingTaskComplete = (orchestratorState: any, setOrchestratorState: (state: any) => void, updateStatus: () => void) => {
@@ -84,12 +102,29 @@ const formatTimeUntilNext = (targetTime: Date): string => {
   }
 };
 
+/**
+ * When the soonest feed look falls due, across every account. One line for all of them: the
+ * clocks are per account, but the status line is one line (D-28).
+ */
+const nextFeedText = (): string => {
+  const dues = getBlueskyAccounts()
+    .map(account => feedSchedule.dueFor(account.handle))
+    .filter((due): due is number => due !== undefined);
+
+  if (dues.length === 0) {
+    return '';
+  }
+
+  return `Next feed look: ${formatTimeUntilNext(new Date(Math.min(...dues)))}`;
+};
+
 const updateCountdown = (nextCheckTime: Date) => {
   const updateTimer = () => {
     if (!isPolling) return;
     
     const timeStr = formatTimeUntilNext(nextCheckTime);
     $('#next-check').text(`Next check: ${timeStr}`);
+    $('#next-feed').text(nextFeedText());
     
     if (nextCheckTime.getTime() > Date.now()) {
       setTimeout(updateTimer, 1000);
@@ -226,7 +261,7 @@ export const tallyReasons = (declined: string[]): { reason: string; count: numbe
     .sort((left, right) => right.count - left.count);
 };
 
-const renderDeclined = (declined: string[]): string => {
+const renderDeclined = (declined: string[], noun: string): string => {
   if (declined.length === 0) {
     return '';
   }
@@ -235,7 +270,7 @@ const renderDeclined = (declined: string[]): string => {
     .map(({ reason, count }) => `<li><span class="declined-count">${count}</span>${escapeHtml(reason)}</li>`)
     .join('');
 
-  return `<p class="declined-head">Passed over ${plural(declined.length, 'notification')}:</p><ul class="declined-list">${rows}</ul>`;
+  return `<p class="declined-head">Passed over ${plural(declined.length, noun)}:</p><ul class="declined-list">${rows}</ul>`;
 };
 
 /**
@@ -259,7 +294,7 @@ const renderAccountCheck = (check: AccountCheck): string => {
     ? 'Nothing to answer this pass'
     : `✓ Replying to ${plural(check.answered.length, 'notification')}`;
 
-  return `${header}${answeredHtml}<p class="success">${summary}</p>${renderDeclined(check.declined)}`;
+  return `${header}${answeredHtml}<p class="success">${summary}</p>${renderDeclined(check.declined, 'notification')}`;
 };
 
 export const checkNotifications = async () => {
@@ -304,6 +339,174 @@ export const checkNotifications = async () => {
   enableCheckButton();
 };
 
+/**
+ * One account's look at its feed: the post it chose to answer, the reasons it passed the rest
+ * over, how the choice was made, and the task that earned. The same shape as `AccountCheck`
+ * and for the same reason — nothing is queued here, so a network that is down costs that
+ * account's look alone (R-39).
+ *
+ * At most one post per look. The number is one rather than tunable because every reply down
+ * this path is one nobody asked for (D-28).
+ */
+export interface FeedCheck {
+  account: BlueskyAccount;
+  picked: BlueskyMessage | null;
+  declined: string[];
+  note: string;
+  task: DrakidionTask | null;
+  error: string | null;
+}
+
+/**
+ * Why the post Jev drew should not be answered after all, or `null` when it should.
+ *
+ * The one paid check of the look, and the only place Oblique can see its own past replies: the
+ * timeline says how many replies a post has but not whose, so a post we answered an hour ago
+ * looks exactly like a post nobody has answered until this fetch comes back. Spent on the one
+ * post that was drawn rather than on every candidate, which is what makes it affordable at all
+ * — and it is a check the network answers, so it survives the reload that any memory here
+ * would not (D-28).
+ */
+const verifyPick = async (account: BlueskyAccount, candidate: FeedCandidate): Promise<string | null> => {
+  const postData = await fetchPostData(account.client, candidate.message);
+  const unreadable = postUnreadableReason(postData);
+
+  if (unreadable) {
+    return unreadable;
+  }
+
+  return alreadyAnsweredReason(postData, account.handle);
+};
+
+/**
+ * Read the timeline, qualify it offline, put the survivors to Jev, verify the one it drew.
+ *
+ * The order is the point: the free rules run over the whole batch, the one paid judgment runs
+ * over what survived them, and the one extra request runs on the single post that won. A look
+ * at a fifty-post timeline therefore costs two requests and one Jev call, whatever it finds
+ * (R-8's discipline, D-28).
+ *
+ * A failed verification ends the look rather than drawing again. Drawing again until something
+ * passes is how a restraint rule turns into a retry loop, and the firehose will have moved on
+ * by the next look in any case.
+ */
+export const checkFeedAccount = async (
+  account: BlueskyAccount,
+  llmClient: LLMClient,
+  jevClient: JevClient | undefined,
+  onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void
+): Promise<FeedCheck> => {
+  try {
+    await account.client.ensureAuth();
+
+    const candidates = await account.client.getTimeline(FEED_BATCH);
+    const declined: string[] = [];
+    const qualified: FeedCandidate[] = [];
+
+    for (const candidate of candidates) {
+      const reason = feedRestraintReason(candidate, account.handle);
+
+      if (reason) {
+        console.debug(`Feed: passed over @${candidate.message.author}: ${reason}`);
+        declined.push(reason);
+        continue;
+      }
+
+      qualified.push(candidate);
+    }
+
+    const { candidate, note } = await chooseFeedPost(jevClient, qualified, Math.random);
+
+    if (!candidate) {
+      console.log(`Feed for @${account.handle}: ${note}`);
+      return { account, picked: null, declined, note, task: null, error: null };
+    }
+
+    const refused = await verifyPick(account, candidate);
+
+    if (refused) {
+      console.log(`Feed for @${account.handle}: drew @${candidate.message.author}, then ${refused}`);
+      declined.push(refused);
+      return { account, picked: null, declined, note: `${note}, then ${refused}`, task: null, error: null };
+    }
+
+    console.log(`\u2713 Answering @${candidate.message.author} from the feed: ${note}`);
+
+    return {
+      account,
+      picked: candidate.message,
+      declined,
+      note,
+      task: createReplyTask(candidate.message, llmClient, jevClient, account.client, onWaitingTaskComplete),
+      error: null,
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'Unknown error';
+    console.warn(`Looking at @${account.handle}'s feed failed: ${reason}`);
+    return { account, picked: null, declined: [], note: 'no post: the look failed', task: null, error: reason };
+  }
+};
+
+const renderFeedCheck = (check: FeedCheck): string => {
+  const header = `<h4 class="bluesky-account">@${escapeHtml(check.account.handle)} — feed</h4>`;
+
+  if (check.error) {
+    return `${header}<p class="error">Error: ${escapeHtml(check.error)}</p>`;
+  }
+
+  const chosen = check.picked
+    ? `${renderNotificationAsHtml(check.picked)}<p class="success">\u2713 Answering @${escapeHtml(check.picked.author)}</p>`
+    : '<p>Nothing answered this look.</p>';
+
+  return `${header}${chosen}<p class="feed-note">${escapeHtml(check.note)}</p>${renderDeclined(check.declined, 'post')}`;
+};
+
+/**
+ * Look at the feed of every account whose clock has come due, and queue what it chose.
+ *
+ * `force` is the manual button: it looks whatever the clocks say, which is the only way to see
+ * what Jev makes of a timeline without waiting out the interval. The clock is still reset
+ * afterwards, so a manual look pushes the next automatic one out rather than coming free.
+ */
+export const checkFeeds = async (force: boolean) => {
+  const accounts = getBlueskyAccounts();
+  const llmClient = getLLMClient();
+  let orchestratorState = getOrchestratorState();
+
+  if (accounts.length === 0 || !llmClient) {
+    return;
+  }
+
+  const now = Date.now();
+  const due = accounts.filter(account => force || feedSchedule.isDue(account.handle, now));
+
+  if (due.length === 0) {
+    return;
+  }
+
+  const jevClient = getJevClient();
+  const onWaitingTaskComplete = createOnWaitingTaskComplete(orchestratorState, setOrchestratorState, updateStatus);
+
+  const checks: FeedCheck[] = [];
+  for (const account of due) {
+    checks.push(await checkFeedAccount(account, llmClient, jevClient, onWaitingTaskComplete));
+    // After the look, whatever it produced, and from the clock as it is now rather than as it
+    // was when the pass began: the interval runs from when a look finished (D-28)
+    feedSchedule.reset(account.handle, Date.now());
+  }
+
+  for (const check of checks) {
+    if (check.task) {
+      orchestratorState = Orchestrator.addTask(orchestratorState, check.task);
+    }
+  }
+
+  setOrchestratorState(orchestratorState);
+  updateStatus();
+
+  $('#feed-posts').html(checks.map(renderFeedCheck).join(''));
+};
+
 // Helper function to get poll interval from UI
 const getPollIntervalSeconds = (): number => {
   const input = $('#poll-interval');
@@ -331,6 +534,9 @@ const startPolling = () => {
     pollingInterval = setTimeout(async () => {
       if (isPolling) {
         await checkNotifications(); // Show output during polling
+        // Notifications first, always: someone who addressed Oblique outranks a stranger who
+        // did not, and most passes have no feed look due at all (D-28)
+        await checkFeeds(false);
         scheduleNextCheck();
       }
     }, POLLING_INTERVAL_MS);
@@ -385,5 +591,23 @@ export const createHandlePollIntervalChange = () => {
 export const createHandleCheckBluesky = () => {
   return async () => {
     await checkNotifications();
+  };
+};
+
+/**
+ * The manual feed look. Separate from **Check** on purpose: the notification button must stay
+ * a button that cannot post to a stranger, so the one path that speaks unbidden is behind a
+ * control that says what it does (D-28).
+ */
+export const createHandleCheckFeed = () => {
+  return async () => {
+    $('#check-feed').prop('disabled', true).text('Looking...');
+    $('#feed-posts').html('<p>Reading the feed...</p>');
+
+    try {
+      await checkFeeds(true);
+    } finally {
+      $('#check-feed').prop('disabled', false).text('Check Feed');
+    }
   };
 };

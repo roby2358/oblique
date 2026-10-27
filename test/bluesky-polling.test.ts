@@ -61,11 +61,36 @@ describe('Bluesky Polling Module', () => {
     reason: 'reply',
   };
 
+  // A thread view for a top-level post: nothing in `record.reply`, so answering it starts a
+  // branch rather than joining a conversation (R-8, D-28)
   const createPostData = (hasReplies: boolean = false) => ({
     data: {
       thread: {
         $type: 'app.bsky.feed.defs#threadViewPost',
-        replies: hasReplies ? [{ uri: 'reply-uri' }] : [],
+        post: { record: { text: 'Hello there' } },
+        replies: hasReplies ? [{ post: { author: { handle: 'someone.else' } } }] : [],
+      },
+    },
+  });
+
+  /** A thread view for a post that is itself a reply, answered by the handles given. */
+  const createReplyPostData = (replyAuthors: string[]) => ({
+    data: {
+      thread: {
+        $type: 'app.bsky.feed.defs#threadViewPost',
+        post: { record: { text: 'Hello there', reply: { root: {}, parent: {} } } },
+        replies: replyAuthors.map(handle => ({ post: { author: { handle } } })),
+      },
+    },
+  });
+
+  /** A top-level post that Oblique itself has already answered. */
+  const createPostDataAnsweredByUs = () => ({
+    data: {
+      thread: {
+        $type: 'app.bsky.feed.defs#threadViewPost',
+        post: { record: { text: 'Hello there' } },
+        replies: [{ post: { author: { handle: SELF_HANDLE } } }],
       },
     },
   });
@@ -192,11 +217,38 @@ describe('Bluesky Polling Module', () => {
       expect(notificationRestraintReason(notification, postData, SELF_HANDLE)).toBeNull();
     });
 
-    it('skips notifications when an existing reply is detected', async () => {
+    // R-8, D-28: someone else answering only closes a post partway down a thread. At the top
+    // of one there is room for another voice.
+    it('skips a reply someone else has already answered', async () => {
+      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(notificationRestraintReason(baseNotification, createReplyPostData(['someone.else']), SELF_HANDLE))
+        .toBe('someone already replied to this post');
+    });
+
+    it('answers a top-level post someone else has already answered', async () => {
       const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
 
       expect(notificationRestraintReason(baseNotification, createPostData(true), SELF_HANDLE))
-        .toBe('someone already replied to this post');
+        .toBeNull();
+    });
+
+    // The only duplicate check there is: nothing here remembers across a reload, the network
+    // does (D-28)
+    it('never answers a post it has answered itself', async () => {
+      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(notificationRestraintReason(baseNotification, createPostDataAnsweredByUs(), SELF_HANDLE))
+        .toBe('we already answered this post');
+    });
+
+    it('answers its own past reply whatever the handle looks like', async () => {
+      const { alreadyAnsweredReason } = await import('../src/bluesky-polling.js');
+
+      // the handle is compared normalized, because each network spells Oblique differently and
+      // the replies carry it without the @ (D-22)
+      expect(alreadyAnsweredReason(createPostDataAnsweredByUs(), `@${SELF_HANDLE}`))
+        .toBe('we already answered this post');
     });
 
     it('responds when no replies exist', async () => {
@@ -204,6 +256,19 @@ describe('Bluesky Polling Module', () => {
 
       expect(notificationRestraintReason(baseNotification, createPostData(false), SELF_HANDLE))
         .toBeNull();
+      expect(notificationRestraintReason(baseNotification, createReplyPostData([]), SELF_HANDLE))
+        .toBeNull();
+    });
+
+    // A reply whose author cannot be read is still a reply, and still someone who got there
+    // first — the count comes off the replies, not off the handles read out of them
+    it('counts a reply it cannot attribute', async () => {
+      const { alreadyAnsweredReason } = await import('../src/bluesky-polling.js');
+      const postData = createReplyPostData([]);
+      postData.data.thread.replies = [{ post: {} } as any];
+
+      expect(alreadyAnsweredReason(postData, SELF_HANDLE))
+        .toBe('someone already replied to this post');
     });
 
     it('passes the unreadable reason through when the post cannot be read', async () => {
@@ -237,6 +302,95 @@ describe('Bluesky Polling Module', () => {
       expect(needsPostData(as('mention'))).toBe(false);
       expect(needsPostData(as('like'))).toBe(false);
       expect(needsPostData(as('follow'))).toBe(false);
+    });
+  });
+
+  // R-52: the feed gate, which is answered from the timeline response alone — every rule here
+  // runs without a request, so a whole batch is qualified before anything is paid for
+  describe('feedRestraintReason', () => {
+    const candidate = (over: any = {}) => ({
+      message: { ...baseNotification, reason: 'feed', author: 'stranger.test', ...over.message },
+      replyCount: 0,
+      isReply: false,
+      isRepost: false,
+      ...over,
+    });
+
+    it('answers a top-level post from a stranger', async () => {
+      const { feedRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(feedRestraintReason(candidate(), SELF_HANDLE)).toBeNull();
+    });
+
+    // The whole point of the relaxed rule: a top-level post stays open however busy it is
+    it('answers a top-level post that already has replies', async () => {
+      const { feedRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(feedRestraintReason(candidate({ replyCount: 12 }), SELF_HANDLE)).toBeNull();
+    });
+
+    it('answers a reply nobody has answered', async () => {
+      const { feedRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(feedRestraintReason(candidate({ isReply: true }), SELF_HANDLE)).toBeNull();
+    });
+
+    it('declines a reply someone already answered', async () => {
+      const { feedRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(feedRestraintReason(candidate({ isReply: true, replyCount: 1 }), SELF_HANDLE))
+        .toBe('a reply someone already answered');
+    });
+
+    it('declines a repost', async () => {
+      const { feedRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(feedRestraintReason(candidate({ isRepost: true }), SELF_HANDLE))
+        .toBe('a repost rather than a post');
+    });
+
+    it('declines our own post, however the handle is spelled', async () => {
+      const { feedRestraintReason } = await import('../src/bluesky-polling.js');
+
+      for (const author of [SELF_HANDLE, `@${SELF_HANDLE}`]) {
+        expect(feedRestraintReason(candidate({ message: { author } }), SELF_HANDLE))
+          .toBe('our own post');
+      }
+    });
+
+    it('declines an author in the ignore list', async () => {
+      getConfigMock.mockReturnValue({ ignoreList: ['stranger.test'], botList: [] });
+      const { feedRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(feedRestraintReason(candidate(), SELF_HANDLE))
+        .toBe('the author is in the ignore list');
+    });
+
+    // D-7 throttles answering a bot already talking to us; opening the conversation is refused
+    // outright
+    it('declines a bot rather than attenuating it', async () => {
+      getConfigMock.mockReturnValue({ ignoreList: [], botList: ['stranger.test'] });
+      const { feedRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(feedRestraintReason(candidate(), SELF_HANDLE)).toBe('the author is a bot');
+    });
+
+    it('declines a post with nothing to answer', async () => {
+      const { feedRestraintReason } = await import('../src/bluesky-polling.js');
+
+      for (const text of ['', '   ']) {
+        expect(feedRestraintReason(candidate({ message: { text } }), SELF_HANDLE))
+          .toBe('the post has no text to answer');
+      }
+    });
+
+    it('carries no author, so a look can tally its reasons', async () => {
+      const { feedRestraintReason } = await import('../src/bluesky-polling.js');
+
+      const first = feedRestraintReason(candidate({ isRepost: true, message: { author: 'one.test' } }), SELF_HANDLE);
+      const second = feedRestraintReason(candidate({ isRepost: true, message: { author: 'two.test' } }), SELF_HANDLE);
+
+      expect(first).toBe(second);
     });
   });
 

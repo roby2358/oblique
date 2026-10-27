@@ -571,6 +571,87 @@ can write.
   (`POST /api/alpha/decisions` against `~typesafe/jev-latest`, on the same OpenRouter key).
   Prefix caching is unaffected except that the per-reply block now has seven variants instead
   of four.
+- **Extended by D-28**, which asks Jev a second, earlier question — *which* post to answer —
+  and reuses this gate unchanged for the post it draws. The register gate turned out to need
+  nothing to work on a post nobody sent, and the band walk it drew with is now shared.
+
+### D-28 Oblique looks at its feed and answers one post nobody sent it — *Decided*
+
+- **Alternatives:** stay reactive and answer only notifications; a second poller with its own
+  interval and its own toggle; a fixed interval with no jitter; a jittered *threshold* re-tested
+  on every pass; one feed clock for all accounts; a `score` per candidate with a tunable
+  threshold instead of one `choice` over all of them; argmax over the candidates; a ring buffer
+  of answered URIs to stop a repeat; a per-candidate thread fetch to find a repeat; reply to
+  top-level posts only; a feed generator (discover, what's hot) instead of the following
+  timeline.
+- **Why:** everything Oblique said until now was a reply to someone who addressed it, which caps
+  what it can be by the size of its notifications. A bot that reads the room and says one
+  lateral thing an hour is the thing we were building toward; the restraint machinery to do it
+  safely was already in place, and the register gate (D-27) turned out to be exactly the right
+  shape for a post nobody asked about.
+  - **A producer, not a chain.** A timeline view carries every field of a `BlueskyMessage`, so a
+    qualified candidate is handed to `createReplyTask` exactly as a notification is and the whole
+    of the reply chain runs unchanged — thread read, thread restraint, register gate, silence,
+    like, post. The feed path is the notification poller's sibling, not a second pipeline. This
+    is most of why the change is small.
+  - **One `choice` over the candidates, with `none` on the menu.** Choosing one post from
+    competing posts is what a choice question is for, and the distribution it answers with *is*
+    the weights to draw from. A `score` per candidate would give reusable per-post numbers and a
+    tunable cutoff, which is the better shape once there is data to tune against and 15 questions
+    where one would do until then. `none` is on the menu because a choice question must choose
+    something: the option of answering nothing has to be one of the options, and its criterion
+    says plainly that it is usually right.
+  - **Every failure ends in no post.** The opposite of D-27's fallback, and deliberately. There a
+    reply was owed and the register was a refinement, so a broken Jev falls back to a lens. Here
+    nothing is owed: an absent, unreachable or incoherent Jev is not a reason to answer a
+    stranger's post at random, which is the exact failure G-2 exists to prevent.
+  - **The duplicate check is the network's, not ours.** A timeline says how many replies a post
+    has and never whose, so a post Oblique answered an hour ago looks untouched. A ring buffer of
+    answered URIs is easy and would have been in-tab only, so it forgets on the reload that this
+    page invites; looking for our own handle among the replies is correct, survives a reload, and
+    costs nothing extra once it is spent on the **one drawn post** rather than on every candidate.
+    The AppView must have our reply indexed by the next look, which at twenty minutes it will.
+  - **A top-level post stays answerable however many replies it has.** The old blanket rule
+    declined any post with any reply. At the top of a thread a reply starts a branch rather than
+    interrupting an exchange, so the rule now only closes a post partway down one — and it is one
+    rule asked by both gates, so the notification path widens with it.
+  - **Tapped into the existing poll, not a second timer.** One switch arms the whole bot, there is
+    no second interval to start or fall out of step with, and notifications are answered before
+    strangers because they run first in the same callback. A manual **Check Feed** exists for
+    testing, kept off the **Check** button so the notification button stays one that cannot post
+    to a stranger.
+  - **The interval is drawn once per look, not re-tested each pass.** This one is a trap worth
+    recording. A threshold drawn fresh on every pass fires on the first low draw, so the wait is
+    the minimum of many draws rather than one of them: at a two-minute poll, a threshold uniform
+    over 10–30 minutes gives a median near 16 and can never reach 30 at all. Drawn once at the
+    reset, the interval is uniform over the range it names.
+  - **Reset on every look, whatever it produced.** A look that qualified nothing, drew `none`,
+    failed verification or chose silence has still spent the bot's attention on the feed. The
+    alternative is a second number for how soon to retry a quiet timeline, carried to save one
+    timeline read and one Jev call — the cheapest two things the page does.
+  - **One clock per account.** Each network has its own timeline and its own audience; a shared
+    clock would hand the second one half the attention for no reason. Drawn independently so the
+    two do not fall into step.
+  - **The following timeline, not a feed generator.** `feed.getTimeline` exists in both lexicons
+    and needs no configuration, and it puts the bot's taste where it belongs: who the account
+    follows is a knob turned in any client, so widening what Oblique sees needs no edit here. A
+    discover feed would reach strangers but needs a feed URI per network, and delve.town may not
+    have one.
+- **Cost:** a look is two requests and one Jev call, whatever the timeline holds — the timeline
+  read, the Jev decision over at most `FEED_CANDIDATES` posts, and one `getSinglePost` on the
+  drawn post. Qualification is free. At `FEED_MIN_MIN`/`FEED_SPREAD_MIN` that is roughly 36
+  looks a day per account, and fewer replies than that, since `none` and the verification both
+  decline without posting.
+- **Evidence:** `feed.getTimeline` is in the `app.bsky` lexicon and in `town.delve`'s fork of it,
+  so the client's existing `nsid()` reaches both (D-23). `feedViewPost` carries `post.author`,
+  `post.record.reply` and `post.replyCount`, which is what makes the whole qualification pass
+  free. `getSinglePost` is already a depth-1 thread read, so reply authors are in the response
+  it already asks for.
+- **Risk accepted:** this is the first path on which Oblique speaks to someone who did not
+  address it, and **G-2 > G-1** says restraint wins when they conflict. The conservative choices
+  are the mitigation — `none` on the menu, no Jev meaning no post, bots refused outright rather
+  than attenuated, one post per look, a clock that arms rather than fires on load — and none of
+  them is measured yet (Q-15, `feedtal-7t3s`).
 
 ## Open questions
 
@@ -605,6 +686,19 @@ frame and tells a reader the core is asynchronous when the whole design says it 
 directly; `await` at the call sites keeps working either way. Against: if a future step ever
 needs to await, the signature is already there — but the invariant says that step belongs in
 a factory closure, not in the orchestrator.
+
+### Q-15 How often does a feed look post, and should it? — *tracked as `feedtal-7t3s`*
+
+Nothing measures it. A look leaves its note in the panel and the console — the weights Jev gave,
+whether `none` won, whether the verification refused the draw — but nothing tallies looks across
+a session, so the one number that matters is unknown: of the looks that happen, how many end in a
+post. The two failure modes are opposite and both plausible. A cautious Jev picks `none` almost
+always and the feed path quietly does nothing, which the panel reports as restraint working. An
+incautious one picks a post nearly every look and Oblique becomes a bot that replies to strangers
+twice an hour, which is the G-2 failure and the one that costs the account. `FEED_MIN_MIN`,
+`FEED_SPREAD_MIN` and `FEED_CANDIDATES` are all guesses until this is counted, as is whether
+`none`'s criterion is pitched right. The same tally that answers Q-14 would answer this, one
+column over.
 
 ### Q-14 How often is `silence` drawn, and is it right? — *tracked as `regtally-nbnz`*
 
@@ -656,6 +750,29 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-27 — Oblique starts reading the feed
+
+Added a fourth gate and a second producer of work. Oblique now looks at its own timeline every
+`FEED_MIN_MIN`–`FEED_MIN_MIN + FEED_SPREAD_MIN` minutes, qualifies what it sees without spending
+a request, puts at most `FEED_CANDIDATES` survivors to Jev as one `choice` question with `none`
+among the options, and hands the drawn post to the existing reply chain — which cannot tell it
+from a notification, because the candidate is shaped as one (D-28).
+
+New: `getTimeline` and `FeedCandidate` on the Bluesky client; `feedRestraintReason` and the shared
+`alreadyAnsweredReason` in `bluesky-polling.ts`; `feed-choice.ts`, `feed-schedule.ts` and
+`weighted-draw.ts`; `checkFeedAccount`, `checkFeeds` and a **Check Feed** button in the Bluesky
+panel. The band walk and the weights note moved out of the register gate into `weighted-draw.ts`,
+which both gates now share.
+
+Changed behavior worth noting beyond the feed: the blanket "someone already replied" rule is gone
+from the notification gate too. A top-level post is now answerable however many replies it
+carries, and only a *reply* someone else has answered is declined — so the notification path
+answers more than it did, not just the feed path.
+
+The scheduling decision is the one to remember: the interval is drawn once when the clock resets,
+not re-tested against a fresh threshold each pass. The second shape fires on the first low draw
+and lands nowhere near the interval it appears to name.
 
 ### 2026-10-27 — Jev chooses the register, and silence becomes one of them
 

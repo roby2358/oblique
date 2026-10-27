@@ -14,12 +14,10 @@
 import type { JevClient, JevChoiceQuestion } from './hooks/jev/jev-client.js';
 import type { Register } from './registers/index.js';
 import { registerMenu, sampleRegister, randomLensRegister } from './registers/index.js';
+import { describeWeights } from './weighted-draw.js';
 
 /** The name this question answers to. For code only; Jev never sees it. */
 export const REGISTER_QUESTION = 'register';
-
-/** How many of the heaviest weights the note keeps. Enough to see a close call in. */
-export const NOTED_WEIGHTS = 3;
 
 /**
  * What Jev is looking at. Deliberately short: the menu carries the meaning of each option, and
@@ -57,18 +55,6 @@ export interface RegisterChoice {
   note: string;
 }
 
-const describe = (probabilities: { [label: string]: number } | undefined): string => {
-  if (!probabilities) {
-    return 'no distribution';
-  }
-
-  return Object.entries(probabilities)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, NOTED_WEIGHTS)
-    .map(([label, weight]) => `${label} ${weight.toFixed(2)}`)
-    .join(', ');
-};
-
 /**
  * Ask Jev which register to answer in, and draw one from its answer.
  *
@@ -102,7 +88,7 @@ export const chooseRegister = async (
 
     return {
       register,
-      note: `drawn from Jev (${describe(answer?.probabilities)})`,
+      note: `drawn from Jev (${describeWeights(answer?.probabilities)})`,
     };
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'Unknown error';

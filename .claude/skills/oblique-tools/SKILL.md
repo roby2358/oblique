@@ -43,6 +43,12 @@ so an install done on Windows and used from WSL (or the reverse) fails with
 why the suite can pass while `just up` and `tsx` do not. Reinstall on the platform you run
 from.
 
+**Run one Jest process at a time.** The suite is slow here — about three minutes for all 28
+suites, and two seconds per test just to import modules. Two `npm test` processes at once
+starve the event loop, and tests that wait on a short real `setTimeout` (the task factory's
+chain tests do) blow their 5-second limit and report as failures that have nothing to do with
+your change. If a timeout appears, re-run serially before believing it.
+
 **Tests compile from the repo root.** `tsconfig.json` sets `rootDir: ./src`, so shared
 fixtures in `test/helpers/` would be rejected as outside it. `jest.config.js` overrides
 `rootDir` to `.` for test compilation only.

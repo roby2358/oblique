@@ -5,7 +5,9 @@ import type { DrakidionTask, ConversationMessage } from './drakidion/drakidion-t
 import type { BlueskyMessage } from './types/index.js';
 import type { LLMClient } from './hooks/llm/llm-client.js';
 import type { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
-import { createObliqueConversation, getDailyModel, getDailyGender } from './prompts/oblique.js';
+import { createObliqueConversation, formatThread, getDailyModel, getDailyGender } from './prompts/oblique.js';
+import { chooseRegister } from './register-choice.js';
+import type { JevClient } from './hooks/jev/jev-client.js';
 import { nextTask, createSucceededTask, createCanceledTask, createDeadTask, newReadyTask, newWaitingTask } from './drakidion/task-factories.js';
 import { threadRestraintReason } from './bluesky-polling.js';
 import { MAX_BLUESKY_REPLY_CHARS } from './reply-length.js';
@@ -115,6 +117,20 @@ const generateLLMResponseWithRetry = async (
 
 
 /**
+ * Acknowledge a post, whatever else happens to it.
+ *
+ * Dispatched and not awaited, on both the paths that use it: the like is never the thing the
+ * chain is waiting for. A rejected like is logged and goes no further — a reply still lands,
+ * and a silence is still a silence. There is nothing to recover: the post has moved down the
+ * firehose by the time anyone could try again (D-13, D-27).
+ */
+const likeQuietly = (blueskyClient: BlueskyClient, postUri: string): void => {
+  blueskyClient.like(postUri).catch(error => {
+    console.warn(`Failed to like ${postUri}:`, error);
+  });
+};
+
+/**
  * Terminal version of a chain a restraint rule declined.
  *
  * Not a failure and not a success: nothing was asked of the LLM and nothing was posted, so
@@ -129,6 +145,24 @@ const createDeclinedTask = (
   return {
     ...createCanceledTask(task),
     work: [...task.work, `Declined: ${reason}`],
+    conversation: task.conversation,
+  };
+};
+
+/**
+ * Terminal version of a chain that chose silence.
+ *
+ * `canceled` like a declined chain, because nothing was posted and nothing failed — but it is
+ * a different ending and says so, since a declined chain was never Oblique's choice and this
+ * one was. The like is the whole of the answer (D-27).
+ */
+const createSilencedTask = (
+  task: DrakidionTask,
+  author: string
+): DrakidionTask => {
+  return {
+    ...createCanceledTask(task),
+    work: [...task.work, `Silence: liked @${author} and left it`],
     conversation: task.conversation,
   };
 };
@@ -157,6 +191,7 @@ const createSendToLLMDeadTask = (
 export const createReplyTask = (
   notification: BlueskyMessage,
   llmClient: LLMClient,
+  jevClient: JevClient | undefined,
   blueskyClient: BlueskyClient,
   onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void
 ): DrakidionTask => {
@@ -176,6 +211,7 @@ export const createReplyTask = (
       return createSendToLLMTask(
         notification,
         llmClient,
+        jevClient,
         blueskyClient,
         onWaitingTaskComplete,
         nextTask(task)
@@ -213,16 +249,24 @@ const sendReply = (
 };
 
 /**
- * Fetch the thread, ask the second gate, and either decline or answer.
+ * Fetch the thread, ask the second gate, ask the third, and either decline, answer or go quiet.
  *
- * The gate's answer is acted on where it is given: a declined chain ends here, terminal,
- * and never reaches the LLM. Carrying the refusal onward as a `null` through the conversation
+ * Each gate's answer is acted on where it is given: a declined chain ends here, terminal, and
+ * never reaches the LLM. Carrying the refusal onward as a `null` through the conversation
  * builder, the LLM call and the post would be the same decision re-checked three times, and
  * the last of those checks used to drop the chain without ending it (D-24).
+ *
+ * The register is chosen after the restraint gates and before the conversation is built: a
+ * thread that is not going to be answered should cost no decision, and the decision has to be
+ * in hand before there is a prompt to put it in. The gate it belongs to is a different kind
+ * from the two above it — they ask whether to answer, it asks how — so its answer appends a
+ * work line rather than ending the chain, except for silence, which is the one register with
+ * nothing to write (D-27).
  */
 const runReplyChain = async (
   notification: BlueskyMessage,
   llmClient: LLMClient,
+  jevClient: JevClient | undefined,
   blueskyClient: BlueskyClient,
   task: DrakidionTask,
   onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void
@@ -236,16 +280,48 @@ const runReplyChain = async (
     return;
   }
 
-  const conversation = createObliqueConversation(thread);
+  const formatted = formatThread(thread);
 
-  if (!conversation) {
+  if (!formatted) {
     onWaitingTaskComplete(task.taskId, createDeclinedTask(task, 'the thread made no conversation'));
+    return;
+  }
+
+  const { register, note } = await chooseRegister(
+    jevClient,
+    formatted.threadHistory,
+    formatted.userMessage,
+    Math.random
+  );
+
+  console.log(`Answering @${notification.author} in ${register.key}: ${note}`);
+
+  // The same snapshot, carrying one more line. Successors inherit `work`, so the register
+  // reaches every later version of the chain and the observer panel says why a reply reads
+  // the way it does (D-25).
+  const registered: DrakidionTask = {
+    ...task,
+    work: [...task.work, `Register: ${register.key} — ${note}`],
+  };
+
+  if (!register.postable) {
+    likeQuietly(blueskyClient, notification.uri);
+    onWaitingTaskComplete(registered.taskId, createSilencedTask(registered, notification.author));
+    return;
+  }
+
+  const conversation = createObliqueConversation(thread, register);
+
+  // Unreachable: the same thread already formatted above. Answered rather than asserted away,
+  // because the builder is allowed to refuse a thread and a crash here would cost the chain.
+  if (!conversation) {
+    onWaitingTaskComplete(registered.taskId, createDeclinedTask(registered, 'the thread made no conversation'));
     return;
   }
 
   const result = await generateLLMResponseWithRetry(llmClient, conversation);
 
-  sendReply(result, notification, blueskyClient, task, onWaitingTaskComplete);
+  sendReply(result, notification, blueskyClient, registered, onWaitingTaskComplete);
 };
 
 /**
@@ -256,6 +332,7 @@ const runReplyChain = async (
 export const createSendToLLMTask = (
   notification: BlueskyMessage,
   llmClient: LLMClient,
+  jevClient: JevClient | undefined,
   blueskyClient: BlueskyClient,
   onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void,
   baseTask: Omit<DrakidionTask, 'doneAt'>
@@ -274,7 +351,7 @@ export const createSendToLLMTask = (
   
   console.log('Model: ', getDailyModel(), ' Gender: ', getDailyGender());
 
-  runReplyChain(notification, llmClient, blueskyClient, task, onWaitingTaskComplete)
+  runReplyChain(notification, llmClient, jevClient, blueskyClient, task, onWaitingTaskComplete)
     .catch(error => {
       // Create dead task
       const deadTask = createSendToLLMDeadTask(task, error);
@@ -364,11 +441,7 @@ export const createPostReplyTask = (
 
         // Like the original post first
         console.log(`Liking post ${originalNotification.uri} before replying...`);
-        // The like is an acknowledgement, not the reply: a rejected like is logged and
-        // never reaches the chain, so a reply still lands (D-13).
-        blueskyClient.like(originalNotification.uri).catch(error => {
-          console.warn(`Failed to like ${originalNotification.uri}:`, error);
-        });
+        likeQuietly(blueskyClient, originalNotification.uri);
 
         // Post the reply to Bluesky. The chain waits for Bluesky to confirm it rather
         // than reporting success on dispatch (D-16).

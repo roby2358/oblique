@@ -2,14 +2,14 @@
 # Run from /work/oblique.
 #
 #   just            # list recipes
-#   just run        # dev server on http://localhost:5173
+#   just up         # dev server on http://localhost:5173
 #   just check      # types and tests — what to run before committing
 #
 # There is no build: the page is served by Vite from source, and nothing deploys a bundle
 # yet. Install on the platform you run from — esbuild ships per-platform binaries, so a
 # node_modules/ installed from Windows fails under WSL, and the reverse.
 #
-# `run` sets BROWSER=none, which overrides `open: true` in vite.config.ts; under WSL that
+# `up` sets BROWSER=none, which overrides `open: true` in vite.config.ts; under WSL that
 # tries to spawn a powershell.exe that is not on this machine and prints a stack trace.
 #
 # The watcher polls (vite.config.ts). Edits made outside this filesystem's event domain — a
@@ -23,7 +23,7 @@ default:
     @just --list
 
 # Launch the page: Vite dev server on http://localhost:5173 with hot reload
-run:
+up:
     @[ -f config.json ] || echo "[warn] no config.json — the page loads unconfigured; copy config-example.json and fill it in"
     BROWSER=none npm run dev
 

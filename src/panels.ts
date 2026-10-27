@@ -3,6 +3,8 @@ import * as Orchestrator from './drakidion/orchestrator.js';
 import type { OrchestratorState } from './drakidion/drakidion-types.js';
 import { createOpenRouterClient } from './hooks/llm/index.js';
 import type { LLMClient } from './hooks/llm/llm-client.js';
+import { createOpenRouterJevClient } from './hooks/jev/index.js';
+import type { JevClient } from './hooks/jev/jev-client.js';
 import { createAccounts } from './bluesky-accounts.js';
 import type { BlueskyAccount } from './bluesky-accounts.js';
 
@@ -11,12 +13,14 @@ declare const $: any;
 // Shared state
 let orchestratorState: OrchestratorState;
 let llmClient: LLMClient | undefined;
+let jevClient: JevClient | undefined;
 let blueskyAccounts: BlueskyAccount[] = [];
 let stopOrchestrator: (() => void) | undefined;
 
 // State getters
 export const getOrchestratorState = () => orchestratorState;
 export const getLLMClient = () => llmClient;
+export const getJevClient = () => jevClient;
 export const getBlueskyAccounts = () => blueskyAccounts;
 export const getStopOrchestrator = () => stopOrchestrator;
 
@@ -80,6 +84,17 @@ export const initializeOrchestrator = (config: any) => {
     baseUrl,
   }) : undefined;
 
+  // Jev is reached through the same OpenRouter account and the same key, at a different
+  // endpoint: it answers typed questions, not chat completions (D-27). Without a `jev` block
+  // there is no client, and every reply draws its register from the lenses as it used to.
+  const jev = config.jev;
+
+  jevClient = apiKey && jev?.model && jev?.baseUrl ? createOpenRouterJevClient({
+    apiKey,
+    baseUrl: jev.baseUrl,
+    model: jev.model,
+  }) : undefined;
+
   // Create new orchestrator state
   orchestratorState = Orchestrator.createOrchestrator();
 
@@ -101,6 +116,10 @@ export const initializeOrchestrator = (config: any) => {
     addMessage('🔮 Oblique initialized. Type a message to receive an oblique response.', 'system');
   }
   
+  if (!jevClient) {
+    addMessage('🎲 No Jev configured. Every reply draws its register from the four lenses; set a `jev` block in config.json to have Jev choose.', 'system');
+  }
+
   if (blueskyAccounts.length === 0) {
     addMessage('⚠️ No Bluesky account configured. Set a handle, password and service in config.json and reload.', 'system');
   } else {

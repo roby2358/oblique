@@ -1,20 +1,24 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { getConfig } from '../../src/config.js';
 import { getDailyModel } from '../../src/prompts/oblique.js';
-import { 
-  obliquePrompt, 
-  systemPrompt, 
+import {
+  obliquePrompt,
+  systemPrompt,
   createObliqueConversation,
-  getRandomTextLens,
-  type ObliqueTextLens 
+  formatThread,
 } from '../../src/prompts/oblique.js';
+import { REGISTERS } from '../../src/registers/index.js';
+
+// The prompt is the same shape whichever register fills it; the lens registers are the ones
+// that carry a lens block, so the ordering tests use one of those.
+const lens = REGISTERS.architext;
 
 describe('Oblique Prompts', () => {
   describe('obliquePrompt', () => {
     it('should create a prompt with user message and thread history', () => {
       const userMessage = 'What is the weather?';
       const threadHistory = '@user1: It\'s sunny today\n@user2: Really nice weather';
-      const prompt = obliquePrompt(userMessage, threadHistory);
+      const prompt = obliquePrompt(userMessage, threadHistory, lens);
       
       expect(prompt).toContain(userMessage);
       expect(prompt).toContain(threadHistory);
@@ -22,7 +26,7 @@ describe('Oblique Prompts', () => {
     });
 
     it('should include thread history section', () => {
-      const prompt = obliquePrompt('Test message', 'Previous conversation');
+      const prompt = obliquePrompt('Test message', 'Previous conversation', lens);
       
       expect(prompt).toContain('Thread history');
       expect(prompt).toContain('Previous conversation');
@@ -41,26 +45,39 @@ describe('Oblique Prompts', () => {
     it('should describe the oblique nature', () => {
       expect(systemPrompt).toContain('reveals deeper truths');
       expect(systemPrompt).toContain('rumination and reflection');
-      expect(systemPrompt).toContain('brief (1-3 sentences)');
+    });
+
+    // R-45: rules that disagree between registers live with the register, not in the fixed
+    // prefix, so nothing further down has to contradict them
+    it('leaves the per-register rules to the register', () => {
+      expect(systemPrompt).not.toContain('brief (1-3 sentences)');
+      expect(obliquePrompt('m', 'h', lens)).toContain('brief (1-3 sentences)');
+      expect(obliquePrompt('m', 'h', REGISTERS.poem)).not.toContain('brief (1-3 sentences)');
     });
   });
 
-  describe('getRandomTextLens', () => {
-    it('should return a valid text lens', () => {
-      const lens = getRandomTextLens();
-      const validLenses: ObliqueTextLens[] = ['supertext', 'subtext', 'architext', 'psychotext'];
-      
-      expect(validLenses).toContain(lens);
+  // R-46: the gate and the writer must be looking at the same thread
+  describe('formatThread', () => {
+    it('splits the last post off as the message being answered', () => {
+      const formatted = formatThread([
+        { author: 'user1', text: 'First post' },
+        { author: 'user2', text: 'Last post' },
+      ]);
+
+      expect(formatted).toEqual({
+        userMessage: '@user2: Last post',
+        threadHistory: '@user1: First post',
+      });
     });
 
-    it('should return different lenses over multiple calls', () => {
-      const lenses = new Set();
-      for (let i = 0; i < 100; i++) {
-        lenses.add(getRandomTextLens());
-      }
-      
-      // Should get at least 2 different lenses in 100 calls
-      expect(lenses.size).toBeGreaterThan(1);
+    it('leaves the history empty for a thread of one', () => {
+      expect(formatThread([{ author: 'user1', text: 'Only post' }]))
+        .toEqual({ userMessage: '@user1: Only post', threadHistory: '' });
+    });
+
+    it('answers null for nothing to answer', () => {
+      expect(formatThread(null)).toBeNull();
+      expect(formatThread([])).toBeNull();
     });
   });
 
@@ -70,21 +87,22 @@ describe('Oblique Prompts', () => {
     const sectionStarts = (prompt: string): number[] => [
       prompt.indexOf('Your mission is to increase engagement'),
       prompt.indexOf('Reply in a'),
-      prompt.indexOf('Reply through the chosen lens'),
+      prompt.indexOf('Reply through this lens'),
+      prompt.indexOf('Rules for this reply:'),
       prompt.indexOf('Thread history:'),
       prompt.indexOf('Reply to this message:'),
-      prompt.indexOf('Answer that message now'),
+      prompt.indexOf('Answer now, in the register described above'),
     ];
 
-    it('places the fixed text, then the daily voice, then the lens, then the thread, then the message, then the restatement', () => {
-      const starts = sectionStarts(obliquePrompt('The message', 'The history'));
+    it('places the fixed text, then the daily voice, then the register, then the thread, then the message, then the restatement', () => {
+      const starts = sectionStarts(obliquePrompt('The message', 'The history', lens));
 
       expect(starts).not.toContain(-1);
       expect(starts).toEqual([...starts].sort((a, b) => a - b));
     });
 
     it('states the output format only in the system prompt', () => {
-      const prompt = obliquePrompt('The message', 'The history');
+      const prompt = obliquePrompt('The message', 'The history', lens);
 
       expect(systemPrompt).toContain('# Output format');
       expect(systemPrompt).toContain('# Insight 1');
@@ -92,16 +110,16 @@ describe('Oblique Prompts', () => {
     });
 
     it('closes by restating the task after the message being answered', () => {
-      const prompt = obliquePrompt('The message', 'The history');
-      const restatement = prompt.slice(prompt.indexOf('Answer that message now'));
+      const prompt = obliquePrompt('The message', 'The history', lens);
+      const restatement = prompt.slice(prompt.indexOf('Answer now, in the register described above'));
 
       expect(restatement).toContain('# Response');
       expect(prompt.trimEnd().endsWith(restatement.trimEnd())).toBe(true);
     });
 
     it('keeps everything before the voice identical across two calls', () => {
-      const first = obliquePrompt('One message', 'One history');
-      const second = obliquePrompt('Another message', 'Another history');
+      const first = obliquePrompt('One message', 'One history', lens);
+      const second = obliquePrompt('Another message', 'Another history', lens);
 
       const sharedPrefix = (text: string): string => text.slice(0, text.indexOf('Reply in a'));
 
@@ -119,7 +137,7 @@ describe('Oblique Prompts', () => {
         { author: 'user3', text: 'Last post', altTexts: [] }
       ];
 
-      const result = createObliqueConversation(mockThread);
+      const result = createObliqueConversation(mockThread, lens);
 
       if (!result) {
         throw new Error('Expected conversation to be created');
@@ -142,7 +160,7 @@ describe('Oblique Prompts', () => {
         { author: 'user1', text: 'Only post', altTexts: [] }
       ];
 
-      const result = createObliqueConversation(mockThread);
+      const result = createObliqueConversation(mockThread, lens);
 
       if (!result) {
         throw new Error('Expected conversation to be created');
@@ -165,7 +183,7 @@ describe('Oblique Prompts', () => {
         { author: 'user2', text: 'Simple post', altTexts: [] }
       ];
 
-      const result = createObliqueConversation(mockThread);
+      const result = createObliqueConversation(mockThread, lens);
 
       if (!result) {
         throw new Error('Expected conversation to be created');
@@ -187,7 +205,7 @@ describe('Oblique Prompts', () => {
         }
       ];
 
-      const result = createObliqueConversation(mockThread);
+      const result = createObliqueConversation(mockThread, lens);
 
       if (!result) {
         throw new Error('Expected conversation to be created');

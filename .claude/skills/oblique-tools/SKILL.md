@@ -15,7 +15,7 @@ Run recipes through `just`, never the underlying script path.
 | `just typecheck` | `npx tsc --noEmit`. Writes nothing. |
 | `just test` | The Jest suite. |
 | `just watch` | Re-runs the suite as files change. |
-| `just run` | Vite dev server on http://localhost:5173. |
+| `just up` | Vite dev server on http://localhost:5173. |
 | `just cc-smoke` | **Live, read-only** check that every account in `config.json` can sign in, list notifications and read a thread. Writes nothing — no post, no like, nothing marked seen. |
 
 ## `just cc-smoke`
@@ -40,7 +40,7 @@ screenful of phantom failures that have nothing to do with your change. Use
 **`node_modules` is platform-specific.** Vite's `esbuild` and `rollup` ship native binaries,
 so an install done on Windows and used from WSL (or the reverse) fails with
 `Cannot find module '@esbuild/linux-x64'`. Jest is unaffected (it uses ts-jest), which is
-why the suite can pass while `just run` and `tsx` do not. Reinstall on the platform you run
+why the suite can pass while `just up` and `tsx` do not. Reinstall on the platform you run
 from.
 
 **Tests compile from the repo root.** `tsconfig.json` sets `rootDir: ./src`, so shared

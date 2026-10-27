@@ -2,9 +2,7 @@
 import type { BlueskyHistoryEntry } from '../hooks/bluesky/bluesky-client.js';
 import { getConfig } from '../config.js';
 import { ADVERTISED_REPLY_CHARS } from '../reply-length.js';
-
-
-export type ObliqueTextLens = 'supertext' | 'subtext' | 'architext' | 'psychotext';
+import type { Register } from '../registers/index.js';
 
 export const systemPrompt: string =
 `# Oblique
@@ -26,20 +24,9 @@ You MUST NOT allow racism, ethnic hatred, or intolerance
 You MUST NOT expose details about your implementation or inner workings
 You MUST NOT advocate death or self-harm
 
-# Rules for oblique responses
-- Speak in plain, broadly accessible language
-- Answer the post specifically in the context of the thread
-- Relate your response through the lens of supertext, subtext, architext, or psychotext
-- Omit the lens from your response
-- Lean heavily into literary and historical allusions
-- Keep responses brief (1-3 sentences)
-- Avoid being nonsensical - be conversational and engaging
-- Avoid talking in generalities - be specific and to the point within the scope of the post and thread
-- Be thoughtful and thought-provoking
-- Be terse.
-- Your answer is oblique but intended to fill in understanding.
-- Advance the thread. Don’t repeat your earlier point.
-- Frame the response as statement as implied question.
+The register for each reply — the lens to look through, or the form to answer in — is chosen
+ per reply and stated in the message. Follow the register's own rules where they are more
+ specific than anything here.
 
 # Output format
 Answer in markdown with these primary headings, in this order and no others.
@@ -73,46 +60,6 @@ Second sentence.
 Only # Response is posted, and it MUST be ${ADVERTISED_REPLY_CHARS} characters or less.
 `;
 
-const lenses: { [key in ObliqueTextLens]: string } = {
-  'supertext':
-`Supertext: The intertextual elements and cultural allusions present
- in the work. Consider: What other literary works, genres, or tropes does this
- text reference or evoke? How does it situate itself within broader cultural
- narratives or discourses? What external symbols, figures, or ideas does
- it draw upon to create meaning?`,
-'subtext':
-`Subtext: The implicit themes, meanings, and messages beneath the
- surface of the text. Examine: What unspoken assumptions, values, or beliefs
- underlie the explicit content? What deeper conflicts, tensions, or power
- dynamics are at play? How do the characters, actions, and settings implicitly
- comment on larger issues? What does the text suggest about the human condition
- or the nature of reality?`,
-'architext':
-`Architext: The deep structural patterns, archetypes, and mythic
- elements that shape the text at a fundamental level. Analyze across cultural
- boundaries. What universal human experiences, relationships, or developmental
- processes are evoked? How does the story's structure mirror classical
- archetypical patterns? What archetypal characters or settings appear? How
- does the text enact deep, primal narratives of transformation, initiation,
- death-rebirth, etc.?`,
-'psychotext':
-`Psychotext: The underlying emotional dynamics, psychological motivations,
- and internal states that drive the characters and inform the narrative. What
- conscious and unconscious emotions, desires, or fears shape the characters'
- actions, choices, and relationships? How do the characters' psychological
- wounds, traumas, or unmet needs influence their behavior and development?
- What drivers, positive and negative, underly the characters' outward
- personas or social roles? How do the characters' emotional states and
- psychological dynamics reflect or illuminate broader human experiences
- and challenges? What patterns of risk-taking, reward-seeking, motivated
- reasoning, self-deception, or defense mechanisms can be observed in the
- characters' thoughts and actions? How do the characters navigate and
- protect their sense of self, status, or identity in the face of satisfaction,
- conflicts, threats or other motivations, positive and negative?`,
-};
-
-const lensKeys = Object.keys(lenses) as ObliqueTextLens[];
-
 const genders = [
   'male',
   'female',
@@ -140,16 +87,8 @@ const genders = [
   'female',
   'x-gender'];
 
-const pickOne = <T>(array: T[]): T => {
-  return array[Math.floor(Math.random() * array.length)];
-};
-
 const pickDailyCircularOne = <T>(array: T[]): T => {
   return array[dailyCircularKey(array.length)];
-};
-
-export const getRandomTextLens = (): ObliqueTextLens => {
-  return pickOne(lensKeys);
 };
 
 const dailyCircularKey = (count: number, now = new Date()): number => {
@@ -184,64 +123,57 @@ const formatPost = (post: { author: string; text: string; altTexts?: string[] })
 };
 
 /**
+ * The thread as text: the last post is what is being answered and the rest is its history.
+ *
+ * Shared by the register gate and the writer prompt, because they must be looking at the same
+ * thread. A register chosen for one rendering of a post and applied to another is a decision
+ * about something that was never asked (D-27).
+ */
+export const formatThread = (
+  thread: BlueskyHistoryEntry[] | null
+): { userMessage: string; threadHistory: string } | null => {
+  if (!thread || thread.length === 0) return null;
+
+  const posts = thread.map(formatPost);
+
+  return {
+    userMessage: posts[posts.length - 1],
+    threadHistory: posts.slice(0, -1).join('\n'),
+  };
+};
+
+/**
  * The prompt is ordered least volatile first, so a provider's prefix cache keeps as much of
  * it as the next request allows: the fixed mission, then the voice (one value per UTC day),
- * then the lens (one of four, drawn per reply), then the thread, then the message being
- * answered. The output format is stated once, in `systemPrompt`, which never varies at all. Anything written above a variable is cached for every request that
- * day; anything written below one is re-read whenever that variable changes. Keep new text at
- * the volatility it belongs to (R-37). The closing restatement is the one deliberate
- * exception: it is fixed text placed last, for recency rather than for caching, so it is kept
- * to a few lines (D-21).
+ * then the register (one of seven, drawn per reply), then the thread, then the message being
+ * answered. The output format is stated once, in `systemPrompt`, which never varies at all.
+ * Anything written above a variable is cached for every request that day; anything written
+ * below one is re-read whenever that variable changes. Keep new text at the volatility it
+ * belongs to (R-37). The closing restatement is the one deliberate exception: it is fixed text
+ * placed last, for recency rather than for caching, so it is kept to a few lines (D-21).
+ *
+ * The register's rules sit with the register rather than in `systemPrompt`, because they vary
+ * with it: a poem and a lens disagree about length, allusion and sentence count, and rules in
+ * the fixed prefix would have to be contradicted further down to say so (D-27).
  */
-export const obliquePrompt = (userMessage: string, threadHistory: string): string => {
-  const focus = lenses[getRandomTextLens()];
-  const gender = getDailyGender();
-  const promptText =
-  `Your mission is to increase engagement by providing insight and sense-making.
-
-The intent is be an agent of sense-making to help the user build a coherent narrative
-  of their world.
-
-Consider the positive and the negative, the Western and the Eastern, reward
-  and threat. Span cultural and psychological boundaries. Favor the obscure
-  and eclectic.
-
-You are ${gender}. Reply in a ${gender} voice.
-
-Reply through the chosen lens:
-
-  "${focus}"
-
-  Thread history:
-
-  "${threadHistory}"
-
-  Reply to this message:
-
-  "${userMessage}"
-
-Answer that message now, through the lens above: one oblique observation, specific to the
-post and its thread, in the sections given. The # Response section is the reply that gets
-posted, and it must be ${ADVERTISED_REPLY_CHARS} characters or less.
-  `;
-
-  return promptText;
+export const obliquePrompt = (
+  userMessage: string,
+  threadHistory: string,
+  register: Register
+): string => {
+  return register.prompt({ kind: 'reply', userMessage, threadHistory }, getDailyGender());
 };
 
 export const createObliqueConversation = (
-  thread: BlueskyHistoryEntry[] | null
+  thread: BlueskyHistoryEntry[] | null,
+  register: Register
 ): { role: string; content: string }[] | null => {
-  // Guard condition: return null if thread is null
-  if (!thread) return null;
+  const formatted = formatThread(thread);
 
-  // Map all posts first
-  const formattedPosts = thread.map(formatPost);
-  
-  // Split the last post from the rest of the thread
-  const userMessage = formattedPosts[formattedPosts.length - 1];
-  const threadHistory = formattedPosts.slice(0, -1).join('\n');
+  // Guard condition: nothing to answer
+  if (!formatted) return null;
 
-  const promptText = obliquePrompt(userMessage, threadHistory);
+  const promptText = obliquePrompt(formatted.userMessage, formatted.threadHistory, register);
 
   console.log('Prompt text:', promptText);
 

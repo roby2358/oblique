@@ -22,6 +22,7 @@ describe('Bluesky Polling Module', () => {
     await jest.unstable_mockModule('../src/panels.js', () => ({
       getBlueskyAccounts: jest.fn(() => []),
       getLLMClient: jest.fn(),
+      getJevClient: jest.fn(),
       getOrchestratorState: jest.fn(),
       setOrchestratorState: jest.fn(),
       updateStatus: jest.fn(),
@@ -93,7 +94,7 @@ describe('Bluesky Polling Module', () => {
         ensureAuth: jest.fn<any>().mockRejectedValue(new Error('Invalid identifier or password')),
       };
 
-      const check = await checkAccount(accountWith(client) as any, {} as any, jest.fn(), false);
+      const check = await checkAccount(accountWith(client) as any, {} as any, undefined, jest.fn(), false);
 
       expect(check.error).toBe('Invalid identifier or password');
       expect(check.tasks).toEqual([]);
@@ -125,7 +126,7 @@ describe('Bluesky Polling Module', () => {
         getSinglePost: jest.fn<any>(),
       };
 
-      const check = await checkAccount(accountWith(client) as any, {} as any, jest.fn(), false);
+      const check = await checkAccount(accountWith(client) as any, {} as any, undefined, jest.fn(), false);
 
       expect(check.error).toBeNull();
       expect(check.answered.map(notification => notification.author)).toEqual(['answered.one']);
@@ -146,7 +147,7 @@ describe('Bluesky Polling Module', () => {
         markNotificationsAsSeen: jest.fn<any>().mockResolvedValue(undefined),
       };
 
-      const check = await checkAccount(accountWith(client) as any, {} as any, jest.fn(), true);
+      const check = await checkAccount(accountWith(client) as any, {} as any, undefined, jest.fn(), true);
 
       expect(check.error).toBeNull();
       expect(check.tasks).toEqual([]);

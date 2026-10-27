@@ -20,15 +20,19 @@ and every dated change lives in `ARCHITECTURE_LOG.md`; every check that proves a
 ## §0 Purpose **[D]**
 
 Oblique is a browser-resident bot that answers Bluesky mentions obliquely — through
-supertext, subtext, architext and psychotext — and knows when to say nothing at all. It runs
-entirely as a single web page: no server, no database, no background process.
+supertext, subtext, architext, psychotext, a poem or a single line — and knows when to say
+nothing at all. Which of those a post deserves is itself a judgment, decided per reply before
+anything is written (D-27). It runs entirely as a single web page: no server, no database, no
+background process.
 
 ### Qualities
 
 - **Oblique** — a reply reframes rather than answers. It is insight, not information.
-- **Terse** — one or two sentences, inside a hard character budget.
+- **Terse** — one or two sentences, or one stanza, inside a hard character budget.
 - **Literate** — allusion to literature and history, including the obscure, in plain language.
-- **Restrained** — the bot's most common correct action is not to post.
+- **Restrained** — the bot's most common correct action is not to post. The rules decide that
+  before a reply is considered; silence decides it again afterwards, about this post rather
+  than about the rules.
 - **Inspectable** — at any moment a human can open a panel and see every task, its chain, its
   version and its state.
 
@@ -139,10 +143,12 @@ G-4.
 
 | Field | Type | Notes |
 |---|---|---|
-| `openrouter.apiKey` | `string` | Empty means the LLM is unconfigured and no task is created. |
+| `openrouter.apiKey` | `string` | Empty means the LLM is unconfigured and no task is created. Jev is reached with the same key: one OpenRouter account, two endpoints. |
 | `openrouter.models` | `string[]` | OpenRouter slugs, `MODEL_ROTATION_SIZE` of them in the template. Empty or absent is an error, not a default. |
 | `openrouter.rotate` | `boolean` | False, the shipped default, always uses the first entry. True walks the list one entry per UTC day. |
 | `openrouter.baseUrl` | `string` | OpenRouter chat-completions endpoint. |
+| `jev.model` | `string` | The System One model that chooses the register, `~typesafe/jev-latest` in the template. Absent means no register gate. |
+| `jev.baseUrl` | `string` | OpenRouter decisions endpoint. A different protocol from chat completions, at a different path on the same host. |
 | `bluesky.handle` | `string` | The bot's own handle on Bluesky's own network. |
 | `bluesky.password` | `string` | Account password, or an app password issued by the PDS named beside it. |
 | `bluesky.service` | `string` | `https://bsky.social`. |
@@ -192,6 +198,28 @@ live. Three generators in `src/utils/index.ts` are unreferenced for the same rea
 barrel exports and the tests exercise but no application code calls. `BlueskyClient`'s
 `hasRepliesToPost` is live code with no caller: the notification gate reads the thread's
 `replies` itself. Removing all of it is Q-1 in `ARCHITECTURE_LOG.md`.
+
+### 1.12 Register
+
+One way Oblique can answer: a framing to look through and the rules for what comes back.
+A class each, seven of them, in `src/registers/`. *Serves:* G-1, G-2.
+
+| Field | Type | Notes |
+|---|---|---|
+| `key` | `RegisterKey` | `supertext`, `subtext`, `architext`, `psychotext`, `poem`, `oneliner` or `silence`. The name in the menu and in the chain's work line. `LensKey` is the first four of them, and `LensRegister` narrows `key` to it, so a lens cannot claim a key that is not one. |
+| `criterion` | `string` | What choosing this register would mean, as Jev reads it. One sentence, no jargon and never the key alone: the menu is read by a model that is told nothing else about Oblique. |
+| `postable` | `boolean` | Whether the register produces text. False for silence alone. |
+| `prompt(occasion, gender)` | method | The writer's prompt, assembled in volatility order. Throws for silence, which has none. |
+
+The four lenses extend `LensRegister`, which holds the framing wrapper and the response rules
+they share, so a change to how Oblique talks is one edit rather than four. `poem` and
+`oneliner` extend `Register` directly: a poem is a reframing rather than a lens, and both
+disagree with the lenses about length and sentence count, which is why those rules live with
+the register and not in `systemPrompt` (D-27).
+
+An **occasion** is what a register is applied to, and is separate from it: `reply` carries a
+thread and the post being answered, `opening` carries only a subject. A register says how
+Oblique speaks; the occasion says what it is speaking to.
 
 ---
 
@@ -493,27 +521,36 @@ case, not an error.
 *Serves:* G-1.
 
 ```
-createObliqueConversation(thread):
-  if thread is null -> null                      # the restraint gates' refusal, carried through
-  posts        = thread.map(p => "@author: text" + one "  image: alt" line per altText)
-  userMessage  = posts[-1]
-  threadHistory = posts[0..-2] joined by newline
+formatThread(thread):
+  if thread is null or empty -> null
+  posts = thread.map(p => "@author: text" + one "  image: alt" line per altText)
+  -> { userMessage: posts[-1], threadHistory: posts[0..-2] joined by newline }
+
+createObliqueConversation(thread, register):
+  formatted = formatThread(thread)
+  if formatted is null -> null                   # nothing to answer
   -> [ { role: 'system', content: systemPrompt },
-       { role: 'user',   content: obliquePrompt(userMessage, threadHistory) } ]
+       { role: 'user',   content: register.prompt({ kind: 'reply', ...formatted },
+                                                  getDailyGender()) } ]
 ```
 
-`null` in, `null` out: a refusal from either restraint gate propagates through the promise
-chain as `null` and silently ends the chain without a post.
+`formatThread` is shared with the register gate, which is asked about the same thread before
+there is a prompt to put the answer in. A register chosen for one rendering of a post and
+applied to another would be a decision about something that was never asked (D-27).
 
-`obliquePrompt` orders its text least volatile first, so that a provider's prefix cache keeps
-as much of it as the next request allows: the fixed mission, then the voice (one value per UTC
-day), then the lens (one of four, drawn per reply), then the thread history, then the message
-being answered, then a three-line restatement of the task. Every request that day shares the
-fixed text; a request that draws the same lens shares that too. The lens sits above the thread
-rather than below it because consecutive replies usually belong to *different* threads, so
-four possible lens blocks are cached more often than one thread's history. The closing
-restatement is fixed text in the least cacheable position, deliberately: it is there for
-recency, and it is short because it is paid for on every request.
+`null` in, `null` out: a thread with nothing in it makes no conversation and the chain ends
+without a post.
+
+The prompt is assembled by the register, ordered least volatile first, so that a provider's
+prefix cache keeps as much of it as the next request allows: the fixed mission, then the voice
+(one value per UTC day), then the register's framing and rules (one of seven, drawn per
+reply), then the thread history, then the message being answered, then a two-line restatement
+of the task. Every request that day shares the fixed text; a request that draws the same
+register shares that too. The register sits above the thread rather than below it because
+consecutive replies usually belong to *different* threads, so seven possible register blocks
+are cached more often than one thread's history. The closing restatement is fixed text in the
+least cacheable position, deliberately: it is there for recency, and it is short because it is
+paid for on every request.
 
 The output format is stated once, as a fenced skeleton under `# Output format` in
 `systemPrompt`: `# Thinking`, `# Related Western`, `# Related Eastern`, `# Insight 1` … `3`,
@@ -521,12 +558,37 @@ The output format is stated once, as a fenced skeleton under `# Output format` i
 interpolation beyond `ADVERTISED_REPLY_CHARS` and is the same string for every request on both
 call sites, so the format sits in the longest fixed prefix there is.
 
-### 4.12 Lens and voice selection **[D]**
+### 4.12 Register, model and voice selection **[D]**
 
-*Serves:* G-1, and the *literate* quality.
+*Serves:* G-1, G-2, and the *literate* quality.
 
 ```
-getRandomTextLens() -> uniform pick of { supertext, subtext, architext, psychotext }
+registerMenu()                 -> { key -> REGISTERS[key].criterion } for all seven registers
+randomLensRegister(random)     -> uniform pick of { supertext, subtext, architext, psychotext }
+
+sampleRegister(probabilities, random):
+  weights = entries of probabilities that name a register and carry more than 0
+  total   = sum of those weights
+  if total <= 0 -> randomLensRegister(random)
+  draw    = random() * total
+  -> the register whose cumulative band the draw lands in
+
+chooseRegister(jevClient, threadHistory, userMessage, random):
+  if no client, or the client is unconfigured
+    -> { randomLensRegister(random), note: "drawn from the lenses: Jev is not configured" }
+  try:
+    answers = jevClient.decide({ state:     registerState(threadHistory, userMessage),
+                                 questions: { register: registerQuestion() } })
+    -> { sampleRegister(answers.register.probabilities, random),
+         note: "drawn from Jev (the heaviest NOTED_WEIGHTS of them)" }
+  catch:
+    -> { randomLensRegister(random), note: "drawn from the lenses: Jev failed (<message>)" }
+
+registerQuestion() -> { type: 'choice', instructions: <the call for a decision>,
+                        criteria: registerMenu() }
+registerState(threadHistory, userMessage)
+                   -> [ <what Oblique is>, <the thread>, <the post to answer> ]
+
 dailyCircularKey(n) -> floor(now / 86400s) mod n
 getDailyModel():
   models = config.openrouter.models
@@ -536,10 +598,26 @@ getDailyModel():
 getDailyGender()    -> genders[dailyCircularKey(|genders|)]
 ```
 
-The lens is per reply, so a thread does not settle into one register. Model and voice are per
-*day*, so the bot has a consistent character for a day and a different one tomorrow. The
+The register is per reply, so a thread does not settle into one of them. Model and voice are
+per *day*, so the bot has a consistent character for a day and a different one tomorrow. The
 `genders` array is weighted by repetition rather than by probability — male and female recur
 through it, so the daily cycle lands on them more often while still reaching every entry.
+
+The register is **drawn from** Jev's distribution rather than taken from the top of it. Most
+posts a bot is sent are personal, so the best-scoring register would be `psychotext` most days
+and the bot would settle into one register — the thing the uniform random pick existed to
+prevent. Sampling keeps a reply responsive to the post and still varied across a thread: the
+register Jev gives 0.6 is taken three times in five, not five times in five. Unrecognized
+labels are ignored rather than trusted (D-27).
+
+Every way the choice can fail ends in a lens: no `jev` block, an empty key, a dead endpoint, a
+malformed answer, a missing distribution, or a distribution naming nothing the code knows. The
+register is a refinement and the reply is the product, so a broken Jev leaves Oblique answering
+exactly as it did before the gate existed, and never leaves it silent — `randomLensRegister`
+cannot return `silence`, because `LENS_KEYS` is typed `LensKey` and the compiler will not have
+it. `random` is a parameter of all three, named by each caller: production passes `Math.random`
+and a test passes a position in the range. The reason lands in the note and from there in the chain's `work`, so
+a fallback is visible rather than looking like an ordinary draw (D-25, D-27).
 
 The model list lives in `config.openrouter.models`, not in code, so it is deployment data like
 the API key. `config.openrouter.rotate` turns the daily walk off, and ships false: the first
@@ -618,7 +696,7 @@ createPostReplyTask(...).process():
     -> createDeadTask(task) with work + ["Failed to post: Refusing to post an empty reply"]
   try:
     replyTo = blueskyClient.notificationReplyTo(originalNotification)
-    blueskyClient.like(originalNotification.uri)     # not awaited; a rejection is logged
+    likeQuietly(blueskyClient, originalNotification.uri)   # not awaited; a rejection is logged
     blueskyClient.post({ text: replyText, replyTo })
       .then(result -> onWaitingTaskComplete(taskId,
               createSucceededTask(task) with work + ["Posted: <result.uri>"]))
@@ -634,7 +712,10 @@ complaint, so nothing downstream would catch it. The chain goes `dead` so the re
 visible in the observer panel rather than silent.
 
 The like precedes the post and is not awaited: an acknowledgement should land even if the
-reply does not, and a rejected like is logged rather than carried into the chain. The post is
+reply does not, and a rejected like is logged rather than carried into the chain. `likeQuietly`
+is shared with the silence register, where the like is the whole of the answer and a rejection
+still only ends the chain — there is nothing to recover, because the post has moved down the
+firehose by the time anyone could try again (D-13, D-27). The post is
 awaited — the snapshot succeeds on *confirmation*, carrying the URI Bluesky returned, and a
 rejected post leaves a `dead` chain. A throw before the post is dispatched (resolving the
 reply target, or the client failing synchronously) is caught here and yields `dead` without a
@@ -651,7 +732,13 @@ v2  createSendToLLMTask      waiting  side effect: runReplyChain
                                         -> threadRestraintReason
                                            if declined -> onWaitingTaskComplete(taskId,
                                                             canceled v3); stop here
-                                        -> createObliqueConversation
+                                        -> formatThread
+                                        -> chooseRegister
+                                           work + ["Register: <key> — <note>"]
+                                           if not postable -> likeQuietly;
+                                                              onWaitingTaskComplete(taskId,
+                                                                canceled v3); stop here
+                                        -> createObliqueConversation(thread, register)
                                         -> generateLLMResponseWithRetry
                                         -> onWaitingTaskComplete(taskId, v3)
                                       on reject -> onWaitingTaskComplete(taskId, dead v3)
@@ -679,6 +766,16 @@ costs an LLM call. The gate's answer is acted on once rather than carried onward
 for each later stage to re-check, and the chain leaves the WaitingSet, so the waiting count
 counts work actually in flight (D-24).
 
+The register is chosen next, after the gates and before the conversation: a thread that is not
+going to be answered should cost no decision, and the decision has to be in hand before there
+is a prompt to put it in. It appends a line rather than ending the chain, because it answers
+*how* and not *whether* — except for silence, which has nothing to write and ends the chain
+`canceled` after the like. Both endings are `canceled` and both say which they were, because a
+declined chain was never Oblique's choice and a silent one was (D-27).
+
+So a chain is five snapshots when it posts, and three when a gate declines it or it chooses
+silence.
+
 ### 4.18 The chat chain **[D]**
 
 *Serves:* G-1, G-3. A single waiting snapshot, used by the chat panel for manual testing.
@@ -689,6 +786,11 @@ v1  createObliqueMessageTask waiting  side effect: generateResponse({ model: get
                                         -> succeeded v2, work + [extracted response]
                                       on reject -> dead v2, work + ["Error: …"]
 ```
+
+The chat panel asks `chooseRegister` for the typed line first and reports the register and how
+it was arrived at as a system message, which makes it the manual instrument for the register
+gate: what Jev would choose for a post is what it chooses for a line typed here. A line that
+draws silence is reported and not sent, since there is no prompt to send (D-27).
 
 No restraint gates apply — a human typed it, so it is always answered. No length retry either:
 the response is shown in the page, not posted. When the model answers without a `# Response`
@@ -878,6 +980,52 @@ gap stays visible:
 - **Metrics hooks.** Counts of ready/in-flight/retried tasks and average latency, exposed for
   monitoring.
 
+### 4.24 The opening occasion **[D, unwired]**
+
+*Serves:* G-1.
+
+```
+register.prompt({ kind: 'opening', about }, gender)
+  -> the same prompt, with the thread and the message replaced by
+     "Nobody has spoken yet. Open a thread of your own on this: <about>"
+```
+
+Built and tested, with no caller. A register is a way of speaking and the occasion is what it
+is applied to, so a post Oblique originates needs the registers it already has and an occasion
+that carries a subject instead of a thread. What does not exist is anything that decides there
+should be a post and what it should be about — no schedule, no subject, and no gate equivalent
+to the restraint rules to say a post is unwanted. The split is here so that the thing still
+missing is a caller rather than a rewrite (D-27).
+
+### 4.25 The Jev client response **[D]**
+
+*Serves:* G-1, G-3.
+
+```
+decide(request):
+  POST config.jev.baseUrl
+    body    { model: config.jev.model, state, questions }
+    headers Authorization: Bearer <config.openrouter.apiKey>, HTTP-Referer, X-Title
+  if not response.ok      -> throw "Jev API error: <status> <body>"
+  if no data.answers      -> throw "Jev returned no answers"
+  -> data.answers                                  # keyed by the names the request used
+```
+
+A different protocol from chat completions, not a mode of it: state and typed questions in,
+typed answers and distributions out, with no messages, no completion and no temperature. Hence
+its own port (`src/hooks/jev/`) beside the LLM one rather than another method on it — the two
+share a host and a key and nothing else (D-27).
+
+The model is the client's, not the request's: one client speaks to one model, so a request
+cannot name its own and there is no second place for a model to come from.
+
+Only `choice` is used here. Jev also answers `noul`, `score` and `box` questions, which the
+types do not yet describe.
+
+The body is logged and the headers never are, for the same reason as the LLM client: the key
+travels in the headers (R-35). Every throw here is caught by the register gate and answered
+with a lens, so a Jev outage costs variety and not replies.
+
 ---
 
 ## §5 Automation
@@ -990,9 +1138,10 @@ tests. The code is the single source; the value here is a copy.
 | `RECORD_PAGE` | 100 | records per request | `fetchSchemas` | D-23 |
 | `MODEL_ROTATION_SIZE` | 23 | models | `config.json` → `openrouter.models` | D-5 |
 | `GENDER_ROTATION_SIZE` | 25 | entries | `prompts/oblique.ts` | D-5 |
+| `NOTED_WEIGHTS` | 3 | weights | `register-choice.ts` | D-27 |
 
 Only `MAX_BLUESKY_REPLY_CHARS`, `ADVERTISED_REPLY_CHARS`, `TOKEN_REFRESH_BUFFER_MS`,
-`TOKEN_DEFAULT_TTL`, `RECORD_PAGE` and `SAFE_BASE32_ALPHABET` are named constants in the code today; the rest are literals at their use site, except
+`TOKEN_DEFAULT_TTL`, `RECORD_PAGE`, `NOTED_WEIGHTS` and `SAFE_BASE32_ALPHABET` are named constants in the code today; the rest are literals at their use site, except
 `MODEL_ROTATION_SIZE`, which is the length of a list in `config.json`. Naming them is Q-7 in
 `ARCHITECTURE_LOG.md`.
 
@@ -1033,7 +1182,7 @@ Illegal input never throws: a missing task, a wrong status or an empty queue pro
 | `TaskMapOps.getTasksByStatus(map, status)` | latest snapshots with that status |
 | `TaskQueueOps.getAllTaskIds(queue)` | queued ids, FIFO order (a copy) |
 | `WaitingSetOps.getAllWaitingTaskIds(set)` | waiting ids |
-| `window.oblique.getState()` | `{ orchestrator, hasLLM, blueskyAccounts }` — the configured handles, for console debugging. Throws today: it calls `require` in an ES module (`getstate-viig`). |
+| `window.oblique.getState()` | `{ orchestrator, hasLLM, hasJev, blueskyAccounts }` — whether each client is configured, and the handles, for console debugging. Throws today: it calls `require` in an ES module (`getstate-viig`). |
 
 ### 7.3 Events
 

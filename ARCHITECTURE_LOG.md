@@ -21,6 +21,8 @@ settled), **History** (dated entries, newest first).
   through its archetypal structure" produces a different kind of sentence. The lens is picked
   per reply so a thread does not settle into one register. Serves G-1.
 - **Evidence:** none. X-1 is unmeasured.
+- **Extended by D-27**, which keeps the per-reply draw but takes it from Jev's distribution
+  rather than from a uniform pick, and adds three registers that are not lenses.
 
 ### D-2 Immutable snapshots with closure-carried behavior — *Decided*
 
@@ -520,6 +522,56 @@ can write.
 
 ---
 
+### D-27 A System One model chooses the register, and the choice is drawn rather than taken — *Decided*
+
+- **Alternatives:** keep the uniform random pick over four lenses; take Jev's top choice
+  (argmax); ask two questions, a form and a lens, and compose them; put the register choice to
+  the writer model itself as part of the reply prompt; write it as a rule over the post's
+  length, author and reason; run the decision in shadow for a day before acting on it; make
+  silence a restraint rule at the second gate rather than a register.
+- **Why:** the lens was drawn from a hat, which is cheap and keeps a thread varied but means
+  the way a post is answered has nothing to do with the post. A System One model is the right
+  shape for this: one typed question over one menu, a distribution back, for about four
+  hundredths of a cent — less than any other call in a reply.
+  - **Drawn, not argmax.** Most posts a bot is sent are personal, so the best-scoring register
+    would be `psychotext` most days and the bot would settle into one register — the exact
+    thing the uniform pick existed to prevent. Sampling from the distribution keeps the reply
+    responsive to the post *and* varied across a thread, and makes the uniform pick the
+    degenerate case: a Jev that is unsure spreads its weight and the draw spreads with it.
+  - **One flat menu of seven, not form × lens.** Two questions compose, which would allow a
+    one-liner through the architext lens. They were flattened anyway: a one-liner and a silence
+    have no use for a lens, and the poem is a reframing rather than a lens, so most of the
+    product is meaningless and the menu reads as one decision instead of two.
+  - **A class per register.** The four lenses share their response rules through `LensRegister`
+    and differ only in the lens text; `poem` and `oneliner` extend `Register` directly because
+    they disagree with the lenses about length, allusion and sentence count. That disagreement
+    is why the rules moved out of `systemPrompt`, which is fixed text: rules in the longest
+    cached prefix would have to be contradicted further down. The occasion is split from the
+    register in the same move, which is what makes a post Oblique originates a caller away
+    rather than a rewrite (4.24).
+  - **Silence is a register, not a rule.** The restraint gates ask whether the rules permit a
+    reply; by the time a register is chosen they have both passed. "This post would be
+    cheapened by a bot having a thought about it" is a judgment about the post, which is the
+    kind of thing being put to Jev in the first place. It is the only register with nothing to
+    write, so it has no prompt at all and `prompt` throws: a caller that reaches it has skipped
+    the `postable` check, and an empty prompt would be found much later.
+  - **The fallback is a lens, always.** No `jev` block, an empty key, a dead endpoint, a
+    malformed answer, a missing distribution or a distribution naming nothing known all leave
+    Oblique answering as it did before the gate existed. `randomLensRegister` cannot return
+    `silence`, because a broken Jev must not make a quiet bot. The reason lands in the chain's
+    work, so a fallback never reads as an ordinary draw.
+  - **No shadow mode.** Considered and declined: the firehose replenishes, a wrong register
+    costs one reply, and a day of logging what would have happened delays the only evidence
+    that matters, which is how the replies read.
+  Serves G-1 and G-2.
+- **Evidence:** none yet. Q-14 is unmeasured — nothing yet says how often `silence` is drawn,
+  and a cautious model over-picking it would make Oblique quieter without anyone noticing,
+  since a silence looks the same in the panel whether it was right or wrong.
+- **Cost:** a second request per reply, at a different endpoint and in a different protocol
+  (`POST /api/alpha/decisions` against `~typesafe/jev-latest`, on the same OpenRouter key).
+  Prefix caching is unaffected except that the per-reply block now has seven variants instead
+  of four.
+
 ## Open questions
 
 Each is a real decision for the designer, not a task.
@@ -553,6 +605,15 @@ frame and tells a reader the core is asynchronous when the whole design says it 
 directly; `await` at the call sites keeps working either way. Against: if a future step ever
 needs to await, the signature is already there — but the invariant says that step belongs in
 a factory closure, not in the orchestrator.
+
+### Q-14 How often is `silence` drawn, and is it right? — *tracked as `regtally-nbnz`*
+
+Nothing measures it. The register lands in each chain's `work`, so a pass can be read by hand,
+but nothing tallies registers across passes the way `tallyReasons` tallies declines (D-25), and
+nothing records whether a silence was the right call — a post nobody replied to looks the same
+whether the restraint was wise or the bot just went quiet. The risk is one-sided: a cautious
+model over-picking silence makes Oblique quieter by degrees, and the panel reports that as
+success. A register tally in the Bluesky panel is the cheap version of an answer.
 
 ### Q-6 Prompt injection has no mechanical prevention
 
@@ -595,6 +656,42 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-27 — Jev chooses the register, and silence becomes one of them
+
+The reply layer gained a decision in front of it. Where the writer prompt used to draw one of
+four lenses from a hat, the raw thread now goes to **Jev** — TypeSafe's System One model, on
+OpenRouter's decisions endpoint — as one `choice` question over a menu of seven: the four
+lenses, a one-stanza poem, a clean one-liner, and silence. The register is **drawn from** the
+distribution Jev answers with rather than taken from the top of it. Established D-27, extended
+D-1, raised Q-14.
+
+Added `src/registers/`: `Register` (the prompt assembly, in volatility order, over an occasion
+that is either a reply or an opening), `LensRegister` (the response rules the four lenses
+share) and a class per register. The per-register rules moved out of `systemPrompt`, which is
+fixed text, because a poem and a lens disagree about length and sentence count. Added
+`src/hooks/jev/` as a port beside `src/hooks/llm/`, speaking the decisions protocol, and
+`src/register-choice.ts` as the third gate — asked after the two restraint gates and before the
+conversation is built, answering *how* rather than *whether*. `likeQuietly` is now shared
+between the post path and the silence path.
+
+A silent chain ends `canceled` after the like, like a declined one, and says which it was. The
+chat panel reports the register it drew for a typed line, which makes it the manual instrument
+for the gate. `config.json` gained a `jev` block; without it every reply draws a lens and says
+so in its work.
+
+Not wired: the opening occasion is built and tested with no caller (4.24, R-51). Nothing yet
+decides that Oblique should post with nothing to answer.
+
+Revised the same day, after a convention review. `random` became a required parameter of
+`randomLensRegister`, `sampleRegister` and `chooseRegister` rather than one defaulted to
+`Math.random` in three signatures; the two production callers name it. `JevRequest` lost its
+optional `model` and the `??` behind it — one client speaks to one model. `LensKey` was split
+out of `RegisterKey` and `LensRegister` narrowed to it, so the compiler now holds the guarantee
+4.12 states, that a failed decision cannot end in silence. `setJevClient` was deleted unused
+before it could join Q-1. `NOTED_WEIGHTS` named the 3 in the note, `getState` reports `hasJev`
+beside `hasLLM`, and R-17 and R-36 were corrected: the register gate appends a line from inside
+v2, so lines no longer count one per version, which those rows had claimed.
 
 ### 2026-10-18 — The token guess fails short, and a refused call signs in again
 `TOKEN_DEFAULT_TTL` was 1 day where a real access token lives about two hours, and nothing

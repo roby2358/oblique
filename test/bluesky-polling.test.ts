@@ -27,6 +27,7 @@ describe('Bluesky Polling Module', () => {
     await jest.unstable_mockModule('../src/panels.js', () => ({
       getBlueskyAccounts: jest.fn(() => []),
       getLLMClient: jest.fn(),
+      getJevClient: jest.fn(),
       getOrchestratorState: jest.fn(),
       setOrchestratorState: jest.fn(),
       updateStatus: jest.fn(),

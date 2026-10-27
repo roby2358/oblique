@@ -5,6 +5,7 @@ import { getConfig } from '../src/config.js';
 import type { BlueskyMessage } from '../src/types/index.js';
 import type { LLMClient } from '../src/hooks/llm/llm-client.js';
 import type { BlueskyClient } from '../src/hooks/bluesky/bluesky-client.js';
+import type { JevClient } from '../src/hooks/jev/jev-client.js';
 import type { DrakidionTask } from '../src/drakidion/drakidion-types.js';
 
 // Filler that carries no punctuation, so a fixture's only boundaries are the ones it states
@@ -81,7 +82,7 @@ describe('createReplyTask', () => {
   };
 
   it('carries the notification text as the conversation of v1', () => {
-    const task = createReplyTask(notification, llmClient, blueskyClient, onWaitingTaskComplete);
+    const task = createReplyTask(notification, llmClient, undefined, blueskyClient, onWaitingTaskComplete);
 
     expect(task.version).toBe(1);
     expect(task.conversation).toEqual([{ role: 'user', content: 'Hello Oblique!' }]);
@@ -90,13 +91,13 @@ describe('createReplyTask', () => {
   it('falls back to the placeholder when the notification has no text', () => {
     const textless = { ...notification, text: undefined } as unknown as BlueskyMessage;
 
-    const task = createReplyTask(textless, llmClient, blueskyClient, onWaitingTaskComplete);
+    const task = createReplyTask(textless, llmClient, undefined, blueskyClient, onWaitingTaskComplete);
 
     expect(task.conversation).toEqual([{ role: 'user', content: '(no text provided)' }]);
   });
 
   it('keeps its own work and process rather than the factory defaults', () => {
-    const task = createReplyTask(notification, llmClient, blueskyClient, onWaitingTaskComplete);
+    const task = createReplyTask(notification, llmClient, undefined, blueskyClient, onWaitingTaskComplete);
 
     expect(task.work).toEqual(['<thinking>']);
     expect(task.status).toBe('ready');
@@ -170,6 +171,7 @@ describe('createSendToLLMTask quote post handling', () => {
     createSendToLLMTask(
       quoteNotification,
       mockLLMClient,
+      undefined,
       mockBlueskyClient,
       mockOnWaitingTaskComplete,
       mockPredecessor
@@ -205,6 +207,7 @@ describe('createSendToLLMTask quote post handling', () => {
     createSendToLLMTask(
       mentionNotification,
       mockLLMClient,
+      undefined,
       mockBlueskyClient,
       mockOnWaitingTaskComplete,
       mockPredecessor
@@ -235,6 +238,7 @@ describe('createSendToLLMTask quote post handling', () => {
     createSendToLLMTask(
       quoteNotification,
       mockLLMClient,
+      undefined,
       mockBlueskyClient,
       mockOnWaitingTaskComplete,
       mockPredecessor
@@ -260,12 +264,146 @@ describe('createSendToLLMTask quote post handling', () => {
     const task = createSendToLLMTask(
       incompleteNotification,
       mockLLMClient,
+      undefined,
       mockBlueskyClient,
       mockOnWaitingTaskComplete,
       mockPredecessor
     );
 
     expect(task.description).toBe('Oblique: (no text provided)');
+  });
+});
+
+// R-50: the register reaches the chain's work, and silence ends it with a like
+describe('createSendToLLMTask under the register gate', () => {
+  let mockLLMClient: LLMClient;
+  let mockBlueskyClient: BlueskyClient;
+  let mockOnWaitingTaskComplete: jest.Mock;
+  let mockPredecessor: DrakidionTask;
+
+  const notification: BlueskyMessage = {
+    uri: 'at://did:plc:test/app.bsky.feed.post/quiet',
+    cid: 'bafyquiet',
+    author: 'reader.one',
+    text: 'thanks, goodnight',
+    createdAt: new Date(),
+    reason: 'reply',
+  };
+
+  const jevChoosing = (key: string): JevClient => ({
+    decide: jest.fn(async () => ({
+      register: { type: 'choice', choice: key, confidence: 1, probabilities: { [key]: 1 } },
+    })) as any,
+    isConfigured: () => true,
+  });
+
+  const run = async (jevClient: JevClient | undefined) => {
+    createSendToLLMTask(
+      notification,
+      mockLLMClient,
+      jevClient,
+      mockBlueskyClient,
+      mockOnWaitingTaskComplete,
+      mockPredecessor
+    );
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    return mockOnWaitingTaskComplete.mock.calls[0] as [string, DrakidionTask];
+  };
+
+  beforeEach(() => {
+    const config = getConfig();
+    config.botList = [];
+    config.ignoreList = [];
+    config.openrouter = {
+      apiKey: 'sk-or-v1-test',
+      models: ['anthropic/claude-sonnet-4.5'],
+      rotate: false,
+      baseUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    };
+
+    mockLLMClient = { generateResponse: jest.fn() } as any;
+    mockBlueskyClient = { getHistory: jest.fn(), post: jest.fn(), like: jest.fn() } as any;
+    mockOnWaitingTaskComplete = jest.fn();
+
+    mockPredecessor = {
+      taskId: 'register-task-1',
+      version: 1,
+      status: 'ready',
+      description: 'Test predecessor',
+      work: ['Test work'],
+      conversation: [{ role: 'user', content: 'thanks, goodnight' }],
+      createdAt: new Date(),
+      process: () => ({} as DrakidionTask),
+    };
+
+    (mockBlueskyClient.getHistory as jest.MockedFunction<any>).mockResolvedValue([
+      { author: 'oblique.test', text: 'an earlier reply' },
+      { author: 'reader.one', text: 'thanks, goodnight' },
+    ]);
+    (mockBlueskyClient.like as jest.MockedFunction<any>).mockResolvedValue({ uri: 'at://like', cid: 'bafylike' });
+    (mockLLMClient.generateResponse as jest.MockedFunction<any>).mockResolvedValue({
+      content: '# Response\n\nA door is not a question.',
+      model: 'test-model',
+    });
+  });
+
+  it('says which register it answered in, in the work product', async () => {
+    const [, successor] = await run(jevChoosing('architext'));
+
+    const registerLine = successor.work.find(line => line.startsWith('Register: '));
+
+    expect(registerLine).toContain('Register: architext');
+    expect(registerLine).toContain('Jev');
+    expect(successor.work[0]).toBe('Test work');
+  });
+
+  it('answers in the register Jev chose', async () => {
+    await run(jevChoosing('oneliner'));
+
+    const { conversation } = (mockLLMClient.generateResponse as jest.Mock).mock.calls[0][0] as any;
+
+    expect(conversation[1].content).toContain('Exactly one sentence');
+  });
+
+  it('likes the post and ends the chain when the register is silence', async () => {
+    const [taskId, successor] = await run(jevChoosing('silence'));
+
+    expect(taskId).toBe('register-task-1');
+    expect(successor.status).toBe('canceled');
+    expect(successor.doneAt).toBeInstanceOf(Date);
+    expect(mockBlueskyClient.like).toHaveBeenCalledWith(notification.uri);
+    expect(successor.work[successor.work.length - 1])
+      .toBe('Silence: liked @reader.one and left it');
+  });
+
+  it('never asks the LLM for a reply it has chosen not to make', async () => {
+    await run(jevChoosing('silence'));
+
+    expect(mockLLMClient.generateResponse).not.toHaveBeenCalled();
+    expect(mockBlueskyClient.post).not.toHaveBeenCalled();
+    expect(mockOnWaitingTaskComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('still answers, in a lens, when there is no Jev at all', async () => {
+    const [, successor] = await run(undefined);
+
+    const registerLine = successor.work.find(line => line.startsWith('Register: ')) ?? '';
+
+    expect(registerLine).toContain('not configured');
+    expect(successor.status).toBe('ready');
+    expect(mockLLMClient.generateResponse).toHaveBeenCalled();
+  });
+
+  it('is not stopped by a like Bluesky refuses', async () => {
+    (mockBlueskyClient.like as jest.MockedFunction<any>).mockRejectedValue(new Error('rate limited'));
+
+    const [, successor] = await run(jevChoosing('silence'));
+
+    expect(successor.status).toBe('canceled');
+    expect(successor.work[successor.work.length - 1])
+      .toBe('Silence: liked @reader.one and left it');
   });
 });
 
@@ -324,6 +462,7 @@ describe('createSendToLLMTask under thread restraint', () => {
     createSendToLLMTask(
       notification,
       mockLLMClient,
+      undefined,
       mockBlueskyClient,
       mockOnWaitingTaskComplete,
       mockPredecessor
@@ -344,6 +483,7 @@ describe('createSendToLLMTask under thread restraint', () => {
     createSendToLLMTask(
       notification,
       mockLLMClient,
+      undefined,
       mockBlueskyClient,
       mockOnWaitingTaskComplete,
       mockPredecessor
@@ -361,6 +501,7 @@ describe('createSendToLLMTask under thread restraint', () => {
     createSendToLLMTask(
       notification,
       mockLLMClient,
+      undefined,
       mockBlueskyClient,
       mockOnWaitingTaskComplete,
       mockPredecessor
@@ -594,7 +735,7 @@ describe('reply length gate', () => {
   });
 
   const run = async () => {
-    createSendToLLMTask(notification, llmClient, blueskyClient, onWaitingTaskComplete, predecessor);
+    createSendToLLMTask(notification, llmClient, undefined, blueskyClient, onWaitingTaskComplete, predecessor);
     await new Promise(resolve => setTimeout(resolve, 10));
     const successor = onWaitingTaskComplete.mock.calls[0][1] as DrakidionTask;
     return successor.work[successor.work.length - 1];

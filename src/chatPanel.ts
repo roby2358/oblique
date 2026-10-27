@@ -3,7 +3,8 @@ import * as Orchestrator from './drakidion/orchestrator.js';
 import { latestWork } from './drakidion/task-work.js';
 import { createObliqueMessageTask } from './oblique-task-factory.js';
 import { systemPrompt, obliquePrompt } from './prompts/oblique.js';
-import { getOrchestratorState, setOrchestratorState, getLLMClient, addMessage, updateStatus } from './panels.js';
+import { getOrchestratorState, setOrchestratorState, getLLMClient, getJevClient, addMessage, updateStatus } from './panels.js';
+import { chooseRegister } from './register-choice.js';
 
 declare const $: any;
 
@@ -29,7 +30,22 @@ export const createHandleSendMessage = () => {
         return;
       }
 
-      const content = obliquePrompt(message, "");
+      // The chat panel is the manual instrument for the register gate: what Jev would choose
+      // for a post is what it chooses for a line typed here. Silence has nothing to send, so
+      // it is reported rather than answered (D-27).
+      const { register, note } = await chooseRegister(getJevClient(), "", message, Math.random);
+
+      addMessage(`${register.key} — ${note}`, 'system');
+
+      if (!register.postable) {
+        addMessage('Oblique would like this one and leave it.', 'system');
+        $messageInput.prop('disabled', false);
+        $('#send-button').prop('disabled', false);
+        $messageInput.focus();
+        return;
+      }
+
+      const content = obliquePrompt(message, "", register);
 
       console.log('Content:', content);
 

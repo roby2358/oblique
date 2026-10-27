@@ -29,6 +29,10 @@
     "rotate": false,
     "baseUrl": "https://openrouter.ai/api/v1/chat/completions"
   },
+  "jev": {
+    "model": "~typesafe/jev-latest",
+    "baseUrl": "https://openrouter.ai/api/alpha/decisions"
+  },
   "bluesky": {
     "handle": "",
     "password": "",

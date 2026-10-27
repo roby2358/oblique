@@ -1,9 +1,13 @@
 # Oblique
 
 A bot that answers only obliquely. It watches Bluesky notifications, reads the thread behind
-each one, and replies through one of four lenses — supertext, subtext, architext, psychotext —
-or decides not to reply at all. It runs entirely as a single web page: no server, no database,
-no background process.
+each one, and decides *how* to answer before it writes a word: one of four lenses —
+supertext, subtext, architext, psychotext — or a one-stanza poem, or a clean one-liner, or
+silence, which is a like and nothing else. That choice is put to **Jev**, a System One model
+that answers typed questions with a distribution, and the register is drawn from the
+distribution rather than taken off the top of it, so a reply answers the post in front of it
+without the bot settling into one voice. It runs entirely as a single web page: no server, no
+database, no background process.
 
 ## Documentation
 
@@ -47,6 +51,10 @@ Copy `config-example.json` to `config.json` and fill it in:
     "rotate": false,
     "baseUrl": "https://openrouter.ai/api/v1/chat/completions"
   },
+  "jev": {
+    "model": "~typesafe/jev-latest",
+    "baseUrl": "https://openrouter.ai/api/alpha/decisions"
+  },
   "bluesky": {
     "handle": "your-handle.bsky.social",
     "password": "your-app-password",
@@ -80,6 +88,13 @@ floating `~vendor/model-latest` aliases over dated slugs so a vendor's releases 
 an edit. `rotate` false — the shipped default — always uses the first entry, so pinning a
 model means putting it first. Set it true to walk the list one entry per UTC day, giving the
 bot one character a day and a different one tomorrow.
+
+`jev` is the model that picks the register for each reply. It is reached on the same
+OpenRouter key at a different endpoint, because it speaks a different protocol — state and
+typed questions in, a typed answer and a distribution out, no messages and no completion. It
+is the cheapest call in a reply by an order of magnitude. Leave the block out and every reply
+draws one of the four lenses uniformly instead, which is what the bot did before Jev, and says
+so in the chain's work.
 
 `bluesky` and `delvetown` are **account sections**: Oblique signs in to every one that is
 filled in and polls them all into the same task queue, so one page answers on both networks
@@ -119,7 +134,7 @@ just cc-smoke    # live read-only check that every configured account is reachab
 npx tsc --noEmit # type-check
 ```
 
-Or through the justfile: `just run`, `just test`, `just typecheck`, `just check`.
+Or through the justfile: `just up`, `just test`, `just typecheck`, `just check`.
 
 There is no build step. Vite serves the page from source and nothing deploys a bundle yet, so
 `tsc` is configured `noEmit` and exists only to type-check. Add a build back when there is
@@ -130,7 +145,8 @@ somewhere to deploy it to.
 The page has five panels:
 
 - **Chat** — type a message and get an oblique reply. No restraint rules apply; this is the
-  manual test path.
+  manual test path. It reports the register it drew and how, which makes it the way to see
+  what Jev makes of a line — including a line it would rather answer with silence.
 - **Bluesky** — check notifications once, or start polling on an interval, across every
   configured account. Each notification that passes the restraint rules becomes a task and is
   shown; the rest are summed up by reason underneath, and the console carries the author and
@@ -157,9 +173,14 @@ src/
 │   └── functions.ts         # wrap a plain function as a task
 ├── hooks/
 │   ├── llm/                 # LLMClient interface, OpenRouter implementation
+│   ├── jev/                 # JevClient interface, OpenRouter decisions implementation
 │   └── bluesky/             # BlueskyClient: auth, notifications, history, post, like
 │                             # lexicon.ts: teaching the SDK a network's own lexicon
-├── prompts/oblique.ts   # system prompt, the four lenses, daily model and voice rotation
+├── registers/           # a class per register: the four lenses, poem, oneliner, silence
+│                        # register.ts: the prompt assembly and the occasion it is applied to
+│                        # index.ts: the menu Jev chooses from, and the draw
+├── prompts/oblique.ts   # system prompt, thread formatting, daily model and voice rotation
+├── register-choice.ts   # the third gate: which register to answer in
 ├── oblique-task-factory.ts  # the reply chain and the chat chain
 ├── bluesky-accounts.ts  # the config sections that name an account, and the clients built from them
 ├── bluesky-polling.ts   # the two restraint gates

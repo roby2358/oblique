@@ -69,6 +69,7 @@ describe('Task ID Threading', () => {
     const initialTask = createReplyTask(
       mockNotification,
       mockLLMClient,
+      undefined,
       mockBlueskyClient,
       onTaskCreated
     );
@@ -130,6 +131,7 @@ describe('Task ID Threading', () => {
     const initialTask = createReplyTask(
       mockNotification,
       mockLLMClient,
+      undefined,
       mockBlueskyClient,
       onTaskCreated
     );
@@ -152,11 +154,14 @@ describe('Task ID Threading', () => {
     expect(executionTrace[1].version).toBe(3);
     expect(executionTrace[1].description).toContain('Post reply to @testuser.bsky.social');
 
-    // Every step appends its line, so the latest snapshot carries the whole trace (D-18)
+    // Every step appends its line, so the latest snapshot carries the whole trace (D-18).
+    // The register line names whichever register the chain drew, which with no Jev client is
+    // one of the four lenses (D-27).
     expect(executionTrace[0].work).toEqual(['<thinking>']);
     expect(executionTrace[1].work).toEqual([
       '<thinking>',
       'Waiting for LLM response...',
+      expect.stringMatching(/^Register: \w+ — drawn from the lenses: Jev is not configured$/),
       'Response',
     ]);
     // expect(executionTrace[2].version).toBe(3);

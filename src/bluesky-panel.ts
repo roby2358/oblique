@@ -1,6 +1,6 @@
 // Bluesky Panel - UI functions for handling Bluesky interactions
 import type { DrakidionTask } from './drakidion/drakidion-types.js';
-import { getBlueskyAccounts, getLLMClient, getOrchestratorState, setOrchestratorState, updateStatus } from './panels.js';
+import { getBlueskyAccounts, getJevClient, getLLMClient, getOrchestratorState, setOrchestratorState, updateStatus } from './panels.js';
 import { createReplyTask } from './oblique-task-factory.js';
 import * as Orchestrator from './drakidion/orchestrator.js';
 import type { BlueskyMessage } from './types/index.js';
@@ -8,6 +8,7 @@ import { needsPostData, notificationRestraintReason } from './bluesky-polling.js
 import type { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
 import type { BlueskyAccount } from './bluesky-accounts.js';
 import type { LLMClient } from './hooks/llm/llm-client.js';
+import type { JevClient } from './hooks/jev/jev-client.js';
 
 declare const $: any;
 
@@ -143,6 +144,7 @@ const judgeNotifications = async (
   account: BlueskyAccount,
   notifications: BlueskyMessage[],
   llmClient: LLMClient,
+  jevClient: JevClient | undefined,
   onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void
 ): Promise<{ answered: BlueskyMessage[]; declined: string[]; tasks: DrakidionTask[] }> => {
   const answered: BlueskyMessage[] = [];
@@ -163,7 +165,7 @@ const judgeNotifications = async (
 
     console.log(`\u2713 Answering @${notif.author}`);
     answered.push(notif);
-    tasks.push(createReplyTask(notif, llmClient, account.client, onWaitingTaskComplete));
+    tasks.push(createReplyTask(notif, llmClient, jevClient, account.client, onWaitingTaskComplete));
   }
 
   return { answered, declined, tasks };
@@ -172,6 +174,7 @@ const judgeNotifications = async (
 export const checkAccount = async (
   account: BlueskyAccount,
   llmClient: LLMClient,
+  jevClient: JevClient | undefined,
   onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void,
   markAsSeen: boolean
 ): Promise<AccountCheck> => {
@@ -192,7 +195,7 @@ export const checkAccount = async (
       await account.client.markNotificationsAsSeen();
     }
 
-    const judged = await judgeNotifications(account, notifications, llmClient, onWaitingTaskComplete);
+    const judged = await judgeNotifications(account, notifications, llmClient, jevClient, onWaitingTaskComplete);
 
     return { account, ...judged, error: null };
   } catch (error) {
@@ -262,6 +265,7 @@ const renderAccountCheck = (check: AccountCheck): string => {
 export const checkNotifications = async () => {
   const accounts = getBlueskyAccounts();
   const llmClient = getLLMClient();
+  const jevClient = getJevClient();
   let orchestratorState = getOrchestratorState();
 
   if (accounts.length === 0) {
@@ -283,7 +287,7 @@ export const checkNotifications = async () => {
   // One account at a time, all of them into the one queue (D-22)
   const checks: AccountCheck[] = [];
   for (const account of accounts) {
-    checks.push(await checkAccount(account, llmClient, onWaitingTaskComplete, markAsSeen));
+    checks.push(await checkAccount(account, llmClient, jevClient, onWaitingTaskComplete, markAsSeen));
   }
 
   for (const check of checks) {

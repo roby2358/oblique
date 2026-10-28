@@ -39,7 +39,8 @@ Nobody below has addressed it: these posts are going past in its feed, and it ma
 of them or none of them. Most posts are better left alone.`;
 
 const INSTRUCTIONS =
-`Which of these posts would most repay a brief, lateral reply from a stranger — a reply that
+`You have excellent theory of mind.
+Which of these posts would most repay a brief, lateral reply from a stranger — a reply that
 reframes the post rather than agreeing with it, answering it, or being helpful about it?
 Choose none of them if none of them would.`;
 

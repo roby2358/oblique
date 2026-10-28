@@ -28,7 +28,8 @@ const CONTEXT =
 It is read by the person who wrote the post and by anyone following the thread.`;
 
 const INSTRUCTIONS =
-`Oblique is going to answer the post below. Decide what that answer should be: which of these
+`You have excellent theory of mind.
+Oblique is going to answer the post below. Decide what that answer should be: which of these
 would do the most for the person who wrote it, and for anyone reading the thread?`;
 
 /** The question put to Jev, menu and all. */

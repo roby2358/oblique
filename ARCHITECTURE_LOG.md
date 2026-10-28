@@ -643,9 +643,9 @@ can write.
     have one. *Superseded for Bluesky by D-31, which made the feed a per-account setting.*
 - **Cost:** a look is two requests and one Jev call, whatever the timeline holds — the timeline
   read, the Jev decision over at most `FEED_CANDIDATES` posts, and one `getSinglePost` on the
-  drawn post. Qualification is free. At `FEED_MIN_MIN`/`FEED_SPREAD_MIN` that is roughly 36
-  looks a day per account, and fewer replies than that, since `none` and the verification both
-  decline without posting.
+  drawn post. Qualification is free. At `FEED_MIN_MIN`/`FEED_SPREAD_MIN` that is 12 looks a
+  day per account with the page up around the clock, and fewer replies than that, since `none`
+  and the verification both decline without posting.
 - **Evidence:** `feed.getTimeline` is in the `app.bsky` lexicon and in `town.delve`'s fork of it,
   so the client's existing `nsid()` reaches both (D-23). `feedViewPost` carries `post.author`,
   `post.record.reply` and `post.replyCount`, which is what makes the whole qualification pass
@@ -794,7 +794,7 @@ a session, so the one number that matters is unknown: of the looks that happen, 
 post. The two failure modes are opposite and both plausible. A cautious Jev picks `none` almost
 always and the feed path quietly does nothing, which the panel reports as restraint working. An
 incautious one picks a post nearly every look and Oblique becomes a bot that replies to strangers
-twice an hour, which is the G-2 failure and the one that costs the account. `FEED_MIN_MIN`,
+a dozen times a day, which is the G-2 failure and the one that costs the account. `FEED_MIN_MIN`,
 `FEED_SPREAD_MIN` and `FEED_CANDIDATES` are all guesses until this is counted, as is whether
 `none`'s criterion is pitched right. The same tally that answers Q-14 would answer this, one
 column over.
@@ -851,6 +851,21 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-28 — A look at the feed falls every two hours instead of every half hour
+`FEED_MIN_MIN` and `FEED_SPREAD_MIN` both went from 20 to 80, so the interval is drawn uniform
+over 80–160 minutes and averages two hours where it averaged thirty minutes. The shape is
+unchanged — the spread still equals the floor, so the range is still the same proportion of the
+mean — and so is everything around it: one look, one post at most, `none` on the menu, the clock
+armed rather than fired on load (D-28).
+
+A look is 12 a day per account now rather than 48, which moves the Q-15 failure mode it was
+guarding against: an incautious Jev makes this a bot that answers strangers a dozen times a day,
+not one that does it twice an hour. Nothing is measured yet either way, so this is a guess
+replacing a guess, and `feedtal-7t3s` is still what would settle it.
+
+`POLL_MAX_S` no longer dominates the cadence: at an hourly poll the quantization adds up to an
+hour to each interval where it used to set the interval outright.
 
 ### 2026-10-28 — The Bluesky account reads For You
 

@@ -6,10 +6,10 @@
 // addressed Oblique is always answered before a stranger who did not (D-28).
 
 /** The shortest a look can be from the one before it. */
-export const FEED_MIN_MIN = 20;
+export const FEED_MIN_MIN = 80;
 
 /** How much later than that a look can fall. The interval is uniform across the span. */
-export const FEED_SPREAD_MIN = 20;
+export const FEED_SPREAD_MIN = 80;
 
 const MINUTE_MS = 60 * 1000;
 
@@ -19,13 +19,14 @@ const MINUTE_MS = 60 * 1000;
  * Drawing the interval **here**, at the reset, rather than drawing a fresh threshold to
  * compare against on every pass, is the whole of this function. A threshold re-drawn each pass
  * is the minimum of many draws rather than one draw: with a two-minute poll and a target meant
- * to average thirty minutes, the low draws keep winning — the median comes out near sixteen
- * minutes and the upper half of the intended range is never reached at all. Drawn once, the
- * interval is uniform over [FEED_MIN_MIN, FEED_MIN_MIN + FEED_SPREAD_MIN) as intended (D-28).
+ * to average two hours, the low draws keep winning — the median lands far below the target and
+ * the upper half of the intended range is never reached at all. Drawn once, the interval is
+ * uniform over [FEED_MIN_MIN, FEED_MIN_MIN + FEED_SPREAD_MIN) as intended (D-28).
  *
  * The poll interval then quantizes it: a due time lands on the next pass after it, so the
- * interval is a floor and not a schedule. Invisible at POLL_DEFAULT_S, and at POLL_MAX_S the
- * feed is looked at hourly whatever is set here.
+ * interval is a floor and not a schedule. Invisible at POLL_DEFAULT_S. At POLL_MAX_S a look
+ * waits for the next hourly pass, which adds up to an hour to the interval rather than setting
+ * it, now that the floor is longer than an hour.
  */
 export const nextLookAt = (now: number, random: () => number): number => {
   return now + (FEED_MIN_MIN + random() * FEED_SPREAD_MIN) * MINUTE_MS;

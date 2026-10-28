@@ -1255,12 +1255,13 @@ FeedSchedule(random):
 
 **The interval is drawn once, at the reset.** Drawing a fresh threshold to compare against on
 every pass instead gives the minimum of many draws rather than one draw: with a two-minute poll
-and a target meant to average thirty minutes, the low draws keep winning — the median comes out
-near sixteen minutes and the upper half of the intended range is never reached at all (D-28).
+and a target meant to average two hours, the low draws keep winning — the median lands far below
+the target and the upper half of the intended range is never reached at all (D-28).
 
 The poll interval then quantizes it: a due time lands on the next pass after it, so the interval
-is a floor and not a schedule. Invisible at `POLL_DEFAULT_S`; at `POLL_MAX_S` the feed is looked
-at hourly whatever is set here.
+is a floor and not a schedule. Invisible at `POLL_DEFAULT_S`. At `POLL_MAX_S` a look waits for
+the next hourly pass, which adds up to an hour to the interval rather than setting it, now that
+the floor is longer than an hour.
 
 An account's **first sight arms its clock rather than firing it**. Otherwise a page load would
 open with an unsolicited post, and so would every reload after it — which is the state a long
@@ -1409,7 +1410,7 @@ at a fifty-post feed costs two requests and one Jev call, whatever it finds (D-2
 Which feed is read is the account's `feed`: its own timeline, or a feed generator such as "For
 You". Both answer in the same feed-view shape, so nothing after the read knows which it was. A
 generator reaches strangers, which the following timeline never does; that is the point, and
-the cadence, the gate and `none` are what keep it to one lateral reply in half an hour (D-31).
+the cadence, the gate and `none` are what keep it to one lateral reply in two hours (D-31).
 
 `verifyPick` is the only place Oblique can see its own past replies. A timeline says how many
 replies a post has and never whose, so a post answered an hour ago is indistinguishable from an
@@ -1472,8 +1473,8 @@ tests. The code is the single source; the value here is a copy.
 | `NOTED_WEIGHTS` | 3 | weights | `weighted-draw.ts` | D-27 |
 | `FEED_BATCH` | 50 | posts | `checkFeeds` | D-28 |
 | `FEED_CANDIDATES` | 15 | posts | `feed-choice.ts` | D-28 |
-| `FEED_MIN_MIN` | 20 | minutes | `feed-schedule.ts` | D-28 |
-| `FEED_SPREAD_MIN` | 20 | minutes | `feed-schedule.ts` | D-28 |
+| `FEED_MIN_MIN` | 80 | minutes | `feed-schedule.ts` | D-28 |
+| `FEED_SPREAD_MIN` | 80 | minutes | `feed-schedule.ts` | D-28 |
 
 Only `MAX_BLUESKY_REPLY_CHARS`, `ADVERTISED_REPLY_CHARS`, `TOKEN_REFRESH_BUFFER_MS`,
 `TOKEN_DEFAULT_TTL`, `RECORD_PAGE`, `NOTED_WEIGHTS`, `FEED_BATCH`, `FEED_CANDIDATES`,

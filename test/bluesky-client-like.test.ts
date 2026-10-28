@@ -9,6 +9,7 @@ describe('BlueskyClient like functionality', () => {
     service: 'https://bsky.social',
     appview: 'did:web:api.bsky.app#bsky_appview',
     lexicon: 'app.bsky',
+    feed: 'following',
   };
   let mockGetRecord: any;
   let mockCreateRecord: any;

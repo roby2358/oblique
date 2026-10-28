@@ -26,7 +26,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
 let isPolling = false;
 
 /**
- * How many posts of the timeline a look reads. A window on the most recent posts, not a page
+ * How many posts of the feed a look reads. A window on the most recent posts, not a page
  * of a queue: there is no cursor and nothing is remembered, so a post that falls past it is
  * never considered, exactly as with `NOTIFICATION_BATCH` (D-11, D-28).
  */
@@ -383,11 +383,11 @@ const verifyPick = async (account: BlueskyAccount, candidate: FeedCandidate): Pr
 };
 
 /**
- * Read the timeline, qualify it offline, put the survivors to Jev, verify the one it drew.
+ * Read the feed, qualify it offline, put the survivors to Jev, verify the one it drew.
  *
  * The order is the point: the free rules run over the whole batch, the one paid judgment runs
  * over what survived them, and the one extra request runs on the single post that won. A look
- * at a fifty-post timeline therefore costs two requests and one Jev call, whatever it finds
+ * at a fifty-post feed therefore costs two requests and one Jev call, whatever it finds
  * (R-8's discipline, D-28).
  *
  * A failed verification ends the look rather than drawing again. Drawing again until something
@@ -403,7 +403,7 @@ export const checkFeedAccount = async (
   try {
     await account.client.ensureAuth();
 
-    const candidates = await account.client.getTimeline(FEED_BATCH);
+    const candidates = await account.client.getFeed(FEED_BATCH);
     const declined: string[] = [];
     const qualified: FeedCandidate[] = [];
 

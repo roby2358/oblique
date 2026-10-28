@@ -56,7 +56,16 @@ export interface BlueskyConfig {
    * `town.delve` for delve.town. Every method and record type is built from it.
    */
   lexicon: string;
+  /**
+   * The feed a look reads: `FOLLOWING_FEED` for the account's own timeline, or the at-URI of a
+   * feed generator, such as Bluesky's "For You". A generator lives on one network, so each
+   * account names its own (D-31).
+   */
+  feed: string;
 }
+
+/** The `feed` that names the account's own timeline — the posts of the accounts it follows. */
+export const FOLLOWING_FEED = 'following';
 
 export interface BlueskyHistoryEntry {
   author: string;
@@ -440,22 +449,25 @@ export class BlueskyClient {
   }
 
   /**
-   * The account's own timeline: the posts of the accounts it follows.
+   * The feed this account reads when it goes looking: its own timeline, or the feed generator
+   * its config names.
    *
    * This is where the bot's taste is configured, and it is deliberately not configured here —
-   * who the account follows is a knob turned in any client, so widening or narrowing what
-   * Oblique sees needs no edit to this repository (D-28).
+   * who the account follows, and what a generator learns from its likes, are knobs turned
+   * outside this repository (D-28, D-31).
    *
    * Every item is mapped to the shape a notification arrives in, so the reply chain needs no
    * case for a post nobody asked it to answer.
    */
-  async getTimeline(limit: number): Promise<FeedCandidate[]> {
-    const method = this.nsid('feed.getTimeline');
+  async getFeed(limit: number): Promise<FeedCandidate[]> {
+    const following = this.config.feed === FOLLOWING_FEED;
+    const method = this.nsid(following ? 'feed.getTimeline' : 'feed.getFeed');
+    const params = following ? { limit } : { feed: this.config.feed, limit };
 
-    const response = await this.request(method, () => this.agent.api.xrpc.call(method, { limit }));
+    const response = await this.request(method, () => this.agent.api.xrpc.call(method, params));
     const feed = response.data.feed || [];
 
-    console.log(`Timeline for ${this.config.handle}:`, feed.length);
+    console.log(`Feed ${this.config.feed} for ${this.config.handle}:`, feed.length);
 
     return feed.map((item: any) => this.toFeedCandidate(item));
   }

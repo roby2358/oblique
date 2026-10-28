@@ -8,7 +8,7 @@ that answers typed questions with a distribution, and the register is drawn from
 distribution rather than taken off the top of it, so a reply answers the post in front of it
 without the bot settling into one voice.
 
-Every twenty to forty minutes it also goes looking. It reads its own timeline, throws out
+Every twenty to forty minutes it also goes looking. It reads its feed, throws out
 everything it should not touch, asks Jev which of what is left would most repay a lateral reply
 — with "none of them" among the options, and usually the right one — and answers that post as
 though it had been a mention. It runs entirely as a single web page: no server, no database, no
@@ -65,14 +65,16 @@ Copy `config-example.json` to `config.json` and fill it in:
     "password": "your-app-password",
     "service": "https://bsky.social",
     "appview": "did:web:api.bsky.app#bsky_appview",
-    "lexicon": "app.bsky"
+    "lexicon": "app.bsky",
+    "feed": "at://did:plc:3guzzweuqraryl3rdkimjamk/app.bsky.feed.generator/for-you"
   },
   "delvetown": {
     "handle": "your-handle.delve.town",
     "password": "your-app-password",
     "service": "https://pds.delve.town",
     "appview": "did:web:api.delve.town#bsky_appview",
-    "lexicon": "town.delve"
+    "lexicon": "town.delve",
+    "feed": "following"
   },
   "ignoreList": [],
   "botList": []
@@ -123,6 +125,11 @@ network only. A network is three things, and they vary independently:
 Adding a third network means a section here with those three endpoints and one entry in
 `ACCOUNT_SECTIONS` in `src/bluesky-accounts.ts`. Nothing else: a lexicon the SDK does not
 ship is fetched from the authority its own NSID names (`town.delve` → `delve.town`).
+
+Each section also names the **`feed`** a look reads: `following` for the account's own
+timeline, or a feed generator's at-URI. The template points Bluesky at "For You", which learns
+from what Oblique likes and reaches people it does not follow; delve.town stays on `following`,
+since a generator lives on one network.
 
 After changing any of the three, run `just cc-smoke` — a live, read-only check that each
 account can sign in, list its notifications and read a thread. The unit suite never signs in,

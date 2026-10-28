@@ -9,6 +9,7 @@ describe('BlueskyClient post', () => {
     service,
     appview,
     lexicon,
+    feed: 'following',
   });
 
   const bluesky = configFor('app.bsky', 'https://bsky.social', 'did:web:api.bsky.app#bsky_appview');

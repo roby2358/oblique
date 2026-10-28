@@ -13,6 +13,7 @@ const config = {
   service: 'https://bsky.social',
   appview: 'did:web:api.bsky.app#bsky_appview',
   lexicon: 'app.bsky',
+  feed: 'following',
 };
 
 /** A session JWT carrying `payload` where its claims belong. Only the payload is read. */

@@ -9,6 +9,7 @@ describe('createAccounts', () => {
     service: 'https://bsky.social',
     appview: 'did:web:api.bsky.app#bsky_appview',
     lexicon: 'app.bsky',
+    feed: 'at://did:plc:3guzzweuqraryl3rdkimjamk/app.bsky.feed.generator/for-you',
   };
 
   const delvetown = {
@@ -17,6 +18,7 @@ describe('createAccounts', () => {
     service: 'https://pds.delve.town',
     appview: 'did:web:api.delve.town#bsky_appview',
     lexicon: 'town.delve',
+    feed: 'following',
   };
 
   let warn: jest.SpiedFunction<typeof console.warn>;
@@ -64,7 +66,7 @@ describe('createAccounts', () => {
   it('passes over a blank or absent section in silence', () => {
     const accounts = createAccounts({
       bluesky,
-      delvetown: { handle: '', password: '', service: '', appview: '', lexicon: '' },
+      delvetown: { handle: '', password: '', service: '', appview: '', lexicon: '', feed: '' },
     });
 
     expect(accounts.map(account => account.name)).toEqual(['bluesky']);
@@ -76,7 +78,7 @@ describe('createAccounts', () => {
 
     expect(accounts).toEqual([]);
     expect(warn).toHaveBeenCalledWith(
-      'Ignoring the "delvetown" account: config.json is missing password, service, appview, lexicon'
+      'Ignoring the "delvetown" account: config.json is missing password, service, appview, lexicon, feed'
     );
   });
 

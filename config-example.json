@@ -38,14 +38,16 @@
     "password": "",
     "service": "https://bsky.social",
     "appview": "did:web:api.bsky.app#bsky_appview",
-    "lexicon": "app.bsky"
+    "lexicon": "app.bsky",
+    "feed": "at://did:plc:3guzzweuqraryl3rdkimjamk/app.bsky.feed.generator/for-you"
   },
   "delvetown": {
     "handle": "",
     "password": "",
     "service": "https://pds.delve.town",
     "appview": "did:web:api.delve.town#bsky_appview",
-    "lexicon": "town.delve"
+    "lexicon": "town.delve",
+    "feed": "following"
   },
   "ignoreList": [],
   "botList": []

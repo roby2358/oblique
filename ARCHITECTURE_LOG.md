@@ -640,7 +640,7 @@ can write.
     and needs no configuration, and it puts the bot's taste where it belongs: who the account
     follows is a knob turned in any client, so widening what Oblique sees needs no edit here. A
     discover feed would reach strangers but needs a feed URI per network, and delve.town may not
-    have one.
+    have one. *Superseded for Bluesky by D-31, which made the feed a per-account setting.*
 - **Cost:** a look is two requests and one Jev call, whatever the timeline holds — the timeline
   read, the Jev decision over at most `FEED_CANDIDATES` posts, and one `getSinglePost` on the
   drawn post. Qualification is free. At `FEED_MIN_MIN`/`FEED_SPREAD_MIN` that is roughly 36
@@ -724,6 +724,33 @@ can write.
 - **Where it lives:** rule 5 of `notificationRestraintReason`, with the pass's memory passed in,
   so the first gate stays one function and one list of rules. The gate only reads it; the
   poller spends the turn when it makes the task.
+
+### D-31 Each account names the feed it reads, and Bluesky reads "For You" — *Decided*
+
+- **Alternatives:** keep the following timeline and follow more accounts; swap Bluesky to a
+  generator in code; Discover (`whats-hot`) instead of For You; one `feed` for all accounts; a
+  `feed` that defaults to the timeline when absent.
+- **Why:** in practice the following timeline was four accounts, and after the gate almost
+  every candidate was the designer's own posts — Oblique looked as though Jev had picked one
+  person out, when it was simply offered nobody else. For You (spacecowboy17's generator,
+  `at://did:plc:3guzzweuqraryl3rdkimjamk/app.bsky.feed.generator/for-you`) is personalized from the reading account's likes, and Oblique likes every post it
+  answers or passes over in silence, so what it is shown drifts toward its own taste without
+  anyone curating a follow list.
+  - **Strangers.** This is what D-28 declined. It is accepted now: a look still answers at most
+    one post every `FEED_MIN_MIN`–`FEED_MIN_MIN + FEED_SPREAD_MIN` minutes, `none` is among the
+    options, and anyone who does not want it can block it.
+  - **Per account.** A generator lives on one network, and delve.town has no For You. So each
+    account section names its own `feed`, and `following` stays a value rather than a removed
+    path. Required like every other field, so a section without it is refused and named.
+- **Cost:** none beyond D-28 — `feed.getFeed` is one request where `feed.getTimeline` was one.
+- **Evidence:** the following list (`topchicken.cee.wtf`, the designer's account, `asa.engineer`,
+  `bsky.app`) read through the public API on 2026-10-28: one posts three scheduled top-level
+  posts a day, the others mostly reposts and replies the timeline hides. Unmeasured beyond that.
+- **Risk accepted:** For You's first days are generic popular posts, which are the threads most
+  likely to have a crowd; and a generator can go offline, which fails the look like any other
+  read and costs that account alone (R-56).
+- **Where it lives:** `BlueskyConfig.feed` and `BlueskyClient.getFeed`, the one place that asks
+  which kind of feed it is.
 
 ## Open questions
 
@@ -824,6 +851,14 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-28 — The Bluesky account reads For You
+
+Each account section gained a required `feed`: `following` for the account's own timeline, or a
+feed generator's at-URI. `BlueskyClient.getTimeline` became `getFeed`, which reads
+`feed.getTimeline` or `feed.getFeed` accordingly. The template points Bluesky at For You and
+leaves delve.town on `following` (D-31). A `config.json` without `feed` now refuses its account
+and names the field.
 
 ### 2026-10-28 — One answer per author per pass
 

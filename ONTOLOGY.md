@@ -155,11 +155,13 @@ G-4.
 | `bluesky.service` | `string` | `https://bsky.social`. |
 | `bluesky.appview` | `string` | `did:web:api.bsky.app#bsky_appview`. |
 | `bluesky.lexicon` | `string` | `app.bsky`. |
+| `bluesky.feed` | `string` | What a feed look reads: `following` (`FOLLOWING_FEED`) for the account's own timeline, or a feed generator's at-URI. The template names Bluesky's "For You", `at://did:plc:3guzzweuqraryl3rdkimjamk/app.bsky.feed.generator/for-you` (D-31). |
 | `delvetown.handle` | `string` | The bot's own handle on delve.town. |
 | `delvetown.password` | `string` | Account password, or an app password issued by the PDS named beside it. |
 | `delvetown.service` | `string` | `https://pds.delve.town`. |
 | `delvetown.appview` | `string` | `did:web:api.delve.town#bsky_appview`. |
 | `delvetown.lexicon` | `string` | `town.delve`. |
+| `delvetown.feed` | `string` | `following`. A generator lives on one network, so a Bluesky feed URI means nothing here (D-31). |
 | `ignoreList` | `string[]` | Handles never replied to. Applies to every account. |
 | `botList` | `string[]` | Handles denied the mention exemption at the thread-restraint rule, and refused outright in the feed. Attenuation itself applies to everyone (D-29). Applies to every account. |
 
@@ -226,17 +228,17 @@ Oblique speaks; the occasion says what it is speaking to.
 
 ### 1.13 FeedCandidate **[D]**
 
-*Serves:* G-2. One post from the timeline, as the feed gate judges it.
+*Serves:* G-2. One post from the account's feed, as the feed gate judges it.
 
 | Field | Type | Meaning |
 |---|---|---|
 | `message` | `BlueskyMessage` | the post, shaped exactly as a notification, with `reason` = `FEED_REASON` |
 | `replyCount` | number | how many replies it already has, as the AppView counts them |
 | `isReply` | boolean | whether it is itself a reply, rather than the top of a thread |
-| `isRepost` | boolean | whether it is in the timeline because someone reposted it |
+| `isRepost` | boolean | whether it is in the feed because someone reposted it |
 
 The three facts beside the message are the ones the gate judges on and a `BlueskyMessage` has
-no room for. All three arrive with the post, so a whole timeline is qualified without a further
+no room for. All three arrive with the post, so a whole feed is qualified without a further
 request (4.26).
 
 `message` is a `BlueskyMessage` and not a type of its own so that the reply chain needs no case
@@ -1377,7 +1379,8 @@ checkFeeds(force):
 checkFeedAccount(account, llmClient, jevClient, onWaitingTaskComplete) -> FeedCheck:
   try:
     await account.client.ensureAuth()
-    candidates = await account.client.getTimeline(FEED_BATCH)
+    candidates = await account.client.getFeed(FEED_BATCH)                # 'following' -> feed.getTimeline
+                                                                        # else feed.getFeed of that URI
     for each candidate:                                                 # free, offline
       reason = feedRestraintReason(candidate, account.handle)           # 4.27
       if reason: log it; declined += reason; continue
@@ -1401,7 +1404,12 @@ verifyPick(account, candidate):
 
 **The order is the whole design.** The free rules run over the whole batch, the one paid judgment
 runs over what survived them, and the one extra request runs on the single post that won. A look
-at a fifty-post timeline costs two requests and one Jev call, whatever it finds (D-28).
+at a fifty-post feed costs two requests and one Jev call, whatever it finds (D-28).
+
+Which feed is read is the account's `feed`: its own timeline, or a feed generator such as "For
+You". Both answer in the same feed-view shape, so nothing after the read knows which it was. A
+generator reaches strangers, which the following timeline never does; that is the point, and
+the cadence, the gate and `none` are what keep it to one lateral reply in half an hour (D-31).
 
 `verifyPick` is the only place Oblique can see its own past replies. A timeline says how many
 replies a post has and never whose, so a post answered an hour ago is indistinguishable from an

@@ -9,7 +9,7 @@ import { BlueskyClient } from './hooks/bluesky/bluesky-client.js';
 const ACCOUNT_SECTIONS = ['bluesky', 'delvetown'];
 
 /** Everything a section must carry before a client can be built from it. */
-const ACCOUNT_FIELDS = ['handle', 'password', 'service', 'appview', 'lexicon'];
+const ACCOUNT_FIELDS = ['handle', 'password', 'service', 'appview', 'lexicon', 'feed'];
 
 export interface BlueskyAccount {
   /** The config section it came from. Labels the account in the panel and the log. */
@@ -59,6 +59,7 @@ const buildAccount = (name: string, section: any): BlueskyAccount | null => {
       service: section.service,
       appview: section.appview,
       lexicon: section.lexicon,
+      feed: section.feed,
     }),
   };
 };

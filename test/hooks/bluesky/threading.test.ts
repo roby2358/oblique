@@ -13,7 +13,8 @@ describe('BlueskyClient Threading', () => {
     appPassword: 'test-password',
     service: 'https://bsky.social',
     appview: 'did:web:api.bsky.app#bsky_appview',
-    lexicon: 'app.bsky'
+    lexicon: 'app.bsky',
+    feed: 'following'
   };
 
   beforeEach(() => {

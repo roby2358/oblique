@@ -114,7 +114,7 @@ describe('Bluesky Polling Module', () => {
 
     const clientWith = (feed: any[], thread: any) => ({
       ensureAuth: jest.fn<any>().mockResolvedValue(undefined),
-      getTimeline: jest.fn<any>().mockResolvedValue(feed),
+      getFeed: jest.fn<any>().mockResolvedValue(feed),
       getSinglePost: jest.fn<any>().mockResolvedValue(thread),
     });
 
@@ -225,7 +225,7 @@ describe('Bluesky Polling Module', () => {
       const { checkFeedAccount } = await import('../src/bluesky-panel.js');
       const client = {
         ensureAuth: jest.fn<any>().mockResolvedValue(undefined),
-        getTimeline: jest.fn<any>().mockRejectedValue(new Error('UpstreamFailure')),
+        getFeed: jest.fn<any>().mockRejectedValue(new Error('UpstreamFailure')),
       };
 
       const check = await checkFeedAccount(account(client) as any, {} as any, jevChoosing('p1') as any, jest.fn());

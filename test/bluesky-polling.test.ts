@@ -168,16 +168,16 @@ describe('Bluesky Polling Module', () => {
 
   describe('notificationRestraintReason', () => {
     it('refuses a like without consulting the post data', async () => {
-      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
+      const { notificationRestraintReason, PassRestraint } = await import('../src/bluesky-polling.js');
       const like: BlueskyMessage = {
         ...baseNotification,
         uri: 'at://did:plc:test/app.bsky.feed.like/3my3tjzprdr24',
         reason: 'like',
       };
 
-      expect(notificationRestraintReason(like, createPostData(false), SELF_HANDLE))
+      expect(notificationRestraintReason(like, createPostData(false), SELF_HANDLE, new PassRestraint()))
         .toBe('a like names no post to answer');
-      expect(notificationRestraintReason(like, undefined, SELF_HANDLE))
+      expect(notificationRestraintReason(like, undefined, SELF_HANDLE, new PassRestraint()))
         .toBe('a like names no post to answer');
     });
 
@@ -187,58 +187,58 @@ describe('Bluesky Polling Module', () => {
         botList: [],
       });
 
-      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
+      const { notificationRestraintReason, PassRestraint } = await import('../src/bluesky-polling.js');
 
-      expect(notificationRestraintReason(baseNotification, createPostData(false), SELF_HANDLE))
+      expect(notificationRestraintReason(baseNotification, createPostData(false), SELF_HANDLE, new PassRestraint()))
         .toBe('the author is in the ignore list');
       expect(getConfigMock).toHaveBeenCalled();
     });
 
     it('skips quote notifications that do not name the account', async () => {
-      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
+      const { notificationRestraintReason, PassRestraint } = await import('../src/bluesky-polling.js');
       const notification: BlueskyMessage = {
         ...baseNotification,
         reason: 'quote',
         text: 'Random quote text',
       };
 
-      expect(notificationRestraintReason(notification, createPostData(false), SELF_HANDLE))
+      expect(notificationRestraintReason(notification, createPostData(false), SELF_HANDLE, new PassRestraint()))
         .toBe('a quote that does not name us');
     });
 
     it('responds to direct mentions without checking for replies', async () => {
-      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
+      const { notificationRestraintReason, PassRestraint } = await import('../src/bluesky-polling.js');
       const postData = createPostData(true); // Has replies, but a mention is always answered
       const notification: BlueskyMessage = {
         ...baseNotification,
         reason: 'mention',
       };
 
-      expect(notificationRestraintReason(notification, postData, SELF_HANDLE)).toBeNull();
+      expect(notificationRestraintReason(notification, postData, SELF_HANDLE, new PassRestraint())).toBeNull();
     });
 
     // R-8, D-28: someone else answering only closes a post partway down a thread. At the top
     // of one there is room for another voice.
     it('skips a reply someone else has already answered', async () => {
-      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
+      const { notificationRestraintReason, PassRestraint } = await import('../src/bluesky-polling.js');
 
-      expect(notificationRestraintReason(baseNotification, createReplyPostData(['someone.else']), SELF_HANDLE))
+      expect(notificationRestraintReason(baseNotification, createReplyPostData(['someone.else']), SELF_HANDLE, new PassRestraint()))
         .toBe('someone already replied to this post');
     });
 
     it('answers a top-level post someone else has already answered', async () => {
-      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
+      const { notificationRestraintReason, PassRestraint } = await import('../src/bluesky-polling.js');
 
-      expect(notificationRestraintReason(baseNotification, createPostData(true), SELF_HANDLE))
+      expect(notificationRestraintReason(baseNotification, createPostData(true), SELF_HANDLE, new PassRestraint()))
         .toBeNull();
     });
 
     // The only duplicate check there is: nothing here remembers across a reload, the network
     // does (D-28)
     it('never answers a post it has answered itself', async () => {
-      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
+      const { notificationRestraintReason, PassRestraint } = await import('../src/bluesky-polling.js');
 
-      expect(notificationRestraintReason(baseNotification, createPostDataAnsweredByUs(), SELF_HANDLE))
+      expect(notificationRestraintReason(baseNotification, createPostDataAnsweredByUs(), SELF_HANDLE, new PassRestraint()))
         .toBe('we already answered this post');
     });
 
@@ -252,11 +252,11 @@ describe('Bluesky Polling Module', () => {
     });
 
     it('responds when no replies exist', async () => {
-      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
+      const { notificationRestraintReason, PassRestraint } = await import('../src/bluesky-polling.js');
 
-      expect(notificationRestraintReason(baseNotification, createPostData(false), SELF_HANDLE))
+      expect(notificationRestraintReason(baseNotification, createPostData(false), SELF_HANDLE, new PassRestraint()))
         .toBeNull();
-      expect(notificationRestraintReason(baseNotification, createReplyPostData([]), SELF_HANDLE))
+      expect(notificationRestraintReason(baseNotification, createReplyPostData([]), SELF_HANDLE, new PassRestraint()))
         .toBeNull();
     });
 
@@ -272,22 +272,22 @@ describe('Bluesky Polling Module', () => {
     });
 
     it('passes the unreadable reason through when the post cannot be read', async () => {
-      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
+      const { notificationRestraintReason, PassRestraint } = await import('../src/bluesky-polling.js');
 
       // the reason the first gate gives is the one the tally counts, so it is the specific
       // one rather than a generic refusal
-      expect(notificationRestraintReason(baseNotification, { data: null }, SELF_HANDLE))
+      expect(notificationRestraintReason(baseNotification, { data: null }, SELF_HANDLE, new PassRestraint()))
         .toBe('the post could not be fetched');
-      expect(notificationRestraintReason(baseNotification, null, SELF_HANDLE))
+      expect(notificationRestraintReason(baseNotification, null, SELF_HANDLE, new PassRestraint()))
         .toBe('the post could not be fetched');
     });
 
     it('carries no author, so the same reason tallies across notifications', async () => {
-      const { notificationRestraintReason } = await import('../src/bluesky-polling.js');
+      const { notificationRestraintReason, PassRestraint } = await import('../src/bluesky-polling.js');
       const other: BlueskyMessage = { ...baseNotification, author: 'someone.else' };
 
-      expect(notificationRestraintReason(other, createPostData(true), SELF_HANDLE))
-        .toBe(notificationRestraintReason(baseNotification, createPostData(true), SELF_HANDLE));
+      expect(notificationRestraintReason(other, createPostData(true), SELF_HANDLE, new PassRestraint()))
+        .toBe(notificationRestraintReason(baseNotification, createPostData(true), SELF_HANDLE, new PassRestraint()));
     });
   });
 
@@ -396,6 +396,59 @@ describe('Bluesky Polling Module', () => {
 
   // R-9: the second gate. The window counts every author now, and only an @ from a human
   // escapes it (D-29).
+  // R-57, D-30: rule 5, one answer per author per pass unless they @ the bot
+  describe('notificationRestraintReason across a pass', () => {
+    /** Run one author's notifications through a single pass; how many it answers. */
+    const answers = async (reasons: string[]): Promise<number> => {
+      const { notificationRestraintReason, PassRestraint } = await import('../src/bluesky-polling.js');
+      const pass = new PassRestraint();
+      let answered = 0;
+
+      for (const reason of reasons) {
+        const notification = { ...baseNotification, reason, text: `${SELF_HANDLE} hello` };
+
+        if (notificationRestraintReason(notification, createPostData(false), SELF_HANDLE, pass)) {
+          continue;
+        }
+
+        pass.answering(notification);
+        answered += 1;
+      }
+
+      return answered;
+    };
+
+    it('answers reply, mention, reply twice', async () => {
+      expect(await answers(['reply', 'mention', 'reply'])).toBe(2);
+    });
+
+    it('answers reply, mention, mention three times', async () => {
+      expect(await answers(['reply', 'mention', 'mention'])).toBe(3);
+    });
+
+    it('answers mention, reply twice, because a mention spends nothing', async () => {
+      expect(await answers(['mention', 'reply'])).toBe(2);
+    });
+
+    it('answers reply, reply once', async () => {
+      expect(await answers(['reply', 'reply'])).toBe(1);
+    });
+
+    it('counts a quote like a reply', async () => {
+      expect(await answers(['quote', 'reply'])).toBe(1);
+    });
+
+    it('keeps each author to their own turn', async () => {
+      const { PassRestraint } = await import('../src/bluesky-polling.js');
+      const pass = new PassRestraint();
+
+      pass.answering(baseNotification);
+
+      expect(pass.hasAnswered('someone.else')).toBe(false);
+      expect(pass.hasAnswered('@user.test')).toBe(true);
+    });
+  });
+
   describe('threadRestraintReason', () => {
     const withBots = (botList: string[]) => {
       getConfigMock.mockReturnValue({

@@ -129,6 +129,34 @@ export const alreadyAnsweredReason = (postData: any, selfHandle: string): string
 };
 
 /**
+ * What one pass has answered, by author, so that a burst from one person earns one reply
+ * rather than one each (D-30). A reply that branches the thread again and again would otherwise
+ * be answered at every branch, and the answers would branch it further.
+ *
+ * Only a reply or a quote spends the author's turn: a direct mention is always answered and
+ * never counted, so `reply, mention, reply` earns two answers and `mention, reply` earns two.
+ * The pass is the whole memory. A notification skipped here is marked seen with the rest and
+ * never comes back (D-11); the next pass starts clean.
+ */
+export class PassRestraint {
+  private readonly answeredAuthors = new Set<string>();
+
+  /** Whether this pass has already spent the author's turn. */
+  hasAnswered(author: string): boolean {
+    return this.answeredAuthors.has(normalizeHandle(author));
+  }
+
+  /** Record that a notification is being answered, spending its author's turn unless it was an @. */
+  answering(notification: BlueskyMessage): void {
+    if (isDirectMention(notification.reason)) {
+      return;
+    }
+
+    this.answeredAuthors.add(normalizeHandle(notification.author));
+  }
+}
+
+/**
  * Why a notification should be left alone, or `null` when it should be answered. The first
  * gate, against the one notification and the post it names.
  *
@@ -138,12 +166,14 @@ export const alreadyAnsweredReason = (postData: any, selfHandle: string): string
  * @param notification - The notification to judge
  * @param postData - The post thread data from getSinglePost, or `null` if it could not be read
  * @param selfHandle - The handle of the account the notification arrived on
+ * @param pass - What this pass has answered so far
  * @returns The reason to decline, or `null` to answer
  */
 export const notificationRestraintReason = (
   notification: BlueskyMessage,
   postData: any,
-  selfHandle: string
+  selfHandle: string,
+  pass: PassRestraint
 ): string | null => {
   // Rule 0: only reasons that name a post can be answered
   if (!isRepliableNotification(notification)) {
@@ -180,7 +210,19 @@ export const notificationRestraintReason = (
   // Rule 4: a post we have answered already is never answered twice; a post someone else
   // answered is still open at the top of a thread, where a reply starts a branch rather than
   // interrupting one (D-28)
-  return alreadyAnsweredReason(postData, selfHandle);
+  const answered = alreadyAnsweredReason(postData, selfHandle);
+
+  if (answered) {
+    return answered;
+  }
+
+  // Rule 5: one answer per author per pass, so a burst of replies is not met with a burst
+  // (D-30). A mention never reaches here, so it neither needs a turn nor spends one.
+  if (pass.hasAnswered(notification.author)) {
+    return 'we already answered this author in this pass';
+  }
+
+  return null;
 };
 
 /**

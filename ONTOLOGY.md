@@ -439,7 +439,7 @@ isRepliableNotification(notif) -> notif.reason in REPLIABLE_REASONS
 
 needsPostData(notif) -> isRepliableNotification(notif) and notif.reason != 'mention'
 
-notificationRestraintReason(notif, postData, selfHandle):
+notificationRestraintReason(notif, postData, selfHandle, pass):
   if not isRepliableNotification(notif) -> 'a <reason> names no post to answer'
   if config.ignoreList includes notif.author
                                         -> 'the author is in the ignore list'
@@ -448,7 +448,10 @@ notificationRestraintReason(notif, postData, selfHandle):
   if notif.reason == 'mention'          -> null            # always answered
   reason = postUnreadableReason(postData)
   if reason                             -> reason          # say which
-  -> alreadyAnsweredReason(postData, selfHandle)           # 4.26, or null to answer it
+  reason = alreadyAnsweredReason(postData, selfHandle)     # 4.26
+  if reason                             -> reason
+  if pass.hasAnswered(notif.author)     -> 'we already answered this author in this pass'
+  -> null                                                  # answer it
 
 postUnreadableReason(postData):
   thread = postData?.data?.thread
@@ -458,6 +461,15 @@ postUnreadableReason(postData):
   if kind == 'notFoundPost'             -> 'the post is gone'
   if kind == 'blockedPost'              -> 'the post is blocked, by us or by its author'
   -> 'the thread came back as <$type>'
+
+PassRestraint                                     # one per account per pass (D-30)
+  hasAnswered(author) -> author's turn spent this pass
+  answering(notif):
+    if notif.reason != 'mention'        -> spend notif.author's turn
+
+judgeNotifications, per notification in batch order:
+  if not notificationRestraintReason(notif, postData, selfHandle, pass)
+    -> pass.answering(notif), make the reply task
 ```
 
 Only a `mention`, `reply` or `quote` names a post. A `like`, `repost` or `follow`
@@ -490,6 +502,20 @@ but the reason says which.
 Every reason is author-free, so the panel can count how many notifications each one declined
 and print the tally instead of a line per notification; the author belongs to the console
 line the poller writes beside it (D-25).
+
+The last rule is the only one that looks past the notification in hand: one author earns one
+answer a pass, kept in the `PassRestraint` the poller makes fresh for each account's pass and
+hands to every call. A mention returns before it, so it never applies to one. A reply or a quote spends
+the author's turn; a mention neither needs one nor spends one. So from one author in one batch,
+`reply, mention, reply` is answered twice, `reply, mention, mention` three times,
+`mention, reply` twice and `reply, reply` once. Only notifications that are actually answered
+spend a turn — one declined for any other reason leaves it unspent. "Answered" means passed by
+this gate: a reply that later dies at the thread gate or draws silence has still spent the turn. The batch arrives newest
+first, so the reply that gets the turn is the author's latest. Without this, someone replying
+to several of Oblique's posts at once would be answered at every one, and each answer is a new
+place for them to reply: a pass would answer a burst with a burst. The memory is the pass and
+no more — a notification skipped here is marked seen with the rest and never comes back (D-11),
+and the next pass starts clean. Each account keeps its own, since handles differ by network.
 
 ### 4.9 Thread restraint **[D]**
 

@@ -516,6 +516,7 @@ can write.
 | Unbounded thread growth | `THREAD_MAX_POSTS` cap in `threadRestraintReason` | R-9 |
 | A persistent harasser | `config.ignoreList`, checked first, and never exempt | R-8 |
 | One account monopolizing the bot | `attenuationReason` counts every author, not only bots — four of the last eight posts and the thread is declined | R-9, D-29 |
+| A burst of replies fanning out into a burst of answers | `PassRestraint`: one answer per author per pass, mentions excepted | R-57, D-30 |
 | Quote-post farming — quoting the bot to force a reply | Quotes are answered only when the text contains the bot's handle | R-8 |
 | Dogpiling an already-answered post | Non-mentions are skipped when the post has replies | R-8 |
 | Prompt injection in a post or alt text | System-prompt instructions against persona changes and implementation disclosure. **Weak** — this is instruction, not mechanism, and a post is interpolated into the user message unescaped | none. Q-6 |
@@ -695,6 +696,35 @@ can write.
   three, a mention always gets an answer. Unmeasured, and the first thing to look at if replies
   start drying up.
 
+### D-30 One answer per author per pass, unless they @ the bot — *Decided*
+
+- **Alternatives:** rely on attenuation alone (D-29); one answer per author per pass with no
+  exception; one per thread per pass; remember answered authors across passes.
+- **Why:** attenuation reads one thread at a time, so it cannot see one author replying to
+  several of Oblique's posts in the same few minutes. Each of those answers is a new branch for
+  them to reply to, so a pass that answers every one invites a bigger burst on the next — the
+  tree grows exponentially. One reply per author per pass caps the fan-out at the number of
+  authors. The mention exemption carries over from D-29 for the same reason: someone typing the
+  handle is asking, and a mention neither needs a turn nor spends one, so it can never cost
+  another notification its answer. A `botList` handle gets no special case here — a bot's
+  mentions are still bounded per thread by D-29.
+- **Pass, not memory:** the page remembers nothing across a reload, and adding a cross-pass
+  memory for this would be the first. A pass is the natural unit: it is one batch, judged in
+  one loop, and the notifications skipped are marked seen and dropped (D-11), which is the
+  intended outcome rather than a deferral.
+- **Cost:** a skipped reply's post is still fetched, because the cheap rules run first and the
+  turn is checked last; one `getPostThread` per extra reply, only in a burst.
+- **Evidence:** none; the rule was asked for directly. Unmeasured.
+- **Risk accepted:** the author's other replies in the burst go unanswered for good, including
+  one that might have been the better one to answer. The batch is newest first, so it is the
+  latest that is answered. And the turn is spent when the first gate passes a reply, not when
+  a reply is posted: if that reply then dies at the thread gate or draws silence, the author's
+  other replies in the burst were skipped for nothing. Accepted — they will survive, and anyone
+  who really wants an answer can @ the bot, which this rule never touches.
+- **Where it lives:** rule 5 of `notificationRestraintReason`, with the pass's memory passed in,
+  so the first gate stays one function and one list of rules. The gate only reads it; the
+  poller spends the turn when it makes the task.
+
 ## Open questions
 
 Each is a real decision for the designer, not a task.
@@ -794,6 +824,16 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-28 — One answer per author per pass
+
+`notificationRestraintReason` gained rule 5 and a `PassRestraint` argument, made fresh for each
+account's pass: an author whose reply or quote has been answered this pass is declined for the
+rest of it, with
+`'we already answered this author in this pass'` in the tally. A mention is always answered and
+spends nothing, so `reply, mention, reply` gets two answers and `mention, reply` gets two (D-30).
+It closes the fan-out attenuation could not see: one person replying to many of Oblique's posts
+at once, each answer a new branch for the next burst.
 
 ### 2026-10-27 — Attenuation applies to everyone
 

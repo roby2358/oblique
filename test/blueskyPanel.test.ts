@@ -295,6 +295,51 @@ describe('Bluesky Polling Module', () => {
       log.mockRestore();
     });
 
+    // R-57, D-30: one author's burst earns one answer, and an @ among it is answered as well
+    it('answers an author once a pass unless they @ the bot', async () => {
+      const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+      const { checkAccount } = await import('../src/bluesky-panel.js');
+
+      const notif = (reason: string, n: number) => ({
+        uri: `at://did:plc:test/app.bsky.feed.post/${n}`,
+        cid: `cid-${n}`,
+        author: 'chatty.human',
+        text: 'hello',
+        createdAt: new Date(),
+        reason,
+      });
+      const topLevelPost = {
+        data: {
+          thread: {
+            $type: 'app.bsky.feed.defs#threadViewPost',
+            post: { record: { text: 'hello' } },
+            replies: [],
+          },
+        },
+      };
+
+      const client = {
+        ensureAuth: jest.fn<any>().mockResolvedValue(undefined),
+        getNotifications: jest.fn<any>().mockResolvedValue([
+          notif('reply', 1),
+          notif('mention', 2),
+          notif('reply', 3),
+        ]),
+        markNotificationsAsSeen: jest.fn<any>().mockResolvedValue(undefined),
+        getSinglePost: jest.fn<any>().mockResolvedValue(topLevelPost),
+      };
+
+      const check = await checkAccount(accountWith(client) as any, {} as any, undefined, jest.fn(), false);
+
+      expect(check.answered.map(notification => notification.uri)).toEqual([
+        'at://did:plc:test/app.bsky.feed.post/1',
+        'at://did:plc:test/app.bsky.feed.post/2',
+      ]);
+      expect(check.declined).toEqual(['we already answered this author in this pass']);
+      expect(check.tasks).toHaveLength(2);
+      log.mockRestore();
+    });
+
     it('creates no task and marks nothing seen when an account has no notifications', async () => {
       const { checkAccount } = await import('../src/bluesky-panel.js');
       const client = {

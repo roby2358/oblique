@@ -133,7 +133,8 @@ list that refuses outright on every path. `botList` holds handles treated as bot
 refused outright in the feed, and they are the one case the attenuation rule's mention
 exemption does not cover, which is what stops two bots @-ing each other forever. Attenuation
 itself counts everybody — four of the last eight posts in a thread and the reply is declined,
-unless a human @s the bot, which is always answered. Both lists apply to every account, and
+unless a human @s the bot, which is always answered. Within one check, each author gets one
+answer to their replies however many they sent, and every @ besides. Both lists apply to every account, and
 handles go in without the leading `@`.
 
 ### Run

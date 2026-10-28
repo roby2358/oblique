@@ -9,6 +9,7 @@ import {
   feedRestraintReason,
   needsPostData,
   notificationRestraintReason,
+  PassRestraint,
   postUnreadableReason,
 } from './bluesky-polling.js';
 import { chooseFeedPost } from './feed-choice.js';
@@ -170,7 +171,8 @@ export interface AccountCheck {
 /**
  * What one account's notifications earned: a task each for the ones to answer, a reason each
  * for the rest. Every restraint rule is asked with that account's own handle, because each
- * network knows Oblique by a different name (D-22).
+ * network knows Oblique by a different name (D-22), and against this pass's `PassRestraint`,
+ * which each answered notification spends (D-30).
  *
  * The post is fetched only once the cheap rules have passed: a like, repost or follow
  * notification's uri is that record and `getPostThread` answers 400 for it (R-8).
@@ -185,12 +187,13 @@ const judgeNotifications = async (
   const answered: BlueskyMessage[] = [];
   const declined: string[] = [];
   const tasks: DrakidionTask[] = [];
+  const pass = new PassRestraint();
 
   for (const notif of notifications) {
     const postData = needsPostData(notif)
       ? await fetchPostData(account.client, notif)
       : null;
-    const reason = notificationRestraintReason(notif, postData, account.handle);
+    const reason = notificationRestraintReason(notif, postData, account.handle, pass);
 
     if (reason) {
       console.log(`Skipping @${notif.author}: ${reason}`);
@@ -199,6 +202,7 @@ const judgeNotifications = async (
     }
 
     console.log(`\u2713 Answering @${notif.author}`);
+    pass.answering(notif);
     answered.push(notif);
     tasks.push(createReplyTask(notif, llmClient, jevClient, account.client, onWaitingTaskComplete));
   }

@@ -9,7 +9,15 @@ import { normalizeHandle } from './bluesky-accounts.js';
  * the like/repost/follow record itself, so asking Bluesky for its thread is a 400 — and there
  * is nothing there to answer in any case.
  */
-const REPLIABLE_REASONS = ['mention', 'reply', 'quote'];
+const MENTION_REASON = 'mention';
+const REPLIABLE_REASONS = [MENTION_REASON, 'reply', 'quote'];
+
+/**
+ * Whether a post arrived because someone typed the handle. Asked by three rules — whether the
+ * post needs reading, whether the first gate stops there, and whether the attenuation window
+ * applies — so it is answered in one place.
+ */
+export const isDirectMention = (reason: string): boolean => reason === MENTION_REASON;
 
 /** Check whether a notification names a post at all
  *
@@ -75,7 +83,7 @@ export const postUnreadableReason = (postData: any): string | null => {
  * fetching, so a like costs one line of the notification list and no request (R-8).
  */
 export const needsPostData = (notification: BlueskyMessage): boolean => {
-  return isRepliableNotification(notification) && notification.reason !== 'mention';
+  return isRepliableNotification(notification) && !isDirectMention(notification.reason);
 };
 
 /** Whether the post a thread view names is itself a reply, rather than the top of a thread. */
@@ -159,7 +167,7 @@ export const notificationRestraintReason = (
 
   // Rule 3: a direct mention was addressed to the bot, so someone else having replied is
   // irrelevant and nothing below applies
-  if (notification.reason === 'mention') {
+  if (isDirectMention(notification.reason)) {
     return null;
   }
 
@@ -176,25 +184,50 @@ export const notificationRestraintReason = (
 };
 
 /**
- * Why the bot that spoke last is being throttled, or `null` when it is not.
- *
- * Two bots can otherwise answer each other forever. The count is of that one author, not of
- * bots in general, and the limit only engages when a bot spoke last — a human can carry a
- * long exchange without being throttled (D-7).
+ * How many of the recent posts one author may hold before the chain declines, and how far back
+ * "recent" reaches. The window counts Oblique's own posts too, so in an alternating thread the
+ * other party holds exactly half of it, and a limit above half the window would never be
+ * reached by someone taking turns. Derived rather than set, so tuning the limit cannot break
+ * that. Oblique gets `ATTENUATION_LIMIT - 1` replies into an alternating thread (D-29).
  */
-const botAttenuationReason = (thread: BlueskyHistoryEntry[]): string | null => {
-  const recent = thread.slice(-8).map(entry => normalizeHandle(entry.author));
+const ATTENUATION_LIMIT = 4;
+const ATTENUATION_WINDOW = 2 * ATTENUATION_LIMIT;
+
+/** The backstop for every long thread the window lets through. */
+const THREAD_MAX_POSTS = 60;
+
+/**
+ * Why the author who spoke last is being throttled, or `null` when they are not.
+ *
+ * Two bots answering each other forever is the case the window was written for (D-7), but a
+ * human can hold a thread open just as long, and a reply nobody is still reading is spam
+ * whoever it is addressed to — so the window counts every author, bot or not (D-29). The count
+ * is of that one author rather than of authors in general: three in rotation never trip it,
+ * two alternating do.
+ *
+ * A direct mention is exempt, because someone who typed the handle is asking for an answer and
+ * G-1 is what the page is for. A bot is not: two bots @ each other by construction, so letting
+ * a mention through for them would hand back the unbounded loop the window exists to stop. The
+ * bot check therefore comes first, exactly where it has always been.
+ */
+const attenuationReason = (
+  thread: BlueskyHistoryEntry[],
+  notificationReason: string
+): string | null => {
+  const recent = thread.slice(-ATTENUATION_WINDOW).map(entry => normalizeHandle(entry.author));
   const lastAuthor = recent[recent.length - 1];
 
   console.log(`Last ${recent.length} authors: ${recent.join('|')}`);
 
-  if (!getConfig().botList.includes(lastAuthor)) {
+  const isBot = getConfig().botList.includes(lastAuthor);
+
+  if (!isBot && isDirectMention(notificationReason)) {
     return null;
   }
 
   const fromLastAuthor = recent.filter(author => author === lastAuthor).length;
 
-  if (fromLastAuthor < 4) {
+  if (fromLastAuthor < ATTENUATION_LIMIT) {
     return null;
   }
 
@@ -208,19 +241,30 @@ const botAttenuationReason = (thread: BlueskyHistoryEntry[]): string | null => {
  * Named rather than answered with a boolean, the way `postUnreadableReason` is at the first
  * gate: a chain that is declined says in its own work product which rule declined it, so
  * restraint is legible in the observer panel instead of silent (D-24).
+ *
+ * The notification's reason reaches this gate only for the mention exemption. Everything the
+ * feed produces carries `FEED_REASON`, so nothing down that path is ever exempt — which is
+ * right, since nobody asked for it (D-28).
+ *
+ * @param thread - The assembled thread, oldest first, ending with the post to answer
+ * @param notificationReason - The reason the post arrived: `mention` is the one that exempts
+ * @returns The reason to decline, or `null` to answer
  */
-export const threadRestraintReason = (thread: BlueskyHistoryEntry[]): string | null => {
+export const threadRestraintReason = (
+  thread: BlueskyHistoryEntry[],
+  notificationReason: string
+): string | null => {
   if (!thread || thread.length === 0) {
     return 'the thread came back empty';
   }
 
-  const attenuated = botAttenuationReason(thread);
+  const attenuated = attenuationReason(thread, notificationReason);
 
   if (attenuated) {
     return attenuated;
   }
 
-  if (thread.length > 60) {
+  if (thread.length > THREAD_MAX_POSTS) {
     return `the thread is ${thread.length} posts long`;
   }
 

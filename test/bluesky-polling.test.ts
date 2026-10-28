@@ -394,6 +394,8 @@ describe('Bluesky Polling Module', () => {
     });
   });
 
+  // R-9: the second gate. The window counts every author now, and only an @ from a human
+  // escapes it (D-29).
   describe('threadRestraintReason', () => {
     const withBots = (botList: string[]) => {
       getConfigMock.mockReturnValue({
@@ -405,26 +407,29 @@ describe('Bluesky Polling Module', () => {
 
     const posts = (authors: string[]) => authors.map(author => ({ author, text: 'x' }));
 
+    // Four of the last eight, which is the limit: the thread an alternating conversation
+    // reaches on the other party's fourth post
+    const flooded = (author: string) => posts([
+      'user.one', 'user.two', author, 'user.three',
+      author, author, 'user.four', author,
+    ]);
+
     it('declines a thread that came back empty', async () => {
       withBots([]);
 
       const { threadRestraintReason } = await import('../src/bluesky-polling.js');
 
-      expect(threadRestraintReason([])).toBe('the thread came back empty');
+      expect(threadRestraintReason([], 'reply')).toBe('the thread came back empty');
     });
 
     it('declines a bot holding 4 of the last 8 posts, and says which bot', async () => {
       withBots(['bot.alpha']);
 
-      const thread = posts([
-        'user.one', 'user.two', '@bot.alpha', 'user.three',
-        '@bot.alpha', '@bot.alpha', 'user.four', '@bot.alpha',
-      ]);
-
       const { threadRestraintReason } = await import('../src/bluesky-polling.js');
 
       // the reason reaches the declined chain's work product, so it names the author
-      expect(threadRestraintReason(thread as any)).toBe('@bot.alpha wrote 4 of the last 8 posts');
+      expect(threadRestraintReason(flooded('@bot.alpha') as any, 'reply'))
+        .toBe('@bot.alpha wrote 4 of the last 8 posts');
     });
 
     it('answers a bot holding only 3 of the last 8 posts', async () => {
@@ -437,11 +442,61 @@ describe('Bluesky Polling Module', () => {
 
       const { threadRestraintReason } = await import('../src/bluesky-polling.js');
 
-      expect(threadRestraintReason(thread as any)).toBeNull();
+      expect(threadRestraintReason(thread as any, 'reply')).toBeNull();
     });
 
-    it('never attenuates a human, however much of the thread is theirs', async () => {
+    // The change D-29 makes: a human on the same window as a bot, counted the same way
+    it('attenuates a human on the same window as a bot', async () => {
       withBots(['bot.alpha']);
+
+      const { threadRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(threadRestraintReason(flooded('chatty.human') as any, 'reply'))
+        .toBe('@chatty.human wrote 4 of the last 8 posts');
+    });
+
+    it('answers a human holding only 3 of the last 8 posts', async () => {
+      withBots([]);
+
+      const thread = posts([
+        'user.one', 'user.two', 'chatty.human', 'user.three',
+        'user.four', 'chatty.human', 'user.five', 'chatty.human',
+      ]);
+
+      const { threadRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(threadRestraintReason(thread as any, 'reply')).toBeNull();
+    });
+
+    // The claim D-29 rests on: the window counts Oblique's posts too, so someone taking turns
+    // holds half of it and the limit falls on their fourth post — three replies, then stop
+    it('stops an alternating conversation on the other party\'s fourth post', async () => {
+      withBots([]);
+
+      const turns = (count: number) =>
+        posts(Array.from({ length: count * 2 - 1 }, (_unused, index) =>
+          index % 2 === 0 ? 'chatty.human' : 'oblique.yuwakisa.com'));
+
+      const { threadRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(threadRestraintReason(turns(3) as any, 'reply')).toBeNull();
+      expect(threadRestraintReason(turns(4) as any, 'reply'))
+        .toBe('@chatty.human wrote 4 of the last 7 posts');
+    });
+
+    it('answers a direct mention as one, and nothing else as one', async () => {
+      const { isDirectMention } = await import('../src/bluesky-polling.js');
+
+      expect(isDirectMention('mention')).toBe(true);
+
+      for (const reason of ['reply', 'quote', 'feed', 'like']) {
+        expect(isDirectMention(reason)).toBe(false);
+      }
+    });
+
+    // Someone who typed the handle is asking for an answer, and G-1 is what the page is for
+    it('never declines an @ from a human, however much of the thread is theirs', async () => {
+      withBots([]);
 
       const thread = posts([
         'user.one', 'chatty.human', 'chatty.human', 'chatty.human',
@@ -450,17 +505,41 @@ describe('Bluesky Polling Module', () => {
 
       const { threadRestraintReason } = await import('../src/bluesky-polling.js');
 
-      expect(threadRestraintReason(thread as any)).toBeNull();
+      expect(threadRestraintReason(thread as any, 'mention')).toBeNull();
     });
 
-    it('declines a thread one post past the limit, and says how long it is', async () => {
-      withBots([]);
-
-      const thread = posts(Array.from({ length: 61 }, (_, index) => `user.${index}`));
+    // Two bots @ each other by construction, so the exemption would hand back the unbounded
+    // loop the window exists to stop (D-7, X-4)
+    it('declines an @ from a bot over the limit', async () => {
+      withBots(['bot.alpha']);
 
       const { threadRestraintReason } = await import('../src/bluesky-polling.js');
 
-      expect(threadRestraintReason(thread as any)).toBe('the thread is 61 posts long');
+      expect(threadRestraintReason(flooded('@bot.alpha') as any, 'mention'))
+        .toBe('@bot.alpha wrote 4 of the last 8 posts');
+    });
+
+    // Nothing the feed produces is ever exempt: nobody asked for it (D-28)
+    it('attenuates a feed post like any other', async () => {
+      withBots([]);
+
+      const { threadRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(threadRestraintReason(flooded('chatty.human') as any, 'feed'))
+        .toBe('@chatty.human wrote 4 of the last 8 posts');
+    });
+
+    // A prompt-size backstop rather than restraint, so an @ does not escape it: a mention
+    // cannot make a thread fit in a context window
+    it('declines a thread one post past the limit, and says how long it is', async () => {
+      withBots([]);
+
+      const thread = posts(Array.from({ length: 61 }, (_unused, index) => `user.${index}`));
+
+      const { threadRestraintReason } = await import('../src/bluesky-polling.js');
+
+      expect(threadRestraintReason(thread as any, 'reply')).toBe('the thread is 61 posts long');
+      expect(threadRestraintReason(thread as any, 'mention')).toBe('the thread is 61 posts long');
     });
 
     it('answers an ordinary thread', async () => {
@@ -470,7 +549,7 @@ describe('Bluesky Polling Module', () => {
 
       const { threadRestraintReason } = await import('../src/bluesky-polling.js');
 
-      expect(threadRestraintReason(thread as any)).toBeNull();
+      expect(threadRestraintReason(thread as any, 'reply')).toBeNull();
     });
   });
 

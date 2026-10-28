@@ -116,6 +116,8 @@ settled), **History** (dated entries, newest first).
   answering. `THREAD_MAX_POSTS` of 60 is the backstop for everything the window misses.
 - **Evidence:** none for the specific numbers. X-4 is unmeasured; 4-of-8 and 60 were chosen by
   judgment, not measurement, and should be treated as untested.
+- **Amended by D-29:** the window still engages on whoever spoke last, but no longer only on a
+  bot. The names lost their `BOT_` prefix with the exemption.
 
 ### D-8 History assembly degrades rather than fails — *Decided*
 
@@ -510,9 +512,10 @@ can write.
 
 | Abuse | Prevention | Criteria |
 |---|---|---|
-| Bot-to-bot loop burning quota | `botAttenuationReason`: stop when a `botList` handle holds `BOT_ATTENUATION_LIMIT` of the last `BOT_WINDOW` posts, and end the chain `canceled` | R-9, R-42, X-4 |
+| Bot-to-bot loop burning quota | `attenuationReason`: stop when the last author holds `ATTENUATION_LIMIT` of the last `ATTENUATION_WINDOW` posts, and end the chain `canceled`. A `botList` handle cannot escape it with an @ | R-9, R-42, X-4 |
 | Unbounded thread growth | `THREAD_MAX_POSTS` cap in `threadRestraintReason` | R-9 |
-| A persistent harasser | `config.ignoreList`, checked first | R-8 |
+| A persistent harasser | `config.ignoreList`, checked first, and never exempt | R-8 |
+| One account monopolizing the bot | `attenuationReason` counts every author, not only bots — four of the last eight posts and the thread is declined | R-9, D-29 |
 | Quote-post farming — quoting the bot to force a reply | Quotes are answered only when the text contains the bot's handle | R-8 |
 | Dogpiling an already-answered post | Non-mentions are skipped when the post has replies | R-8 |
 | Prompt injection in a post or alt text | System-prompt instructions against persona changes and implementation disclosure. **Weak** — this is instruction, not mechanism, and a post is interpolated into the user message unescaped | none. Q-6 |
@@ -653,6 +656,45 @@ can write.
   than attenuated, one post per look, a clock that arms rather than fires on load — and none of
   them is measured yet (Q-15, `feedtal-7t3s`).
 
+### D-29 The attenuation window counts everyone, and only a human's @ escapes it — *Decided*
+
+- **Alternatives:** leave humans unattenuated as D-7 had it; a stricter window for bots than for
+  humans (2-of-4 against 4-of-8); a wider window for everyone (5-of-10); exempt every mention,
+  bots included; make the numbers per-network, strict on delve.town and loose on Bluesky.
+- **Why:** D-7 exempted humans because the loop it was written for was a bot loop. But a reply
+  nobody is still reading is spam whoever it is addressed to, and a human can hold a thread open
+  as long as any bot — so the exemption was about who was expected to misbehave, not about what
+  G-2 is for. One window for everyone is also one rule to read, which is worth more here than a
+  second pair of numbers: two pairs would have put a discriminator on `botList` in the middle of
+  the rule, and the point of the change was to take one out.
+  `ATTENUATION_WINDOW` includes Oblique's own posts, so in an alternating thread the other party
+  holds exactly half of it — four of eight. A limit above half the window is therefore
+  unreachable by an alternating conversation: 5-of-8 would have attenuated nobody who takes
+  turns, including two bots, and would have been *looser* than D-7 rather than stricter. The
+  window must be twice the limit to bite at all, which fixes 4-of-8 as "three replies, then
+  stop", 5-of-10 as four, and so on. 4-of-8 was kept, so the number did not change — only who
+  it counts.
+- **The mention exemption** is what makes that bearable: someone who types the handle is asking
+  for an answer, and G-1 is what the page is for. A `botList` handle is denied it, because two
+  bots @ each other by construction and an unconditional exemption would hand straight back the
+  loop D-7 exists to stop (X-4). So the `botList` check stays exactly where D-7 put it, at the
+  top of the rule, with a new job: it no longer decides *whether* to count, it decides whether
+  an @ may skip the count.
+- **Global rather than per-network,** for the same reason `ignoreList` and `botList` are global:
+  an author worth throttling on one network is worth throttling on the other, and delve.town's
+  bots are already in `botList` (D-22).
+- **Cost:** `notificationReason` threaded from the chain into the gate, which it did not need
+  before. The feed path passes `FEED_REASON` and so is never exempt — right, since nobody asked
+  for a feed reply in the first place (D-28).
+- **Evidence:** none for the numbers, as in D-7. What *is* established is the arithmetic above:
+  the window-twice-the-limit relation is forced, not chosen. X-4 is unchanged and still
+  unmeasured.
+- **Risk accepted:** a thread Oblique is only a bystander in can now be declined — someone
+  replies to it in a conversation they have been carrying heavily, and the window counts their
+  posts whether they were talking to Oblique or not. The @ is the escape hatch: a reply gets you
+  three, a mention always gets an answer. Unmeasured, and the first thing to look at if replies
+  start drying up.
+
 ## Open questions
 
 Each is a real decision for the designer, not a task.
@@ -719,8 +761,10 @@ it. Either answer should be recorded as a decision; the current state is neither
 
 ### Q-7 Numbers are literals, not named constants — *tracked as `namenums-vnzy`*
 
-`ONTOLOGY.md` names 22 tunables; only six exist as named constants in the code. The rest are
-literals at their use site, so tuning means finding them. **Recommendation:** extract them to
+`ONTOLOGY.md` names 22 tunables; only nine exist as named constants in the code —
+`ATTENUATION_WINDOW`, `ATTENUATION_LIMIT` and `THREAD_MAX_POSTS` joined them with D-29, since
+the rule they tune was being rewritten anyway. The rest are literals at their use site, so
+tuning means finding them. **Recommendation:** extract them to
 one module per area and have the ontology's table quote the names. Until then the table and
 the code can drift silently.
 
@@ -750,6 +794,23 @@ so, as `ONTOLOGY.md` now does.
 ---
 
 ## History
+
+### 2026-10-27 — Attenuation applies to everyone
+
+`botAttenuationReason` became `attenuationReason`, and `BOT_WINDOW`/`BOT_ATTENUATION_LIMIT`
+became `ATTENUATION_WINDOW`/`ATTENUATION_LIMIT` — the same 4-of-8, now counted against whoever
+spoke last rather than only against a `botList` handle (D-29). A human holding four of the last
+eight posts is declined where they used to be answered without limit.
+
+The release valve is the mention: an @ from a human is never declined, so a conversation that
+wants to keep going says so. A `botList` handle gets no such valve, which is why the bot check
+stayed at the top of the rule. `threadRestraintReason` therefore takes the notification's reason
+now; the feed passes `FEED_REASON` and is never exempt.
+
+The arithmetic is the part worth keeping: the window counts Oblique's own posts, so an
+alternating thread gives the other party exactly half of it. Any limit above half the window can
+never be reached — 5-of-8 would have been looser than 4-of-8, not stricter. Window twice the
+limit, and the limit falls on their limit-th post.
 
 ### 2026-10-27 — Oblique starts reading the feed
 

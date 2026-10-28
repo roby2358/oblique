@@ -497,6 +497,31 @@ describe('createSendToLLMTask under thread restraint', () => {
       .toBe('Declined: @bot.alpha wrote 4 of the last 8 posts');
   });
 
+  // The gate is only as good as the reason it is handed: a call site passing anything but the
+  // notification's own reason would attenuate every @ and fail none of the tests above (D-29)
+  it('lets a human\'s @ through a thread the window would otherwise decline', async () => {
+    const mention: BlueskyMessage = { ...notification, author: 'chatty.human', reason: 'mention' };
+    const floodedByHuman = floodedThread.map(post =>
+      ({ ...post, author: post.author === 'bot.alpha' ? 'chatty.human' : post.author }));
+
+    (mockBlueskyClient.getHistory as jest.MockedFunction<any>).mockResolvedValue(floodedByHuman);
+    (mockLLMClient.generateResponse as jest.MockedFunction<any>)
+      .mockResolvedValue({ content: 'an answer', model: 'test' });
+
+    createSendToLLMTask(
+      mention,
+      mockLLMClient,
+      undefined,
+      mockBlueskyClient,
+      mockOnWaitingTaskComplete,
+      mockPredecessor
+    );
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    expect(mockLLMClient.generateResponse).toHaveBeenCalled();
+  });
+
   it('never asks the LLM for a reply it has already declined', async () => {
     createSendToLLMTask(
       notification,

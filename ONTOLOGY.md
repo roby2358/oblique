@@ -161,7 +161,7 @@ G-4.
 | `delvetown.appview` | `string` | `did:web:api.delve.town#bsky_appview`. |
 | `delvetown.lexicon` | `string` | `town.delve`. |
 | `ignoreList` | `string[]` | Handles never replied to. Applies to every account. |
-| `botList` | `string[]` | Handles treated as bots for attenuation (see the thread-restraint rule). Applies to every account. |
+| `botList` | `string[]` | Handles denied the mention exemption at the thread-restraint rule, and refused outright in the feed. Attenuation itself applies to everyone (D-29). Applies to every account. |
 
 `bluesky` and `delvetown` are **account sections**, and the set of them is the one list
 `ACCOUNT_SECTIONS` in `src/bluesky-accounts.ts`. A third network is an entry there plus a
@@ -496,25 +496,49 @@ line the poller writes beside it (D-25).
 *Serves:* G-2. The second gate, after the full thread is in hand.
 
 ```
-threadRestraintReason(thread):
+threadRestraintReason(thread, notificationReason):
   if thread empty                       -> 'the thread came back empty'
-  reason = botAttenuationReason(thread)
+  reason = attenuationReason(thread, notificationReason)
   if reason                             -> reason
   if thread.length > THREAD_MAX_POSTS   -> 'the thread is <n> posts long'
   -> null                                                     # answer it
 
-botAttenuationReason(thread):
-  recent = last BOT_WINDOW authors (normalized)
+attenuationReason(thread, notificationReason):
+  recent = last ATTENUATION_WINDOW authors (normalized)
   last   = recent[-1]
-  if last not in config.botList -> null               # humans are never attenuated
+  isBot  = last in config.botList                     # checked first, so no @ exempts a bot
+  if not isBot and isDirectMention(notificationReason)
+                                -> null               # a human who @s us is always answered
   n = count(recent == last)
-  if n < BOT_ATTENUATION_LIMIT  -> null
-  -> '@<last> wrote <n> of the last <BOT_WINDOW> posts'
+  if n < ATTENUATION_LIMIT      -> null
+  -> '@<last> wrote <n> of the last <ATTENUATION_WINDOW> posts'
 ```
 
-Two bots can otherwise answer each other forever. The limit only engages when a *bot* spoke
-last, so a human can carry a long exchange without being throttled, and it counts that one
-author rather than bots in general — three bots in rotation never trip it, two alternating do.
+Two bots can otherwise answer each other forever, which is the case the window was written for
+(D-7) — but a human can hold a thread open just as long, so the window counts every author
+(D-29). It counts that one author rather than authors in general: three in rotation never trip
+it, two alternating do.
+
+`ATTENUATION_WINDOW` is twice `ATTENUATION_LIMIT` — derived in the code rather than set, so
+the limit can be tuned without breaking the relation — and the window includes Oblique's own posts,
+so in an alternating thread the other party holds exactly half of it: the limit falls on their
+`ATTENUATION_LIMIT`th post, one reply short of the limit. A limit above half the window would
+never be reached by an alternating conversation at all.
+
+`isDirectMention` is the one place a reason is asked whether it is a mention. Three rules ask
+it — `needsPostData`, Rule 3 at 4.8, and this exemption — and they cannot drift apart on what
+counts as one.
+
+A direct mention is exempt: someone who typed the handle is asking for an answer, and G-1 is
+what the page is for. A bot is not, because two bots @ each other by construction and the
+exemption would hand back the unbounded loop the window exists to stop. The `botList` check
+therefore comes before the exemption rather than after it.
+
+The reason reaches this gate only for that exemption. Everything the feed produces carries
+`FEED_REASON`, so nothing down that path is ever exempt — nobody asked for it (D-28).
+
+`THREAD_MAX_POSTS` is a prompt-size backstop rather than restraint, so an @ does not escape it
+either: a mention cannot make a thread fit in a context window.
 
 The reason is named rather than answered with a boolean, as at the first gate: it becomes the
 last line of the declined chain's work product, so the Observer panel says which rule declined
@@ -1108,7 +1132,8 @@ further request and the paid judgment is spent only on what survives. The same d
 
 The bot list refuses outright here rather than attenuating. D-7 throttles *answering* a bot
 that is already talking to us, which is a conversation someone started; opening one is a
-different act and nobody asked for it.
+different act and nobody asked for it. A human in the feed is qualified rather than refused —
+attenuation reaches them at 4.9, once there is a thread to count (D-29).
 
 A post with no text is declined because there is nothing for a lens to work on. The images such
 a post carries are `obl-images-4bpt`, not this.
@@ -1396,8 +1421,8 @@ tests. The code is the single source; the value here is a copy.
 | `OPENROUTER_FALLBACK_TEMPERATURE` | 0.7 | — | `openrouter.ts` | D-10 |
 | `OPENROUTER_FALLBACK_MAX_TOKENS` | 500 | tokens | `openrouter.ts` | D-10 |
 | `THREAD_MAX_POSTS` | 60 | posts | `threadRestraintReason` | D-7 |
-| `BOT_WINDOW` | 8 | posts | `botAttenuationReason` | D-7 |
-| `BOT_ATTENUATION_LIMIT` | 4 | posts | `botAttenuationReason` | D-7 |
+| `ATTENUATION_WINDOW` | 8 — derived, `2 × ATTENUATION_LIMIT` | posts | `attenuationReason` | D-7, D-29 |
+| `ATTENUATION_LIMIT` | 4 | posts | `attenuationReason` | D-7, D-29 |
 | `THREAD_MAX_DEPTH` | 25 | ancestors | `getHistory` | D-8 |
 | `NOTIFICATION_BATCH` | 50 | notifications | `checkAccount` | D-11 |
 | `POLL_DEFAULT_S` | 120 | seconds | `getPollIntervalSeconds`, and again as the `#poll-interval` value in `index.html` | D-11 |

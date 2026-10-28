@@ -128,8 +128,13 @@ After changing any of the three, run `just cc-smoke` — a live, read-only check
 account can sign in, list its notifications and read a thread. The unit suite never signs in,
 so it cannot tell you this.
 
-`ignoreList` holds handles never replied to. `botList` holds handles treated as bots, which
-the attenuation rule uses to stop bot-to-bot loops. Both apply to every account.
+`ignoreList` holds handles never replied to — the first rule at the first gate, and the only
+list that refuses outright on every path. `botList` holds handles treated as bots: they are
+refused outright in the feed, and they are the one case the attenuation rule's mention
+exemption does not cover, which is what stops two bots @-ing each other forever. Attenuation
+itself counts everybody — four of the last eight posts in a thread and the reply is declined,
+unless a human @s the bot, which is always answered. Both lists apply to every account, and
+handles go in without the leading `@`.
 
 ### Run
 

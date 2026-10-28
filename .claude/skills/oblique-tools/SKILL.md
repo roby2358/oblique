@@ -47,7 +47,16 @@ from.
 suites, and two seconds per test just to import modules. Two `npm test` processes at once
 starve the event loop, and tests that wait on a short real `setTimeout` (the task factory's
 chain tests do) blow their 5-second limit and report as failures that have nothing to do with
-your change. If a timeout appears, re-run serially before believing it.
+your change. If a timeout appears, re-run serially before believing it. The same load can
+also surface as a suite that *fails to run* with `'Date' only refers to a type` or `Property
+'push' does not exist on type '...[]'` — ts-jest lost the standard library under pressure.
+`tsc` will be clean; run that one file alone and it passes.
+
+**Judge `bluesky-polling.test.ts` from the full suite, never alone.** Run by itself
+(`npx jest test/bluesky-polling.test.ts`), every test that reads config fails with
+`Cannot read properties of undefined (reading 'includes')` — the real `config.js` loads
+instead of the `unstable_mockModule` stand-in. It passes in `npm test`. Not caused by any
+recent change: it reproduces on `3b5a5eb`. Cause not yet found.
 
 **Tests compile from the repo root.** `tsconfig.json` sets `rootDir: ./src`, so shared
 fixtures in `test/helpers/` would be rejected as outside it. `jest.config.js` overrides

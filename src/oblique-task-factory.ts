@@ -272,7 +272,7 @@ const runReplyChain = async (
   onWaitingTaskComplete: (taskId: string, successorTask: DrakidionTask) => void
 ): Promise<void> => {
   const thread = await blueskyClient.getHistory(notification);
-  const declined = threadRestraintReason(thread);
+  const declined = threadRestraintReason(thread, notification.reason);
 
   if (declined) {
     console.log(`Declining the reply to @${notification.author}: ${declined}`);
